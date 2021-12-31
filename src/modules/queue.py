@@ -11,8 +11,8 @@ queue = tj.Component(checks=(guild_c,), hooks=music_h)
 
 
 @queue.with_slash_command
-@tj.with_str_slash_option("song", "What song? (Could be a title or a youtube link)")
-@tj.as_slash_command("play", "Plays a song, or add it to the queue")
+@tj.with_str_slash_option('song', "What song? (Could be a title or a youtube link)")
+@tj.as_slash_command('play', "Plays a song, or add it to the queue")
 async def play_s(
     ctx: tj.abc.SlashContext,
     song: str,
@@ -22,111 +22,72 @@ async def play_s(
 
 
 @queue.with_message_command
-@tj.with_greedy_argument("song")  # Set song to be greedy
+@tj.with_greedy_argument('song')  # Set song to be greedy
 @tj.with_parser  # Add an argument parser to the command
-@tj.as_message_command("play", "p")
+@tj.as_message_command('play', 'p', 'a', 'add', '+')
 async def play_m(
     ctx: tj.abc.MessageContext,
     song: str,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ) -> None:
     """Play a song, or add it to the queue."""
+    await ctx.message.edit(flags=hk.MessageFlag.SUPPRESS_EMBEDS)
     await play_(ctx, song, lvc=lvc)
 
 
-@check(Checks.CATCH_ALL)
+@attempt_to_connect
+@check(Checks.IN_VC)
 async def play_(ctx: tj.abc.Context, song: str, lvc: lv.Lavalink) -> None:
     """Attempts to play the song from youtube."""
     assert ctx.guild_id is not None
 
-    # Check if we are connected to voice
-    conn = await lvc.get_guild_gateway_connection_info(ctx.guild_id)
-
-    if not conn:
-        # Join the users voice channel if we are not already connected
-        try:
-            await join__(ctx, None, lvc)
-        except NotInVoice:
-            return await err_reply(
-                ctx,
-                content=f"❌ Please join a voice channel first. You can also do `/join channel:` `[🔊 ...]`",
-            )
-
-    await check_auth_in_vc(ctx, lvc)
+    song = song.strip("<>|")
 
     query = await lvc.auto_search_tracks(song)
-    if not (tracks := query.tracks):
-        # We didnt find any tracks
-        return await err_reply(
-            ctx, content=f"❓ No tracks found. Please try changing your wording"
-        )
+    if not query.tracks:
+        raise QueryEmpty
 
     try:
-        # Play the first track in tracks
-        # Set the requester, and queue the song
-        async with access_queue(ctx, lvc) as q:
-            if query.load_type == "PLAYLIST_LOADED":
-                players = tuple(
-                    lvc.play(ctx.guild_id, t).requester(ctx.author.id).replace(False)
-                    for t in tracks
-                )
-                q.ext(*map(lambda p: p.to_track_queue(), players))
-                await def_reply(
-                    ctx,
-                    content=f"**`≡+`** Added `{len(tracks)} songs` from playlist `{query.playlist_info.name}` to the queue",
-                )
-                player = players[0]
-            else:
-                track = tracks[0]
-                player = (
-                    lvc.play(ctx.guild_id, track)
-                    .requester(ctx.author.id)
-                    .replace(False)
-                )
-                q.ext(player.to_track_queue())
-                await def_reply(
-                    ctx, content=f"**`＋`** Added `{track.info.title}` to the queue"
-                )
-            if not q.is_stopped:
-                await player.start()
+        await play__(ctx, lvc, tracks=query, respond=True)
     except lv.NoSessionPresent:
         # Occurs if lavalink crashes
-        return await err_reply(
+        await err_reply(
             ctx,
             content="⁉️ Something internal went wrong. Please try again in few minutes",
         )
+        return
 
 
 ## Remove
 
 
 remove_g_s = queue.with_slash_command(
-    tj.slash_command_group("remove", "Removes tracks from the queue")
+    tj.slash_command_group('remove', "Removes tracks from the queue")
 )
 
 
 @queue.with_message_command
-@tj.as_message_command_group("remove", "rem", "rm", "rmv", "del", "d", strict=True)
+@tj.as_message_command_group('remove', 'rem', 'rm', 'rmv', 'del', 'd', '-', strict=True)
 async def remove_g_m(ctx: tj.abc.MessageContext):
     cmd = ctx.command
     assert isinstance(cmd, tj.abc.MessageCommandGroup)
     p = next(iter(ctx.client.prefixes))
     cmd_n = next(iter(cmd.names))
     sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
-    valid_cmds = ", ".join(f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
+    valid_cmds = ', '.join(f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
     await err_reply(
         ctx,
         content=f"❌ This is a command group. Use the following instead:\n{valid_cmds}",
     )
 
 
-# Remove One
+## Remove One
 
 
 @remove_g_s.with_command
-@tj.with_str_slash_option("track", "The track by the name/position what?")
+@tj.with_str_slash_option('track', "The track by the name/position what?")
 @tj.as_slash_command(
-    "one", "Removes a track from the queue by queue position or track name"
+    'one', "Removes a track from the queue by queue position or track name"
 )
 async def remove_one_s(
     ctx: tj.abc.SlashContext,
@@ -137,9 +98,9 @@ async def remove_one_s(
 
 
 @remove_g_m.with_command
-@tj.with_greedy_argument("track")
+@tj.with_greedy_argument('track')
 @tj.with_parser
-@tj.as_message_command("one", "1", "o", "s")
+@tj.as_message_command('one', '1', 'o', 's')
 async def remove_one_m(
     ctx: tj.abc.MessageContext,
     track: str,
@@ -153,7 +114,7 @@ async def remove_one_(ctx: tj.abc.Context, track: str, lvc: lv.Lavalink):
     assert ctx.guild_id is not None
     async with access_queue(ctx, lvc) as q:
 
-        np = q.now_playing
+        np = q.current
         if track.isdigit():
             t = int(track)
             if not (1 <= t <= len(q)):
@@ -179,7 +140,7 @@ async def remove_one_(ctx: tj.abc.Context, track: str, lvc: lv.Lavalink):
     if rm == np:
         await stop__(ctx, lvc)
         await asyncio.sleep(0.15)
-        await skip__(ctx, lvc, advance=False)
+        await skip__(ctx, lvc, advance=False, change_repeat=True)
         # q.is_stopped = False
 
     async with access_queue(ctx, lvc) as q:
@@ -195,18 +156,18 @@ async def remove_one_(ctx: tj.abc.Context, track: str, lvc: lv.Lavalink):
         )
 
 
-# Remove Bulk
+## Remove Bulk
 
 
 @remove_g_s.with_command
 @tj.with_int_slash_option(
-    "end",
+    'end',
     "To the track with what position? (If not given, the end of the queue)",
     default=None,
 )
-@tj.with_int_slash_option("start", "From the track with what position?")
+@tj.with_int_slash_option('start', "From the track with what position?")
 @tj.as_slash_command(
-    "bulk", "Removes a track from the queue by queue position or track name"
+    'bulk', "Removes a track from the queue by queue position or track name"
 )
 async def remove_bulk_s(
     ctx: tj.abc.SlashContext,
@@ -218,10 +179,10 @@ async def remove_bulk_s(
 
 
 @remove_g_m.with_command
-@tj.with_argument("end", converters=int, default=None)
-@tj.with_argument("start", converters=int)
+@tj.with_argument('end', converters=int, default=None)
+@tj.with_argument('start', converters=int)
 @tj.with_parser
-@tj.as_message_command("bulk", "b", "m", "r")
+@tj.as_message_command('bulk', 'b', 'm', 'r')
 async def remove_bulk_m(
     ctx: tj.abc.MessageContext,
     end: t.Optional[int],
@@ -249,10 +210,13 @@ async def remove_bulk_(
         i_e = end - 1
         t_n = end - i_s
         rm = q[i_s:end]
-        if q.now_playing in rm:
+        if q.current in rm:
+            if q.repeat_mode is RepeatMode.ONE or q.repeat_mode is RepeatMode.ALL:
+                q.repeat_mode = RepeatMode.NONE if len(q) == 1 else RepeatMode.ALL
             async with while_stop(ctx, lvc, q):
                 pass
             if next_t := None if len(q) <= end else q[end]:
+                await set_pause__(ctx, lvc, pause=False)
                 await lvc.play(ctx.guild_id, next_t.track).start()
         if i_s < q.pos:
             q.pos = i_s + (q.pos - i_e - 1)
@@ -271,7 +235,7 @@ async def remove_bulk_(
 
 
 @queue.with_command
-@tj.as_slash_command("clear", "Clears the queue; Equivalent to /remove bulk start:1")
+@tj.as_slash_command('clear', "Clears the queue; Equivalent to /remove bulk start:1")
 async def clear_s(
     ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -279,7 +243,7 @@ async def clear_s(
 
 
 @queue.with_command
-@tj.as_message_command("clear", "d", "destroy", "clr", "c")
+@tj.as_message_command('clear', 'd', 'destroy', 'clr', 'c')
 async def clear_m(
     ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -307,7 +271,7 @@ async def shuffle_s(
 
 
 @queue.with_command
-@tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'r')
+@tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
 async def shuffle_m(
     ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -325,6 +289,87 @@ async def shuffle_(ctx: tj.abc.Context, lvc: lv.Lavalink):
             ctx,
             content=f"🔀 Shuffled the upcoming tracks. `(Track #{q.pos+2}-{len(q)}; {len(q) - q.pos - 1} tracks)`",
         )
+
+
+# Move
+
+
+move_g_s = queue.with_slash_command(
+    tj.slash_command_group('move', "Moves the track in the queue")
+)
+
+
+@queue.with_message_command
+@tj.as_message_command_group('move', 'mv', strict=True)
+async def move_g_m(ctx: tj.abc.MessageContext):
+    """
+    Moves the track in the queue
+    """
+    cmd = ctx.command
+    assert isinstance(cmd, tj.abc.MessageCommandGroup)
+    p = next(iter(ctx.client.prefixes))
+    cmd_n = next(iter(cmd.names))
+    sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
+    valid_cmds = ', '.join(f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
+    await err_reply(
+        ctx,
+        content=f"❌ This is a command group. Use the following instead:{valid_cmds}",
+    )
+
+
+# Repeat
+
+
+@queue.with_slash_command
+@tj.with_str_slash_option(
+    'mode',
+    "Which mode? (If not given, will cycle between: All > One > Off)",
+    choices={'All': 'all', 'One': 'one', 'Off': 'off'},
+    default=None,
+)
+@tj.as_slash_command('repeat', "Select a repeat mode for the queue")
+async def repeat_s(
+    ctx: tj.abc.SlashContext,
+    mode: t.Optional[str],
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    await repeat_(ctx, mode, lvc=lvc)
+
+
+@queue.with_message_command
+@tj.with_argument('mode', default=None)
+@tj.with_parser
+@tj.as_message_command('repeat', 'r', 'lp', 'rp', 'loop')
+async def repeat_m(
+    ctx: tj.abc.MessageContext,
+    mode: t.Optional[str],
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    """
+    Select a repeat mode for the queue
+    """
+    await repeat_(ctx, mode, lvc=lvc)
+
+
+@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
+async def repeat_(ctx: tj.abc.Context, mode: t.Optional[str], lvc: lv.Lavalink) -> None:
+    """
+    Select a repeat mode for the queue
+    """
+    async with access_queue(ctx, lvc) as q:
+        if mode is None:
+            modes = tuple(m.value for m in RepeatMode)
+            mode = modes[(modes.index(q.repeat_mode.value) + 1) % 3]
+            assert mode is not None
+        m = q.set_repeat(mode)
+
+    desc = {
+        RepeatMode.NONE: "➡️ Disabled repeat",
+        RepeatMode.ALL: "🔁 Repeating the entire queue",
+        RepeatMode.ONE: "🔂 Repeating only this current track",
+    }
+
+    await reply(ctx, content=desc[m])
 
 
 # -

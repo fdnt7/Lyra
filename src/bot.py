@@ -8,24 +8,31 @@ import pathlib as pl
 from src import EventHandler, hooks
 
 
-PREFIX = ","
-TOKEN = os.environ["SYMPNOIA_TOKEN"]
+PREFIX = ','
+TOKEN = os.environ['SYMPNOIA_TOKEN']
+# TOKEN = os.environ['SYMPNOIA_DEV_TOKEN']
+
+guild_ids = (
+    # 777069316247126036,  # Dev
+    733408768230162538,  # Cnrcord
+    703617620540391496,  # Jakkapoolu
+    689006349002342401,  # SMTE
+    674259790259814440,  # Hayacord
+)
 
 
 client = (
     tj.Client.from_gateway_bot(
         bot := hk.GatewayBot(token=TOKEN),
         declare_global_commands=(
-            777069316247126036,
-            703617620540391496,
-            689006349002342401,
-            674259790259814440,
+            guild_ids
+            # True
         ),
         mention_prefix=True,
     )
     .add_prefix(PREFIX)
     .set_hooks(hooks)
-    .load_modules(*(p for p in pl.Path(".").glob("./src/modules/*.py")))
+    .load_modules(*(p for p in pl.Path('.').glob('./src/modules/*.py')))
 )
 
 
@@ -37,12 +44,11 @@ async def on_shard_ready(
     """Event that triggers when the hikari gateway is ready."""
     builder = (
         lv.LavalinkBuilder(event.my_user.id, TOKEN)
-        .set_host('0.0.0.0')
-        .set_password(os.environ["LAVALINK_PASSWORD"])
-        .set_port(int(os.environ["LAVALINK_PORT"]))
+        .set_host(os.environ['LAVALINK_HOST'])
+        .set_password(os.environ['LAVALINK_PASSWORD'])
+        .set_port(int(os.environ['LAVALINK_PORT']))
         .set_start_gateway(False)
     )
-    print(os.environ["LAVALINK_HOST"], os.environ["LAVALINK_PASSWORD"], os.environ["LAVALINK_PORT"])
 
     client_.set_type_dependency(
         lv.Lavalink, await builder.build(EventHandler())
@@ -50,8 +56,17 @@ async def on_shard_ready(
 
     assert client_.shards is not None
     await client_.shards.update_presence(
-        status=hk.Status.ONLINE, activity=hk.Activity(name=",pp")
+        status=hk.Status.ONLINE, activity=hk.Activity(name=',pp')
     )
+
+    # for i,g in enumerate(guild_ids, 1):
+    #     # print(await bot.rest.fetch_guild(g))
+    #     _L = len(guild_ids)
+    #     cmds = await bot.rest.fetch_application_commands(698222394548027492, g)
+    #     L = len(cmds)
+    #     for j,cmd in enumerate(cmds, 1):
+    #         await cmd.delete()
+    #         print(f"{i}/{_L} {j}/{L}", cmd)
 
 
 @client.with_listener(hk.VoiceStateUpdateEvent)

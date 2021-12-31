@@ -9,12 +9,12 @@ conns = tj.Component(checks=(guild_c,), hooks=music_h)
 
 @conns.with_slash_command
 @tj.with_channel_slash_option(
-    "channel",
+    'channel',
     "Which channel? (If not parsed, your currently connected channel)",
     types=(hk.GuildVoiceChannel,),
     default=None,
 )
-@tj.as_slash_command("join", "Connects the bot to a voice channel")
+@tj.as_slash_command('join', "Connects the bot to a voice channel")
 async def join_s(
     ctx: tj.abc.SlashContext,
     channel: hk.GuildVoiceChannel,
@@ -24,9 +24,9 @@ async def join_s(
 
 
 @conns.with_message_command
-@tj.with_argument("channel", converters=tj.to_channel, default=None)
+@tj.with_argument('channel', converters=tj.to_channel, default=None)
 @tj.with_parser
-@tj.as_message_command("join", "j", "connect")
+@tj.as_message_command('join', 'j', 'connect')
 async def join_m(
     ctx: tj.abc.MessageContext,
     channel: hk.GuildVoiceChannel,
@@ -61,11 +61,6 @@ async def join_(
             ctx,
             content="⁉️ Something internal went wrong. Please try again in few minutes",
         )
-    except TimeoutError:
-        await def_reply(
-            ctx,
-            content="⏳ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
-        )
     except ConnectionForbidden as exc:
         await err_reply(
             ctx,
@@ -77,7 +72,7 @@ async def join_(
 
 
 @conns.with_slash_command
-@tj.as_slash_command("leave", "Leaves the voice channel and clears the queue")
+@tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")
 async def leave_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -86,7 +81,7 @@ async def leave_s(
 
 
 @conns.with_message_command
-@tj.as_message_command("leave", "l", "dc")
+@tj.as_message_command('leave', 'l', 'dc')
 async def leave_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -102,7 +97,7 @@ async def leave_(ctx: tj.abc.Context, lvc: lv.Lavalink):
 
     if conn := await lvc.get_guild_gateway_connection_info(ctx.guild_id):
         assert isinstance(conn, dict)
-        curr_channel = conn["channel_id"]
+        curr_channel = conn['channel_id']
 
         await check_others_not_in_vc__(ctx, DJ_PERMS, conn)
 

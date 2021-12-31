@@ -22,8 +22,8 @@ class Forbidden(BaseMusicCommandException):
 
 @dataclass
 class ChannelChange(ConnectionSignal):
-    old_channel: hk.Snowflake | int
-    new_channel: hk.Snowflake | int
+    old_channel: hk.Snowflakeish
+    new_channel: hk.Snowflakeish
 
 
 class PlaybackException(BaseMusicCommandException):
@@ -32,7 +32,7 @@ class PlaybackException(BaseMusicCommandException):
 
 @dataclass
 class ConnectionException(PlaybackException):
-    channel: hk.Snowflake | int
+    channel: hk.Snowflakeish
 
 
 class NotConnected(PlaybackException):
@@ -53,7 +53,7 @@ class OthersListening(OthersInVoice):
 
 @dataclass
 class NotInVoice(ConnectionException):
-    channel: t.Optional[hk.Snowflake | int]
+    channel: t.Optional[hk.Snowflakeish]
 
 
 class InternalError(PlaybackException):
@@ -85,10 +85,86 @@ class TrackStopped(PlaybackException):
     pass
 
 
+class QueryEmpty(BaseMusicCommandException):
+    pass
+
+
+class LyricsNotFound(BaseMusicCommandException):
+    pass
+
+
 class RepeatMode(e.Enum):
-    NONE = 0
-    ONE = 1
-    ALL = 2
+    NONE = 'off'
+    ALL = 'all'
+    ONE = 'one'
+
+
+def match_repeat(mode: str) -> RepeatMode:
+    match mode:
+        case 'off' | '0':
+            return RepeatMode.NONE
+        case 'one' | 'o' | '1':
+            return RepeatMode.ONE
+        case 'all' | 'a' | 'q':
+            return RepeatMode.ALL
+        case _:
+            raise NotImplementedError
+
+
+class LyricsData(t.NamedTuple):
+    source: str
+    lyrics: t.Optional[str] = None
+    title: t.Optional[str] = None
+    author: t.Optional[str] = None
+    link: t.Optional[str] = None
+    thumbnail: t.Optional[str] = None
+
+
+async def get_lyrics_yt(song: str) -> t.Optional[LyricsData]:
+    queried = ytmusic.search(song, 'songs') + ytmusic.search(song, 'videos')
+    if not queried:
+        return
+    track_data_0 = queried[0]['videoId']
+    watches = ytmusic.get_watch_playlist(track_data_0)
+    track_data = watches['tracks'][0]
+    if watches['lyrics'] is None:
+        return
+    lyrics_id = watches['lyrics']
+    assert isinstance(lyrics_id, str)
+    return LyricsData(
+        title=track_data['title'],
+        lyrics=(lyrics := ytmusic.get_lyrics(lyrics_id))['lyrics'],
+        thumbnail=track_data['thumbnail'][-1]['url'],
+        author=' & '.join((a['name'] for a in track_data['artists'])),
+        source=lyrics['source'],
+    )
+
+
+async def get_lyrics_ge(song: str) -> t.Optional[LyricsData]:
+    async with aiohttp.request('GET', LYRICS_URL + song, headers={}) as r:
+        if not 200 <= r.status <= 299:
+            return
+        data = await r.json()
+
+        if len(data['lyrics']) > 2000:
+            return LyricsData(link=data['links']['genius'], source='Source: Genius')
+
+        return LyricsData(
+            title=data['title'],
+            lyrics=data['lyrics'],
+            thumbnail=data['thumbnail']['genius'],
+            author=data['author'],
+            source='Source: Genius',
+        )
+
+
+async def get_lyrics(song: str) -> LyricsData:
+    tests = (get_lyrics_ge, get_lyrics_yt)
+    for T_ in tests:
+        if not (lyrics := await T_(song)):
+            continue
+        return lyrics
+    raise LyricsNotFound
 
 
 class Checks(e.Flag):
@@ -185,13 +261,13 @@ class QueueList(list):
     def np_position(self) -> t.Optional[int]:
         if self.is_paused:
             return self._last_np_position
-        if not self.now_playing:
+        if not self.current:
             return None
 
         return curr_time_ms() - self._last_track_played
 
     @property
-    def now_playing(self) -> t.Optional[lv.TrackQueue]:
+    def current(self) -> t.Optional[lv.TrackQueue]:
         if not self:
             raise QueueIsEmpty
 
@@ -199,6 +275,10 @@ class QueueList(list):
             return self[self.pos]
 
         return None
+
+    @property
+    def playing(self) -> bool:
+        return not (self.is_paused or self.is_stopped) and bool(self.current)
 
     @property
     def upcoming(self) -> list[lv.TrackQueue]:
@@ -228,6 +308,9 @@ class QueueList(list):
     def adv(self) -> None:
         self.pos += 1
 
+    def wrap(self) -> None:
+        self.pos %= len(self)
+
     def decr(self) -> None:
         self.pos -= 1
 
@@ -240,12 +323,15 @@ class QueueList(list):
 
         pos = self.pos
 
+        if self.repeat_mode is RepeatMode.ONE:
+            return self[pos]
+
         pos += 1
 
         if pos < 0:
             return None
         elif pos > len(self) - 1:
-            if self.repeat_mode == RepeatMode.ALL:
+            if self.repeat_mode is RepeatMode.ALL:
                 pos = 0
             else:
                 return None
@@ -262,13 +348,9 @@ class QueueList(list):
         self.clear()
         self.extend(hist + upcoming)
 
-    def set_repeat(self, mode: str) -> None:
-        mode_list = {
-            "none": RepeatMode.NONE,
-            "1": RepeatMode.ONE,
-            "all": RepeatMode.ALL,
-        }
-        self.repeat_mode = mode_list[mode]
+    def set_repeat(self, mode: str) -> RepeatMode:
+        self.repeat_mode = (m := match_repeat(mode))
+        return m
 
     def clr(self) -> None:
         self.clear()
@@ -278,12 +360,12 @@ class QueueList(list):
 @dataclass
 class NodeData:
     queue: QueueList = field(default_factory=QueueList)
+    last_channel_id: t.Optional[hk.Snowflakeish] = None
     ...
 
 
 class EventHandler:
     async def track_start(self, lvc: lv.Lavalink, event: lv.TrackStart) -> None:
-        # t = hl.md5(event.track[:-8].encode()).hexdigest()
         t = (await lvc.decode_track(event.track)).title
         async with access_queue(event.guild_id, lvc) as q:
             q._last_track_played = curr_time_ms()
@@ -292,7 +374,6 @@ class EventHandler:
             )
 
     async def track_finish(self, lvc: lv.Lavalink, event: lv.TrackFinish) -> None:
-        # t = hl.md5(event.track[:-8].encode()).hexdigest()
         t = (await lvc.decode_track(event.track)).title
         async with access_queue(event.guild_id, lvc) as q:
             if q.is_stopped:
@@ -303,7 +384,14 @@ class EventHandler:
             try:
                 if next_t := q.next:
                     await lvc.play(event.guild_id, next_t.track).start()
-                q.adv()
+                match q.repeat_mode:
+                    case RepeatMode.ALL:
+                        q.adv()
+                        q.wrap()
+                    case RepeatMode.NONE:
+                        q.adv()
+                    case RepeatMode.ONE:
+                        pass
             except QueueIsEmpty:
                 return
             finally:
@@ -315,14 +403,11 @@ class EventHandler:
         logger.error(f"Track exception event happened on guild: {event.guild_id}")
 
         # If a track was unable to be played, skip it
-        skip = await lvc.skip(event.guild_id)
-        node = await lvc.get_guild_node(event.guild_id)
-
-        async with access_queue(event.guild_id, lvc) as q:
-            if skip and node:
-                if not q and not q.now_playing:
-                    await lvc.stop(event.guild_id)
-                    q.pos += 1
+        await skip__(
+            event.guild_id,
+            lvc,
+            advance=not (await get_queue(event.guild_id, lvc)).is_stopped,
+        )
 
 
 async def check_others_not_in_vc__(ctx: tj.abc.Context, perms: P, conn: dict):
@@ -332,7 +417,7 @@ async def check_others_not_in_vc__(ctx: tj.abc.Context, perms: P, conn: dict):
         ctx.client, m, channel=ctx.channel_id
     )
 
-    channel = conn["channel_id"]
+    channel = conn['channel_id']
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
         ctx.guild_id, channel
     )
@@ -361,7 +446,7 @@ async def check_auth_in_vc__(ctx: tj.abc.Context, perms: P, conn: dict):
         ctx.client, m, channel=ctx.channel_id
     )
 
-    channel = conn["channel_id"]
+    channel = conn['channel_id']
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
         ctx.guild_id, channel
     )
@@ -388,12 +473,12 @@ async def check_curr_t_perms(ctx: tj.abc.Context, lvc: lv.Lavalink):
     auth_perms = await tj.utilities.fetch_permissions(
         ctx.client, ctx.member, channel=ctx.channel_id
     )
-    async with access_queue(ctx, lvc) as q:
-        assert q.now_playing is not None
-        if ctx.author.id != q.now_playing.requester and not auth_perms & (
-            DJ_PERMS | P.ADMINISTRATOR
-        ):
-            raise PlaybackChangeRefused(q.now_playing)
+    q = await get_queue(ctx, lvc)
+    assert q.current is not None
+    if ctx.author.id != q.current.requester and not auth_perms & (
+        DJ_PERMS | P.ADMINISTRATOR
+    ):
+        raise PlaybackChangeRefused(q.current)
 
 
 async def check_seeking_perms(ctx: tj.abc.Context, lvc: lv.Lavalink):
@@ -401,20 +486,18 @@ async def check_seeking_perms(ctx: tj.abc.Context, lvc: lv.Lavalink):
     auth_perms = await tj.utilities.fetch_permissions(
         ctx.client, ctx.member, channel=ctx.channel_id
     )
-    async with access_queue(ctx, lvc) as q:
-        if not (auth_perms & (DJ_PERMS | P.ADMINISTRATOR)):
-            if not (np := q.now_playing):
-                raise Forbidden(DJ_PERMS)
-            if ctx.author.id != np.requester:
-                raise PlaybackChangeRefused(np)
+    if not (auth_perms & (DJ_PERMS | P.ADMINISTRATOR)):
+        if not (np := (await get_queue(ctx, lvc)).current):
+            raise Forbidden(DJ_PERMS)
+        if ctx.author.id != np.requester:
+            raise PlaybackChangeRefused(np)
 
 
 async def check_advancability(ctx: tj.abc.Context, lvc: lv.Lavalink):
 
     assert ctx.guild_id is not None
-    async with access_queue(ctx, lvc) as q:
-        if q.is_stopped:
-            raise TrackStopped
+    if (await get_queue(ctx, lvc)).is_stopped:
+        raise TrackStopped
 
 
 async def check_conn(ctx: tj.abc.Context, lvc: lv.Lavalink):
@@ -425,21 +508,18 @@ async def check_conn(ctx: tj.abc.Context, lvc: lv.Lavalink):
 
 
 async def check_queue(ctx: tj.abc.Context, lvc: lv.Lavalink):
-    async with access_queue(ctx, lvc) as q:
-        if not q:
-            raise QueueIsEmpty
+    if not await get_queue(ctx, lvc):
+        raise QueueIsEmpty
 
 
 async def check_playing(ctx: tj.abc.Context, lvc: lv.Lavalink):
-    async with access_queue(ctx, lvc) as q:
-        if not q.now_playing:
-            raise NotPlaying
+    if not (await get_queue(ctx, lvc)).current:
+        raise NotPlaying
 
 
 async def check_paused(ctx: tj.abc.Context, lvc: lv.Lavalink):
-    async with access_queue(ctx, lvc) as q:
-        if q.is_paused:
-            raise TrackPaused
+    if (await get_queue(ctx, lvc)).is_paused:
+        raise TrackPaused
 
 
 def check(checks: Checks, perms: P = P.NONE):
@@ -500,27 +580,29 @@ def check(checks: Checks, perms: P = P.NONE):
                     content=f"🚫 Join <#{exc.channel}> first. **You bypass this by having the `Deafen` & `Mute Members` permissions**",
                 )
             except NotConnected:
-                return await err_reply(
+                await err_reply(
                     ctx,
                     content=f"❌ Not currently connected to any channel. Use `/join` or `/play` first",
                 )
             except QueueIsEmpty:
-                return await err_reply(ctx, content="❗ The queue is empty")
+                await err_reply(ctx, content="❗ The queue is empty")
             except NotPlaying:
-                return await err_reply(
-                    ctx, content="❗ Nothing is playing at the moment"
-                )
+                await err_reply(ctx, content="❗ Nothing is playing at the moment")
             except PlaybackChangeRefused:
                 await err_reply(
                     ctx,
                     content=f"🚫 This can only be done by the current song requester\n**You bypass this by having the `Deafen` & `Mute Members` permissions**",
                 )
             except TrackPaused:
-                return await err_reply(ctx, content="❗ The current track is paused")
+                await err_reply(ctx, content="❗ The current track is paused")
             except TrackStopped:
-                return await err_reply(
+                await err_reply(
                     ctx,
                     content="❗ The current track had been stopped. Use `/skip`, `/restart` or `/remove` the current track first",
+                )
+            except QueryEmpty:
+                await err_reply(
+                    ctx, content="❓ No tracks found. Please try changing your wording"
                 )
 
         return wrapper
@@ -528,20 +610,78 @@ def check(checks: Checks, perms: P = P.NONE):
     return decorator
 
 
-@asynccontextmanager
-async def access_queue(ctx: tj.abc.Context | hk.Snowflake | int, lvc: lv.Lavalink):
-    if isinstance(ctx, tj.abc.Context):
+def attempt_to_connect(func: t.Callable[..., t.Coroutine]):
+    async def wrapper(ctx: tj.abc.Context, *args: t.Any, lvc: lv.Lavalink):
         assert ctx.guild_id is not None
-        ctx = ctx.guild_id
-    node = await lvc.get_guild_node(ctx)
+        conn = await lvc.get_guild_gateway_connection_info(ctx.guild_id)
+
+        if not conn:
+            # Join the users voice channel if we are not already connected
+            try:
+                if not await join__(ctx, None, lvc):
+                    return
+            except NotInVoice:
+                await err_reply(
+                    ctx,
+                    content=f"❌ Please join a voice channel first. You can also do `/join channel:` `[🔊 ...]`",
+                )
+                return
+
+        await func(ctx, *args, lvc=lvc)
+
+    return wrapper
+
+
+# @hooks.with_on_success
+# async def on_success(
+#     ctx: tj.abc.Context, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
+# ) -> None:
+#     guild = ctx.guild_id
+#     assert guild is not None
+
+#     node = await lvc.get_guild_node(guild)
+#     assert node is not None
+
+#     data = await get_data(guild, lvc)
+#     data.last_channel_id = ctx.channel_id
+#     await set_data(guild, lvc, data)
+
+
+async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink) -> NodeData:
+    node = await lvc.get_guild_node(guild)
     if not node:
         raise NotConnected
     data = (await node.get_data()) or NodeData()
     assert isinstance(data, NodeData)
+    return data
+
+
+async def set_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData) -> None:
+    node = await lvc.get_guild_node(guild)
+    assert node is not None
+    await node.set_data(data)
+
+
+@asynccontextmanager
+async def access_queue(ctx_g: tj.abc.Context | hk.Snowflakeish, lvc: lv.Lavalink):
+    if isinstance(ctx_g, tj.abc.Context):
+        assert ctx_g.guild_id is not None
+        ctx_g = ctx_g.guild_id
+
+    data = await get_data(ctx_g, lvc)
     try:
         yield data.queue
     finally:
-        await node.set_data(data)
+        await set_data(ctx_g, lvc, data)
+
+
+async def get_queue(
+    ctx_g: tj.abc.Context | hk.Snowflakeish, lvc: lv.Lavalink
+) -> QueueList:
+    if isinstance(ctx_g, tj.abc.Context):
+        assert ctx_g.guild_id is not None
+        ctx_g = ctx_g.guild_id
+    return (await get_data(ctx_g, lvc)).queue
 
 
 music_h = tj.AnyHooks()
@@ -599,7 +739,7 @@ async def join__(
         # Check if the bot is already connected and the user tries to change
         if old_conn:
 
-            old_channel = old_conn["channel_id"]
+            old_channel = old_conn['channel_id']
             assert old_channel is not None
             # If it's the same channel
             if old_channel == target_channel:
@@ -615,7 +755,14 @@ async def join__(
         )
 
         # Lavasnek waits for the data on the event
-        sess_conn = await lvc.wait_for_full_connection_info_insert(ctx.guild_id)
+        try:
+            sess_conn = await lvc.wait_for_full_connection_info_insert(ctx.guild_id)
+        except TimeoutError:
+            await def_reply(
+                ctx,
+                content="⏳ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
+            )
+            return
         # Lavasnek tells lavalink to connect
         await lvc.create_session(sess_conn)
 
@@ -657,6 +804,12 @@ async def stop__(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
     await lvc.stop(ctx.guild_id)  # Stop the player
 
 
+async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
+    assert ctx.guild_id is not None
+    async with access_queue(ctx, lvc) as q:
+        q.is_stopped = False
+
+
 @asynccontextmanager
 async def while_stop(ctx: tj.abc.Context, lvc: lv.Lavalink, q: QueueList):
     await stop__(ctx, lvc)
@@ -667,23 +820,90 @@ async def while_stop(ctx: tj.abc.Context, lvc: lv.Lavalink, q: QueueList):
         q.is_stopped = False
 
 
-async def skip__(
-    ctx: tj.abc.Context, lvc: lv.Lavalink, advance: bool = True
-) -> t.Optional[lv.TrackQueue]:
-    assert ctx.guild_id is not None
+async def set_pause__(
+    ctx_g: tj.abc.Context | hk.Snowflakeish,
+    lvc: lv.Lavalink,
+    *,
+    pause: t.Optional[bool],
+    respond: bool = False,
+    strict: bool = False,
+) -> None:
+    _ctx = None
+    if isinstance(ctx_g, tj.abc.Context):
+        _ctx = ctx_g
+        assert ctx_g.guild_id is not None
+        ctx_g = ctx_g.guild_id
 
-    async with access_queue(ctx, lvc) as q:
-        skip = q.now_playing
+    assert ctx_g is not None
+    try:
+        async with access_queue(ctx_g, lvc) as q:
+            if q.is_stopped:
+                if strict:
+                    raise TrackStopped
+                return
+            if pause is None:
+                pause = not q.is_paused
+            if respond:
+                assert _ctx is not None
+                if pause and q.is_paused:
+                    await err_reply(_ctx, content="❗ Already paused")
+                    return
+                if not (pause or q.is_paused):
+                    await err_reply(_ctx, content="❗ Already resumed")
+                    return
+
+            np_pos = q.np_position
+            if np_pos is None:
+                raise NotPlaying
+
+            q._last_np_position = np_pos if pause else curr_time_ms() - np_pos
+            q.is_paused = pause
+            if pause:
+                await lvc.pause(ctx_g)
+                msg = "▶️ Paused"
+            else:
+                await lvc.resume(ctx_g)
+                msg = "⏸️ Resumed"
+        if respond:
+            assert _ctx is not None
+            await reply(_ctx, content=msg)
+    except (QueueIsEmpty, NotPlaying):
+        if strict:
+            raise
+        pass
+
+
+async def skip__(
+    ctx_g: tj.abc.Context | hk.Snowflakeish,
+    lvc: lv.Lavalink,
+    *,
+    advance: bool = True,
+    change_repeat: bool = False,
+) -> t.Optional[lv.TrackQueue]:
+    _ctx = None
+    if isinstance(ctx_g, tj.abc.Context):
+        _ctx = ctx_g
+        assert ctx_g.guild_id is not None
+        ctx_g = ctx_g.guild_id
+
+    async with access_queue(ctx_g, lvc) as q:
+        skip = q.current
+        if change_repeat and (
+            q.repeat_mode is RepeatMode.ONE or q.repeat_mode is RepeatMode.ALL
+        ):
+            q.repeat_mode = RepeatMode.NONE if len(q) == 1 else RepeatMode.ALL
         if q.is_stopped and (next_t := q.next):
             if advance:
                 q.adv()
                 # q.is_stopped = False
-            await lvc.play(ctx.guild_id, next_t.track).start()
+            await lvc.play(ctx_g, next_t.track).start()
+            if _ctx:
+                await set_pause__(_ctx, lvc, pause=False)
             return skip
         try:
             return skip
         finally:
-            await lvc.stop(ctx.guild_id)
+            await lvc.stop(ctx_g)
 
 
 async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int):
@@ -691,8 +911,8 @@ async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int):
     if total_ms < 0:
         raise IllegalArgument(Argument(total_ms, 0))
     async with access_queue(ctx, lvc) as q:
-        assert q.now_playing is not None
-        if total_ms >= (song_len := q.now_playing.track.info.length):
+        assert q.current is not None
+        if total_ms >= (song_len := q.current.track.info.length):
             raise IllegalArgument(Argument(total_ms, song_len))
         q._last_track_played = curr_time_ms() - total_ms
         await lvc.seek_millis(ctx.guild_id, total_ms)
@@ -701,7 +921,62 @@ async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int):
 
 ## Queue
 
-...
+
+@trigger_thinking()
+async def play__(
+    ctx: tj.abc.Context, lvc: lv.Lavalink, *, tracks: lv.Tracks, respond: bool = False
+) -> None:
+    assert ctx.guild_id is not None
+    async with access_queue(ctx, lvc) as q:
+        if tracks.load_type == 'PLAYLIST_LOADED':
+            await enqueue_tracks__(ctx, lvc, tracks=tracks, queue=q, respond=respond)
+        else:
+            await enqueue_track__(
+                ctx, lvc, track=tracks.tracks[0], queue=q, respond=respond
+            )
+
+
+async def enqueue_track__(
+    ctx: tj.abc.Context,
+    lvc: lv.Lavalink,
+    *,
+    track: lv.Track,
+    queue: QueueList,
+    respond: bool = False,
+    ignore_stop: bool = False,
+) -> None:
+    assert ctx.guild_id is not None
+    player = lvc.play(ctx.guild_id, track).requester(ctx.author.id).replace(False)
+    queue.ext(player.to_track_queue())
+    if respond:
+        await def_reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
+    if not queue.is_stopped or ignore_stop:
+        await player.start()
+
+
+async def enqueue_tracks__(
+    ctx: tj.abc.Context,
+    lvc: lv.Lavalink,
+    *,
+    tracks: lv.Tracks,
+    queue: QueueList,
+    respond: bool = False,
+) -> None:
+    assert ctx.guild_id is not None
+    players = tuple(
+        lvc.play(ctx.guild_id, t).requester(ctx.author.id).replace(False)
+        for t in tracks.tracks
+    )
+    queue.ext(*map(lambda p: p.to_track_queue(), players))
+    if respond:
+        await def_reply(
+            ctx,
+            content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
+        )
+    player = players[0]
+    if not queue.is_stopped:
+        await player.start()
+
 
 ## Info
 

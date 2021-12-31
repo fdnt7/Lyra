@@ -9,7 +9,7 @@ playback = tj.Component(checks=(guild_c,), hooks=music_h)
 
 @playback.with_slash_command
 @tj.as_slash_command(
-    "playpause", "Toggles the playback of the current song between play and pause"
+    'playpause', "Toggles the playback of the current song between play and pause"
 )
 async def play_pause_s(
     ctx: tj.abc.SlashContext,
@@ -19,7 +19,7 @@ async def play_pause_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("playpause", "pp")
+@tj.as_message_command('playpause', 'pp')
 async def play_pause_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -37,17 +37,14 @@ async def play_pause_m(
 )
 async def play_pause_(ctx: tj.abc.Context, lvc: lv.Lavalink):
     assert ctx.guild_id is not None
-    async with access_queue(ctx, lvc) as q:
-        if q.is_paused:
-            return await resume_(ctx, lvc=lvc)
-        return await pause_(ctx, lvc=lvc)
+    await set_pause__(ctx, lvc, pause=None, respond=True)
 
 
 # Pause
 
 
 @playback.with_slash_command
-@tj.as_slash_command("pause", "Pauses the current song")
+@tj.as_slash_command('pause', "Pauses the current song")
 async def pause_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -56,7 +53,7 @@ async def pause_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("pause")
+@tj.as_message_command('pause')
 async def pause_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -75,14 +72,8 @@ async def pause_m(
 async def pause_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
     """Pauses the current song."""
     assert ctx.guild_id is not None
-    async with access_queue(ctx, lvc) as q:
-        if q.is_paused:
-            return await err_reply(ctx, content="❗ Already paused")
 
-        q._last_np_position = q.np_position
-        q.is_paused = True
-        await lvc.pause(ctx.guild_id)
-    await reply(ctx, content="⏸️ Paused")
+    await set_pause__(ctx, lvc, pause=True, respond=True)
 
 
 # Resume
@@ -98,7 +89,7 @@ async def resume_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("resume")
+@tj.as_message_command('resume')
 async def resume_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -118,23 +109,14 @@ async def resume_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
     """Resumes playing the current song."""
     assert not ((ctx.guild_id is None) or (ctx.member is None))
 
-    async with access_queue(ctx, lvc) as q:
-        if not q.is_paused:
-            return await err_reply(ctx, content="❗ Already resumed")
-
-        np_pos = q.np_position
-        assert np_pos is not None
-        q._last_track_played = curr_time_ms() - np_pos
-        q.is_paused = False
-        await lvc.resume(ctx.guild_id)
-    await reply(ctx, content="▶️ Resumed")
+    await set_pause__(ctx, lvc, pause=False, respond=True)
 
 
 # Stop
 
 
 @playback.with_slash_command
-@tj.as_slash_command("stop", "Stops the current track; skip to play again")
+@tj.as_slash_command('stop', "Stops the current track; skip to play again")
 async def stop_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -143,7 +125,7 @@ async def stop_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("stop")
+@tj.as_message_command('stop')
 async def stop_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -172,9 +154,9 @@ async def stop_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
 
 @playback.with_slash_command
 @tj.with_float_slash_option(
-    "seconds", "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
+    'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
 )
-@tj.as_slash_command("fastforward", "Fast-forwards the current track")
+@tj.as_slash_command('fastforward', "Fast-forwards the current track")
 async def fastforward_s(
     ctx: tj.abc.SlashContext,
     seconds: float,
@@ -184,9 +166,9 @@ async def fastforward_s(
 
 
 @playback.with_message_command
-@tj.with_argument("seconds", converters=float, default=10.00)
+@tj.with_argument('seconds', converters=float, default=10.0)
 @tj.with_parser
-@tj.as_message_command("fastforward", "ff")
+@tj.as_message_command('fastforward', 'ff')
 async def fastforward_m(
     ctx: tj.abc.MessageContext,
     seconds: float,
@@ -205,8 +187,8 @@ async def fastforward_m(
 )
 async def fastforward_(ctx: tj.abc.Context, seconds: float, lvc: lv.Lavalink):
     async with access_queue(ctx, lvc) as q:
-        assert not ((q.now_playing is None) or (q.np_position is None))
-        np_info = q.now_playing.track.info
+        assert not ((q.current is None) or (q.np_position is None))
+        np_info = q.current.track.info
         old_np_ms = q.np_position
         new_np_ms = old_np_ms + int(seconds * 1000)
 
@@ -230,9 +212,9 @@ async def fastforward_(ctx: tj.abc.Context, seconds: float, lvc: lv.Lavalink):
 
 @playback.with_slash_command
 @tj.with_float_slash_option(
-    "seconds", "Rewind by how much? (If not given, 10 seconds)", default=10.0
+    'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
 )
-@tj.as_slash_command("rewind", "Rewinds the current track")
+@tj.as_slash_command('rewind', "Rewinds the current track")
 async def rewind_s(
     ctx: tj.abc.SlashContext,
     seconds: float,
@@ -242,9 +224,9 @@ async def rewind_s(
 
 
 @playback.with_message_command
-@tj.with_argument("seconds", converters=float, default=10.00)
+@tj.with_argument('seconds', converters=float, default=10.00)
 @tj.with_parser
-@tj.as_message_command("rewind", "rw")
+@tj.as_message_command('rewind', 'rw')
 async def rewind_m(
     ctx: tj.abc.MessageContext,
     seconds: float,
@@ -263,7 +245,7 @@ async def rewind_m(
 )
 async def rewind_(ctx: tj.abc.Context, seconds: float, lvc: lv.Lavalink):
     async with access_queue(ctx, lvc) as q:
-        assert not ((q.now_playing is None) or (q.np_position is None))
+        assert not ((q.current is None) or (q.np_position is None))
         old_np_ms = q.np_position
         new_np_ms = old_np_ms - int(seconds * 1000)
 
@@ -286,7 +268,7 @@ async def rewind_(ctx: tj.abc.Context, seconds: float, lvc: lv.Lavalink):
 
 
 @playback.with_slash_command
-@tj.as_slash_command("skip", "Skips the current track")
+@tj.as_slash_command('skip', "Skips the current track")
 async def skip_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -295,7 +277,7 @@ async def skip_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("skip", "s")
+@tj.as_message_command('skip', 's')
 async def skip_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -307,10 +289,8 @@ async def skip_m(
 @check(Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CURR_T_YOURS)
 async def skip_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
     """Skips the current song."""
-    skip = await skip__(ctx, lvc)
+    skip = await skip__(ctx, lvc, change_repeat=True)
 
-    # if not skip:
-    #     return await err_reply(ctx, content="❗ No tracks left to skip.")
     assert skip is not None
     await reply(ctx, content=f"⏭️ ~~`{skip.track.info.title}`~~")
 
@@ -330,9 +310,9 @@ async def play_at_s(
 
 
 @playback.with_message_command
-@tj.with_argument("position", converters=int)
+@tj.with_argument('position', converters=int)
 @tj.with_parser
-@tj.as_message_command("playat", "pa", "i", "pos", "skipto", "st")
+@tj.as_message_command('playat', 'pa', 'i', 'pos', 'skipto', 'st')
 async def play_at_m(
     ctx: tj.abc.MessageContext,
     position: int,
@@ -355,6 +335,7 @@ async def play_at_(ctx: tj.abc.Context, position: int, lvc: lv.Lavalink):
             t = q[position - 1]
             q.pos = position - 1
             await lvc.play(ctx.guild_id, t.track).start()
+            await set_pause__(ctx, lvc, pause=False)
 
         return await reply(
             ctx,
@@ -366,7 +347,7 @@ async def play_at_(ctx: tj.abc.Context, position: int, lvc: lv.Lavalink):
 
 
 @playback.with_slash_command
-@tj.as_slash_command("next", "Plays the next track in the queue")
+@tj.as_slash_command('next', "Plays the next track in the queue")
 async def next_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -375,7 +356,7 @@ async def next_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("next", "n")
+@tj.as_message_command('next', 'n')
 async def next_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -385,18 +366,17 @@ async def next_m(
 
 @check(Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CURR_T_YOURS)
 async def next_(ctx: tj.abc.Context, lvc: lv.Lavalink):
-    async with access_queue(ctx, lvc) as q:
-        if not (up := q.upcoming):
-            return await err_reply(ctx, content="❗ This is the end of the queue")
-        await skip__(ctx, lvc)
-        await reply(ctx, content=f"⏭️ **`{up[0].track.info.title}`**")
+    if not (up := (await get_queue(ctx, lvc)).next):
+        return await err_reply(ctx, content="❗ This is the end of the queue")
+    await skip__(ctx, lvc)
+    await reply(ctx, content=f"⏭️ **`{up.track.info.title}`**")
 
 
 # Previous
 
 
 @playback.with_slash_command
-@tj.as_slash_command("previous", "Plays the previous track in the queue")
+@tj.as_slash_command('previous', "Plays the previous track in the queue")
 async def previous_s(
     ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -404,7 +384,7 @@ async def previous_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("previous", "prev", "pr", "prv", "pre", "b", "back")
+@tj.as_message_command('previous', 'prev', 'pr', 'prv', 'pre', 'b', 'back')
 async def previous_m(
     ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -415,20 +395,31 @@ async def previous_m(
 async def previous_(ctx: tj.abc.Context, lvc: lv.Lavalink):
     assert ctx.guild_id is not None
     async with access_queue(ctx, lvc) as q:
-        if not (prev := q.history):
+        if q.repeat_mode is RepeatMode.NONE and not q.history:
             return await err_reply(ctx, content="❗ This is the start of the queue")
         async with while_stop(ctx, lvc, q):
-            q.decr()
+            match q.repeat_mode:
+                case RepeatMode.ALL:
+                    q.decr()
+                    q.wrap()
+                    prev = q[q.pos]
+                case RepeatMode.ONE:
+                    prev = q.current
+                    assert prev is not None
+                case RepeatMode.NONE:
+                    prev = q.history[-1]
+                    q.decr()
 
-        await lvc.play(ctx.guild_id, prev[-1].track).start()
-        await reply(ctx, content=f"⏮️ **`{prev[-1].track.info.title}`**")
+        await lvc.play(ctx.guild_id, prev.track).start()
+        await set_pause__(ctx, lvc, pause=False)
+        await reply(ctx, content=f"⏮️ **`{prev.track.info.title}`**")
 
 
 # Restart
 
 
 @playback.with_slash_command
-@tj.as_slash_command("restart", "Restarts the current track; Equivalent to /seek 0:00")
+@tj.as_slash_command('restart', "Restarts the current track; Equivalent to /seek 0:00")
 async def restart_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -437,7 +428,7 @@ async def restart_s(
 
 
 @playback.with_message_command
-@tj.as_message_command("restart", "re")
+@tj.as_message_command('restart', 're')
 async def restart_m(
     ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -454,7 +445,7 @@ async def restart_m(
 async def restart_(ctx: tj.abc.Context, lvc: lv.Lavalink):
     assert ctx.guild_id is not None
     async with access_queue(ctx, lvc) as q:
-        if q.is_stopped and (np := q.now_playing):
+        if q.is_stopped and (np := q.current):
             await lvc.play(ctx.guild_id, np.track).start()
             q.is_stopped = False
 
@@ -467,7 +458,7 @@ async def restart_(ctx: tj.abc.Context, lvc: lv.Lavalink):
 
 @playback.with_slash_command
 @tj.with_str_slash_option(
-    "timestamp",
+    'timestamp',
     "Seek to where? (Must be in format such as 2m17s, 4:05)",
 )
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")
@@ -480,9 +471,9 @@ async def seek_s(
 
 
 @playback.with_message_command
-@tj.with_argument("timestamp")
+@tj.with_argument('timestamp')
 @tj.with_parser
-@tj.as_message_command("seek", "sk")
+@tj.as_message_command('seek', 'sk')
 async def seek_m(
     ctx: tj.abc.MessageContext,
     timestamp: str,
