@@ -4,22 +4,22 @@ import enum as e
 import asyncio
 import logging
 import aiohttp
-import typing as t
 import random as rd
 import hashlib as hl
-import hikari as hk
-import tanjun as tj
 import traceback as tb
-import lavasnek_rs as lv
+import hikari.messages as hk_msg
+import tanjun as tj
 import lyricsgenius as le
 
 from difflib import SequenceMatcher
 from functools import reduce
 from contextlib import asynccontextmanager, nullcontext
-from dataclasses import dataclass, field
 from ytmusicapi import YTMusic
-from hikari.messages import ButtonStyle
-from hikari.permissions import Permissions as P
+
+from .errors import *
+
+
+Contextish = tj.abc.Context | hk.Snowflakeish
 
 
 TIME_REGEX = re.compile(
@@ -31,15 +31,30 @@ TIME_REGEX_2 = re.compile(
 YOUTUBE_REGEX = re.compile(
     r"^(?:https?:)?(?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch|v|embed)(?:\.php)?(?:\?.*v=|\/))([a-zA-Z0-9\_-]{7,15})(?:[\?&][a-zA-Z0-9\_-]+=[a-zA-Z0-9\_-]+)*(?:[&\/\#].*)?$"
 )
+URL_REGEX = re.compile(
+    r'^(?:http|ftp)s?://'  # http:// or https://
+    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
+    r'localhost|'  # localhost...
+    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+    r'(?::\d+)?'  # optional port
+    r'(?:/?|[/?]\S+)$',
+    re.I,
+)
 LYRICS_URL = 'https://some-random-api.ml/lyrics?title='
 
 TIMEOUT = 60
 
-T = t.TypeVar('T')
-
 hooks = tj.AnyHooks()
 loop = asyncio.get_event_loop()
 ytmusic = YTMusic()
+
+
+@a.define
+class RemovedSentinel:
+    pass
+
+
+REMOVED = RemovedSentinel()
 
 
 async def _del_after(ctx: tj.abc.Context, delete_after: float, msg: hk.Message):
@@ -48,7 +63,7 @@ async def _del_after(ctx: tj.abc.Context, delete_after: float, msg: hk.Message):
     await ch.delete_messages(msg)
 
 
-async def err_reply(ctx: tj.abc.Context, **kwargs):
+async def err_reply(ctx: tj.abc.Context, **kwargs: t.Any):
     if isinstance(ctx, tj.abc.MessageContext):
         msg = await ctx.respond(**kwargs, reply=True)
         try:
@@ -59,12 +74,15 @@ async def err_reply(ctx: tj.abc.Context, **kwargs):
     if ctx.has_responded:
         await ctx.create_followup(**kwargs, flags=hk.MessageFlag.EPHEMERAL)
         return
-    if (await ctx.fetch_initial_response()).flags & hk.MessageFlag.LOADING:
+    try:
+        return await ctx.create_initial_response(
+            **kwargs, flags=hk.MessageFlag.EPHEMERAL
+        )
+    except (hk.NotFoundError, RuntimeError):
         return await ctx.edit_initial_response(**kwargs)
-    return await ctx.create_initial_response(**kwargs, flags=hk.MessageFlag.EPHEMERAL)
 
 
-async def hid_reply(ctx: tj.abc.Context, **kwargs):
+async def hid_reply(ctx: tj.abc.Context, **kwargs: t.Any):
     if isinstance(ctx, tj.abc.MessageContext):
         await ctx.respond(**kwargs, reply=True)
         return
@@ -75,14 +93,17 @@ async def hid_reply(ctx: tj.abc.Context, **kwargs):
     return await ctx.create_initial_response(**kwargs, flags=hk.MessageFlag.EPHEMERAL)
 
 
-async def def_reply(ctx: tj.abc.Context, **kwargs):
+async def def_reply(ctx: tj.abc.Context, **kwargs: t.Any):
     if isinstance(ctx, tj.abc.MessageContext):
         return await ctx.respond(**kwargs, reply=True)
 
     assert isinstance(ctx, tj.abc.SlashContext)
-    if (await ctx.fetch_initial_response()).flags & hk.MessageFlag.LOADING:
+    try:
+        return await ctx.create_initial_response(
+            **kwargs, flags=hk.MessageFlag.EPHEMERAL
+        )
+    except (hk.NotFoundError, RuntimeError):
         return await ctx.edit_initial_response(**kwargs)
-    return await ctx.create_followup(**kwargs)
 
 
 async def reply(ctx: tj.abc.Context, delete_after: float = 0.0, **kwargs):
@@ -106,7 +127,9 @@ async def reply(ctx: tj.abc.Context, delete_after: float = 0.0, **kwargs):
 def disable_buttons(
     rest: hk.api.RESTClient,
     *action_rows: hk.api.ActionRowBuilder,
-    predicates: t.Callable[[hk.api.InteractiveButtonBuilder], bool] = lambda _: True,
+    predicates: t.Callable[
+        [hk.api.InteractiveButtonBuilder[hk.api.ActionRowBuilder]], bool
+    ] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder, ...]:
     action_rows_ = list(action_rows)
     for a in action_rows_:
@@ -114,11 +137,11 @@ def disable_buttons(
         a = rest.build_action_row()
         for c in map(
             lambda c_: c_.set_is_disabled(True)
-            if isinstance(c_, hk.api.InteractiveButtonBuilder) and predicates(c)
+            if isinstance(c_, hk.api.ButtonBuilder) and predicates(c)
             else c_,
             components,
         ):
-            assert isinstance(c, hk.api.InteractiveButtonBuilder)
+            assert isinstance(c, hk.api.ButtonBuilder)
             a.add_component(c)
     return tuple(action_rows_)
 
@@ -156,29 +179,6 @@ def curr_time_ms() -> int:
     return time.time_ns() // 1_000_000
 
 
-@dataclass
-class Argument(t.Generic[T]):
-    got: T
-    expected: T
-
-
-class BaseMusicCommandException(Exception):
-    pass
-
-
-@dataclass
-class BadArgument(BaseMusicCommandException):
-    arg: Argument
-
-
-class InvalidArgument(BadArgument):
-    pass
-
-
-class IllegalArgument(BadArgument):
-    pass
-
-
 def ms_stamp(ms: int) -> str:
     s, ms = divmod(ms, 1000)
     m, s = divmod(s, 60)
@@ -212,9 +212,16 @@ def stamp_ms(str_: str) -> int:
     return (((h * 60 + m) * 60 + s)) * 1000 + ms
 
 
-def wrap(str_: str, limit=60) -> str:
+def wrap(str_: str, limit: int = 60) -> str:
     return str_ if len(str_) <= limit else str_[: limit - 3] + '...'
 
 
 def format_flags(flags: e.Flag) -> str:
     return ' & '.join(f.replace('_', ' ').title() for f in str(flags).split('|'))
+
+
+def snowflakeify(ctx_g: Contextish):
+    if isinstance(ctx_g, tj.abc.Context):
+        assert ctx_g.guild_id is not None
+        ctx_g = ctx_g.guild_id
+    return ctx_g

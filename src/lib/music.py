@@ -6,91 +6,7 @@ DJ_PERMS = P.DEAFEN_MEMBERS | P.MUTE_MEMBERS
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-
-class ConnectionSignal(BaseMusicCommandException):
-    pass
-
-
-class InvalidTimestampFormat(BaseMusicCommandException):
-    pass
-
-
-@dataclass
-class Forbidden(BaseMusicCommandException):
-    perms: P
-
-
-@dataclass
-class ChannelChange(ConnectionSignal):
-    old_channel: hk.Snowflakeish
-    new_channel: hk.Snowflakeish
-
-
-class PlaybackException(BaseMusicCommandException):
-    pass
-
-
-@dataclass
-class ConnectionException(PlaybackException):
-    channel: hk.Snowflakeish
-
-
-class NotConnected(PlaybackException):
-    pass
-
-
-class AlreadyConnected(ConnectionException):
-    pass
-
-
-class OthersInVoice(ConnectionException):
-    pass
-
-
-class OthersListening(OthersInVoice):
-    pass
-
-
-@dataclass
-class NotInVoice(ConnectionException):
-    channel: t.Optional[hk.Snowflakeish]
-
-
-class InternalError(PlaybackException):
-    pass
-
-
-class ConnectionForbidden(ConnectionException, Forbidden):
-    pass
-
-
-@dataclass
-class PlaybackChangeRefused(PlaybackException):
-    track: t.Optional[lv.TrackQueue] = None
-
-
-class NotPlaying(PlaybackException):
-    pass
-
-
-class QueueIsEmpty(PlaybackException):
-    pass
-
-
-class TrackPaused(PlaybackException):
-    pass
-
-
-class TrackStopped(PlaybackException):
-    pass
-
-
-class QueryEmpty(BaseMusicCommandException):
-    pass
-
-
-class LyricsNotFound(BaseMusicCommandException):
-    pass
+REPEAT_MODES_ALL = 'off|0|one|o|1|all|a|q'.split('|')
 
 
 class RepeatMode(e.Enum):
@@ -231,14 +147,14 @@ class Checks(e.Flag):
     """
 
 
-@dataclass
+@a.define
 class QueueList(list):
     pos: int = 0
     repeat_mode: RepeatMode = RepeatMode.NONE
-    is_paused: bool = field(default_factory=bool, kw_only=True)
-    is_stopped: bool = field(default_factory=bool, kw_only=True)
-    _last_np_position: t.Optional[int] = field(default=None, init=False)
-    _last_track_played: int = field(default_factory=curr_time_ms, init=False)
+    is_paused: bool = a.field(factory=bool, kw_only=True)
+    is_stopped: bool = a.field(factory=bool, kw_only=True)
+    _last_np_position: t.Optional[int] = a.field(default=None, init=False)
+    _last_track_played: int = a.field(factory=curr_time_ms, init=False)
 
     @t.overload
     def __getitem__(self, y: int) -> lv.TrackQueue:
@@ -251,8 +167,11 @@ class QueueList(list):
     def __getitem__(self, y):
         return super().__getitem__(y)
 
+    def __iter__(self) -> t.Iterator[lv.TrackQueue]:
+        return super().__iter__()
+
     @classmethod
-    def from_list(cls, l: list):
+    def from_list(cls, l: list[lv.TrackQueue]):
         obj = cls()
         obj.extend(l)
         return obj
@@ -314,8 +233,6 @@ class QueueList(list):
     def decr(self) -> None:
         self.pos -= 1
 
-    incr = advance = adv
-
     @property
     def next(self) -> t.Optional[lv.TrackQueue]:
         if not self:
@@ -354,31 +271,68 @@ class QueueList(list):
 
     def clr(self) -> None:
         self.clear()
+        self.reset_repeat()
         self.pos = 0
 
+    def reset_repeat(self) -> None:
+        if self.repeat_mode is RepeatMode.ONE or self.repeat_mode is RepeatMode.ALL:
+            self.repeat_mode = RepeatMode.NONE if len(self) == 1 else RepeatMode.ALL
 
-@dataclass
+
+@a.define
+class Equalizer(object):
+    _volume: int = a.field(default=100, init=False)
+    is_muted: bool = a.field(factory=bool, kw_only=True)
+
+    @property
+    def volume(self):
+        return self._volume
+
+    @volume.setter
+    def volume(self, y: int):
+        self._volume = min(max(y, 0), 100)
+
+    def up(self, amount: int = 10):
+        self.volume += amount
+
+    def down(self, amount: int = 10):
+        self.volume -= amount
+
+    def mute(self):
+        ...
+
+
+@a.define
 class NodeData:
-    queue: QueueList = field(default_factory=QueueList)
-    last_channel_id: t.Optional[hk.Snowflakeish] = None
+    queue: QueueList = a.field(factory=QueueList, kw_only=True)
+    equalizer: Equalizer = a.field(factory=Equalizer, kw_only=True)
+    out_channel_id: t.Optional[hk.Snowflakeish] = a.field(default=None, kw_only=True)
     ...
+
+
+loggerX = logging.getLogger(__name__ + '.events')
 
 
 class EventHandler:
     async def track_start(self, lvc: lv.Lavalink, event: lv.TrackStart) -> None:
         t = (await lvc.decode_track(event.track)).title
         async with access_queue(event.guild_id, lvc) as q:
+            l = len(q)
             q._last_track_played = curr_time_ms()
-            logger.debug(
-                f"Started track '{t}' in guild {event.guild_id} ({q.pos}+1/{len(q)})"
+            loggerX.debug(
+                f"In guild {event.guild_id} track [{q.pos: >3}+1/{l}] started: '{t}'"
             )
+
+            # await asyncio.sleep(1)
+            # await skip__(event.guild_id, lvc)
 
     async def track_finish(self, lvc: lv.Lavalink, event: lv.TrackFinish) -> None:
         t = (await lvc.decode_track(event.track)).title
         async with access_queue(event.guild_id, lvc) as q:
+            l = len(q)
             if q.is_stopped:
-                logger.debug(
-                    f"Stopped track '{t}' in guild {event.guild_id} ({q.pos}+1/{len(q)})"
+                loggerX.info(
+                    f"In guild {event.guild_id} track [{q.pos: >3}+1/{l}] stopped: '{t}'"
                 )
                 return
             try:
@@ -395,18 +349,30 @@ class EventHandler:
             except QueueIsEmpty:
                 return
             finally:
-                logger.debug(
-                    f"Finished track '{t}' in guild {event.guild_id} ({q.pos}+1/{len(q)})"
+                loggerX.debug(
+                    f"In guild {event.guild_id} track [{q.pos: >3}+1/{l}] ended  : '{t}'"
                 )
 
     async def track_exception(self, lvc: lv.Lavalink, event: lv.TrackException) -> None:
-        logger.error(f"Track exception event happened on guild: {event.guild_id}")
+        t = (await lvc.decode_track(event.track)).title
+        q = await get_queue(event.guild_id, lvc)
+        l = len(q)
+
+        msg = f"In guild {event.guild_id} track [{q.pos: >3}+1/{l}] {{0}}: '{t}'\n\t{event.exception_message}\n\tCaused by: {event.exception_cause}"
+
+        match event.exception_severity:
+            case 'COMMON':
+                loggerX.error(msg.format('blocked'))
+            case 'SUSPICIOUS':
+                loggerX.warning(msg.format('malformed'))
+            case _:
+                raise NotImplementedError
 
         # If a track was unable to be played, skip it
         await skip__(
             event.guild_id,
             lvc,
-            advance=not (await get_queue(event.guild_id, lvc)).is_stopped,
+            advance=not q.is_stopped,
         )
 
 
@@ -522,18 +488,22 @@ async def check_paused(ctx: tj.abc.Context, lvc: lv.Lavalink):
         raise TrackPaused
 
 
+A = t.ParamSpec('A')
+
+
 def check(checks: Checks, perms: P = P.NONE):
     def decorator(func: t.Callable[..., t.Coroutine]):
         async def wrapper(ctx: tj.abc.Context, *args: t.Any, lvc: lv.Lavalink):
             assert ctx.member is not None
-            if perms:
-                auth_perms = await tj.utilities.fetch_permissions(
-                    ctx.client, ctx.member, channel=ctx.channel_id
-                )
-                if not (auth_perms & (perms | P.ADMINISTRATOR)):
-                    raise Forbidden(perms)
 
             try:
+                if perms:
+                    auth_perms = await tj.utilities.fetch_permissions(
+                        ctx.client, ctx.member, channel=ctx.channel_id
+                    )
+                    if not (auth_perms & (perms | P.ADMINISTRATOR)):
+                        raise Forbidden(perms)
+
                 if Checks.CONN & checks:
                     await check_conn(ctx, lvc)
                 if Checks.QUEUE & checks:
@@ -615,16 +585,33 @@ def attempt_to_connect(func: t.Callable[..., t.Coroutine]):
         assert ctx.guild_id is not None
         conn = await lvc.get_guild_gateway_connection_info(ctx.guild_id)
 
-        if not conn:
-            # Join the users voice channel if we are not already connected
-            try:
-                if not await join__(ctx, None, lvc):
+        async def __join():
+            if not conn:
+                # Join the users voice channel if we are not already connected
+                try:
+                    await join__(ctx, None, lvc)
+                except NotInVoice:
+                    await err_reply(
+                        ctx,
+                        content=f"❌ Please join a voice channel first. You can also do `/join channel:` `[🔊 ...]`",
+                    )
                     return
-            except NotInVoice:
-                await err_reply(
-                    ctx,
-                    content=f"❌ Please join a voice channel first. You can also do `/join channel:` `[🔊 ...]`",
-                )
+                except TimeoutError:
+                    await def_reply(
+                        ctx,
+                        content="⏳ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
+                    )
+                    return
+            return True
+
+        ch = ctx.get_channel()
+        assert ch is not None
+        if isinstance(ctx, tj.abc.MessageContext):
+            async with ch.trigger_typing():
+                if not await __join():
+                    return
+        else:
+            if not await __join():
                 return
 
         await func(ctx, *args, lvc=lvc)
@@ -663,10 +650,8 @@ async def set_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData) -> 
 
 
 @asynccontextmanager
-async def access_queue(ctx_g: tj.abc.Context | hk.Snowflakeish, lvc: lv.Lavalink):
-    if isinstance(ctx_g, tj.abc.Context):
-        assert ctx_g.guild_id is not None
-        ctx_g = ctx_g.guild_id
+async def access_queue(ctx_g: Contextish, lvc: lv.Lavalink):
+    ctx_g = snowflakeify(ctx_g)
 
     data = await get_data(ctx_g, lvc)
     try:
@@ -675,12 +660,31 @@ async def access_queue(ctx_g: tj.abc.Context | hk.Snowflakeish, lvc: lv.Lavalink
         await set_data(ctx_g, lvc, data)
 
 
-async def get_queue(
-    ctx_g: tj.abc.Context | hk.Snowflakeish, lvc: lv.Lavalink
-) -> QueueList:
-    if isinstance(ctx_g, tj.abc.Context):
-        assert ctx_g.guild_id is not None
-        ctx_g = ctx_g.guild_id
+@asynccontextmanager
+async def access_equalizer(ctx_g: Contextish, lvc: lv.Lavalink):
+    ctx_g = snowflakeify(ctx_g)
+
+    data = await get_data(ctx_g, lvc)
+    try:
+        yield data.equalizer
+    finally:
+        await set_data(ctx_g, lvc, data)
+
+
+@asynccontextmanager
+async def access_node_data(ctx_g: Contextish, lvc: lv.Lavalink):
+    ctx_g = snowflakeify(ctx_g)
+
+    data = await get_data(ctx_g, lvc)
+    try:
+        yield data
+    finally:
+        await set_data(ctx_g, lvc, data)
+
+
+async def get_queue(ctx_g: Contextish, lvc: lv.Lavalink) -> QueueList:
+    ctx_g = snowflakeify(ctx_g)
+
     return (await get_data(ctx_g, lvc)).queue
 
 
@@ -705,103 +709,133 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
 ## Connections
 
 
+loggerA = logging.getLogger(__name__ + '.connections')
+
+
 async def join__(
     ctx: tj.abc.Context,
     channel: t.Optional[hk.GuildVoiceChannel],
     lvc: lv.Lavalink,
-) -> t.Optional[hk.Snowflake]:
+) -> hk.Snowflake:
     """Joins your voice channel."""
     assert ctx.guild_id is not None
 
-    if ctx.client.cache and ctx.client.shards:
-        if channel is None:
-            # If user is connected to a voice channel
-            if not (
-                (
-                    voice_state := ctx.client.cache.get_voice_state(
-                        ctx.guild_id, ctx.author
-                    )
-                )
-                is None
-            ):
-                # Join the current voice channel
-                target_channel = voice_state.channel_id
-            else:
-                raise NotInVoice(None)
+    if not (ctx.client.cache and ctx.client.shards):
+        raise InternalError
+
+    if channel is None:
+        # If user is connected to a voice channel
+        if (
+            voice_state := ctx.client.cache.get_voice_state(ctx.guild_id, ctx.author)
+        ) is not None:
+            # Join the current voice channel
+            target_channel = voice_state.channel_id
         else:
-            target_channel = channel.id
-            # Join the specified voice channel
+            raise NotInVoice(None)
+    else:
+        target_channel = channel.id
+        # Join the specified voice channel
 
-        old_conn = await lvc.get_guild_gateway_connection_info(ctx.guild_id)
-        assert isinstance(old_conn, dict) or old_conn is None
-        assert target_channel is not None
+    old_conn = await lvc.get_guild_gateway_connection_info(ctx.guild_id)
+    assert isinstance(old_conn, dict) or old_conn is None
+    assert target_channel is not None
 
-        # Check if the bot is already connected and the user tries to change
-        if old_conn:
+    # Check if the bot is already connected and the user tries to change
+    if old_conn:
 
-            old_channel = old_conn['channel_id']
-            assert old_channel is not None
-            # If it's the same channel
-            if old_channel == target_channel:
-                raise AlreadyConnected(old_channel)
+        old_channel = old_conn['channel_id']
+        assert old_channel is not None
+        # If it's the same channel
+        if old_channel == target_channel:
+            raise AlreadyConnected(old_channel)
 
-            await check_others_not_in_vc__(ctx, P.MOVE_MEMBERS, old_conn)
-        else:
-            old_channel = None
+        await check_others_not_in_vc__(ctx, P.MOVE_MEMBERS, old_conn)
+    else:
+        old_channel = None
 
-        # Connect to the channel
-        await ctx.client.shards.update_voice_state(
-            ctx.guild_id, target_channel, self_deaf=True
-        )
+    # Connect to the channel
+    await ctx.client.shards.update_voice_state(
+        ctx.guild_id, target_channel, self_deaf=True
+    )
 
-        # Lavasnek waits for the data on the event
-        try:
-            sess_conn = await lvc.wait_for_full_connection_info_insert(ctx.guild_id)
-        except TimeoutError:
-            await def_reply(
-                ctx,
-                content="⏳ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
-            )
-            return
-        # Lavasnek tells lavalink to connect
-        await lvc.create_session(sess_conn)
+    # Lavasnek waits for the data on the event
+    try:
+        sess_conn = await lvc.wait_for_full_connection_info_insert(ctx.guild_id)
+    except TimeoutError:
+        raise
+    # Lavasnek tells lavalink to connect
+    await lvc.create_session(sess_conn)
 
-        """
-        TODO Make the bot raise `AccessDenied` if nothing happens after joining a new channel
-        """
+    """
+    TODO Make the bot raise `AccessDenied` if nothing happens after joining a new channel
+    """
 
-        # bot = ctx.client.cache.get_me()
-        # new_voice_states = ctx.client.cache.get_voice_states_view_for_guild(ctx.guild_id)
-        # bot_voice_state = filter(lambda v: v.user_id == bot.id, new_voice_states.values())
-        # new_channel = getattr(next(bot_voice_state, None), 'channel_id', None)
+    # bot = ctx.client.cache.get_me()
+    # new_voice_states = ctx.client.cache.get_voice_states_view_for_guild(ctx.guild_id)
+    # bot_voice_state = filter(lambda v: v.user_id == bot.id, new_voice_states.values())
+    # new_channel = getattr(next(bot_voice_state, None), 'channel_id', None)
 
-        # if new_channel != target_channel:
-        #     raise AccessDenied(target_channel)
+    # if new_channel != target_channel:
+    #     raise AccessDenied(target_channel)
 
-        # if conn:
-        #     voice_states_after = ctx.client.cache.get_voice_states_view_for_channel(
-        #         ctx.guild_id, old_channel
-        #     )
-        #     bot_voice_state = tuple(filter(lambda v: v.user_id == bot.id, voice_states_after.values()))
-        #     if bot_voice_state:
-        #         raise AccessDenied(target_channel)
-        if old_conn and old_channel:
-            raise ChannelChange(old_channel, target_channel)
+    # if conn:
+    #     voice_states_after = ctx.client.cache.get_voice_states_view_for_channel(
+    #         ctx.guild_id, old_channel
+    #     )
+    #     bot_voice_state = tuple(filter(lambda v: v.user_id == bot.id, voice_states_after.values()))
+    #     if bot_voice_state:
+    #         raise AccessDenied(target_channel)
+    if old_conn and old_channel:
+        raise ChannelChange(old_channel, target_channel)
 
-        return target_channel
+    async with access_node_data(ctx, lvc) as d:
+        d.out_channel_id = ctx.channel_id
 
-    raise InternalError
+    loggerA.debug(f"In guild {ctx.guild_id} joined channel {target_channel}")
+    return target_channel
+
+
+async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink) -> hk.Snowflakeish:
+    assert ctx.guild_id is not None
+
+    if not (conn := await lvc.get_guild_gateway_connection_info(ctx.guild_id)):
+        raise NotConnected
+
+    assert isinstance(conn, dict)
+    curr_channel = conn['channel_id']
+    assert isinstance(curr_channel, int)
+
+    await check_others_not_in_vc__(ctx, DJ_PERMS, conn)
+
+    async with access_queue(ctx, lvc) as q:
+        q.clr()
+
+    await lvc.destroy(ctx.guild_id)
+    if ctx.client.shards:
+        # Set voice channel to None
+        await ctx.client.shards.update_voice_state(ctx.guild_id, None)
+        await lvc.wait_for_connection_info_remove(ctx.guild_id)
+
+    # We must manually remove the node and queue loop from lavasnek
+    await lvc.remove_guild_node(ctx.guild_id)
+    await lvc.remove_guild_from_loops(ctx.guild_id)
+
+    loggerA.debug(f"In guild {ctx.guild_id} left   channel {curr_channel}")
+    return curr_channel
 
 
 ## Playback
 
 
-async def stop__(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
-    assert ctx.guild_id is not None
-    async with access_queue(ctx, lvc) as q:
+loggerB = logging.getLogger(__name__ + '.playback')
+
+
+async def stop__(ctx_g: Contextish, lvc: lv.Lavalink) -> None:
+    ctx_g = snowflakeify(ctx_g)
+    async with access_queue(ctx_g, lvc) as q:
         q.is_stopped = True
 
-    await lvc.stop(ctx.guild_id)  # Stop the player
+    await lvc.stop(ctx_g)  # Stop the player
 
 
 async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
@@ -811,8 +845,8 @@ async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
 
 
 @asynccontextmanager
-async def while_stop(ctx: tj.abc.Context, lvc: lv.Lavalink, q: QueueList):
-    await stop__(ctx, lvc)
+async def while_stop(ctx_g: Contextish, lvc: lv.Lavalink, q: QueueList):
+    await stop__(ctx_g, lvc)
     await asyncio.sleep(STOP_REFRESH)
     try:
         yield
@@ -821,20 +855,16 @@ async def while_stop(ctx: tj.abc.Context, lvc: lv.Lavalink, q: QueueList):
 
 
 async def set_pause__(
-    ctx_g: tj.abc.Context | hk.Snowflakeish,
+    ctx_g: Contextish,
     lvc: lv.Lavalink,
     *,
     pause: t.Optional[bool],
     respond: bool = False,
     strict: bool = False,
 ) -> None:
-    _ctx = None
-    if isinstance(ctx_g, tj.abc.Context):
-        _ctx = ctx_g
-        assert ctx_g.guild_id is not None
-        ctx_g = ctx_g.guild_id
+    _ctx = ctx_g if isinstance(ctx_g, tj.abc.Context) else None
+    ctx_g = snowflakeify(ctx_g)
 
-    assert ctx_g is not None
     try:
         async with access_queue(ctx_g, lvc) as q:
             if q.is_stopped:
@@ -843,8 +873,7 @@ async def set_pause__(
                 return
             if pause is None:
                 pause = not q.is_paused
-            if respond:
-                assert _ctx is not None
+            if respond and _ctx:
                 if pause and q.is_paused:
                     await err_reply(_ctx, content="❗ Already paused")
                     return
@@ -874,36 +903,65 @@ async def set_pause__(
 
 
 async def skip__(
-    ctx_g: tj.abc.Context | hk.Snowflakeish,
+    ctx_g: Contextish,
     lvc: lv.Lavalink,
     *,
     advance: bool = True,
     change_repeat: bool = False,
+    change_stop: bool = True,
 ) -> t.Optional[lv.TrackQueue]:
-    _ctx = None
-    if isinstance(ctx_g, tj.abc.Context):
-        _ctx = ctx_g
-        assert ctx_g.guild_id is not None
-        ctx_g = ctx_g.guild_id
+    guild = snowflakeify(ctx_g)
 
-    async with access_queue(ctx_g, lvc) as q:
+    async with access_queue(guild, lvc) as q:
         skip = q.current
-        if change_repeat and (
-            q.repeat_mode is RepeatMode.ONE or q.repeat_mode is RepeatMode.ALL
-        ):
-            q.repeat_mode = RepeatMode.NONE if len(q) == 1 else RepeatMode.ALL
+        if change_repeat:
+            q.reset_repeat()
         if q.is_stopped and (next_t := q.next):
             if advance:
                 q.adv()
-                # q.is_stopped = False
-            await lvc.play(ctx_g, next_t.track).start()
-            if _ctx:
-                await set_pause__(_ctx, lvc, pause=False)
+            if change_stop:
+                q.is_stopped = False
+            await lvc.play(guild, next_t.track).start()
+            await set_pause__(ctx_g, lvc, pause=False)
             return skip
         try:
             return skip
         finally:
-            await lvc.stop(ctx_g)
+            await lvc.stop(guild)
+
+
+async def back__(
+    ctx_g: Contextish,
+    lvc: lv.Lavalink,
+    *,
+    advance: bool = True,
+    change_repeat: bool = False,
+) -> lv.TrackQueue:
+    ctx_g = snowflakeify(ctx_g)
+
+    async with access_queue(ctx_g, lvc) as q:
+        i = q.pos
+        if change_repeat:
+            q.reset_repeat()
+        async with while_stop(ctx_g, lvc, q):
+            match q.repeat_mode:
+                case RepeatMode.ALL:
+                    i -= 1
+                    i %= len(q)
+                    prev = q[i]
+                case RepeatMode.ONE:
+                    prev = q.current
+                    assert prev is not None
+                case RepeatMode.NONE:
+                    prev = q.history[-1]
+                    i -= 1
+
+        if advance:
+            q.pos = i
+
+        await lvc.play(ctx_g, prev.track).start()
+        await set_pause__(ctx_g, lvc, pause=False)
+        return prev
 
 
 async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int):
@@ -922,7 +980,9 @@ async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int):
 ## Queue
 
 
-@trigger_thinking()
+loggerC = logging.getLogger(__name__ + '.queue')
+
+
 async def play__(
     ctx: tj.abc.Context, lvc: lv.Lavalink, *, tracks: lv.Tracks, respond: bool = False
 ) -> None:
@@ -973,11 +1033,175 @@ async def enqueue_tracks__(
             ctx,
             content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
         )
-    player = players[0]
+    player = next(iter(players))
     if not queue.is_stopped:
         await player.start()
 
 
+async def remove_track__(
+    ctx: tj.abc.Context, track: t.Optional[str], lvc: lv.Lavalink
+) -> lv.TrackQueue:
+    assert ctx.guild_id is not None
+
+    q = await get_queue(ctx, lvc)
+    np = q.current
+    if track is None:
+        if not np:
+            raise InvalidArgument(Argument(track, None))
+        rm = np
+        i = q.pos
+    elif track.isdigit():
+        t = int(track)
+        if not (1 <= t <= len(q)):
+            raise IllegalArgument(Argument(t, (1, len(q))))
+        i = t - 1
+        rm = q[i]
+    else:
+        rm = max(
+            *q,
+            key=lambda t: SequenceMatcher(None, t.track.info.title, track).ratio(),
+        )
+        i = q.index(rm)
+
+    try:
+        await check_others_not_in_vc(ctx, lvc)
+    except OthersInVoice:
+        if rm.requester != ctx.author.id:
+            raise PlaybackChangeRefused
+
+        # q.is_stopped = False
+
+    async with access_queue(ctx, lvc) as q:
+        if rm == np:
+            async with while_stop(ctx, lvc, q):
+                await skip__(ctx, lvc, advance=False, change_repeat=True)
+
+        if i < q.pos:
+            q.pos = max(0, q.pos - 1)
+        q.sub(rm)
+
+        loggerC.info(
+            f"In guild {ctx.guild_id} track [{i: >3}+1/{len(q)}] removed: '{rm.track.info.title}'"
+        )
+        return rm
+
+
+async def remove_tracks__(
+    ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink
+) -> list[lv.TrackQueue]:
+    assert ctx.guild_id is not None
+    async with access_queue(ctx, lvc) as q:
+        if not (1 <= start <= end <= len(q)):
+            raise IllegalArgument(Argument((start, end), (1, len(q))))
+
+        i_s = start - 1
+        i_e = end - 1
+        t_n = end - i_s
+        rm = q[i_s:end]
+        if q.current in rm:
+            q.reset_repeat()
+            async with while_stop(ctx, lvc, q):
+                pass
+            if next_t := None if len(q) <= end else q[end]:
+                await set_pause__(ctx, lvc, pause=False)
+                await lvc.play(ctx.guild_id, next_t.track).start()
+        if i_s < q.pos:
+            q.pos = i_s + (q.pos - i_e - 1)
+        q.sub(*rm)
+
+        loggerC.info(
+            f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}+1/{len(q)}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
+        )
+        return rm
+
+
+async def insert_track__(
+    ctx: tj.abc.Context,
+    insert: int,
+    track: t.Optional[int],
+    lvc: lv.Lavalink,
+) -> lv.TrackQueue:
+    assert ctx.guild_id is not None
+
+    q = await get_queue(ctx, lvc)
+    np = q.current
+    p_ = q.pos
+    if track is None:
+        if not np:
+            raise InvalidArgument(Argument(np, track))
+        t_ = q.pos
+        ins = np
+    else:
+        t_ = track - 1
+        ins = q[t_]
+
+    i_ = insert - 1
+    if t_ in (i_, insert):
+        raise ValueError
+    if not ((0 <= t_ < len(q)) and (0 <= i_ < len(q))):
+        raise IllegalArgument(Argument((track, insert), (1, len(q))))
+
+    async with access_queue(ctx, lvc):
+        if t_ < p_ <= i_:
+            q.decr()
+        elif i_ < p_ < t_:
+            q.adv()
+
+        prev = i_ < p_ == t_
+        if (skip := p_ == t_ < i_) or prev:
+            async with while_stop(ctx, lvc, q):
+                if skip:
+                    await skip__(ctx, lvc, advance=False, change_repeat=True)
+                elif prev:
+                    await back__(ctx, lvc, advance=False, change_repeat=True)
+
+        q[t_] = REMOVED
+        q.insert(insert, ins)
+        q.remove(REMOVED)
+
+        return ins
+
+
 ## Info
 
+
 ...
+
+
+## Tuning
+
+
+loggerE = logging.getLogger(__name__ + ".tuning")
+
+
+async def set_mute__(
+    ctx: tj.abc.Context,
+    lvc: lv.Lavalink,
+    *,
+    mute: t.Optional[bool],
+    respond: bool = False,
+) -> None:
+    assert not (ctx.cache is None or ctx.guild_id is None)
+    me = ctx.cache.get_me()
+    assert me is not None
+
+    async with access_equalizer(ctx, lvc) as eq:
+        if mute is None:
+            mute = not eq.is_muted
+        if mute and eq.is_muted:
+            await err_reply(ctx, content="❗ Already muted")
+            return
+        if not (mute or eq.is_muted):
+            await err_reply(ctx, content="❗ Already unmuted")
+            return
+
+        if mute:
+            await ctx.rest.edit_member(ctx.guild_id, me, mute=True)
+            msg = "🔇 Muted"
+        else:
+            await ctx.rest.edit_member(ctx.guild_id, me, mute=False)
+            msg = "🔊 Unmuted"
+
+        eq.is_muted = mute
+        if respond:
+            await reply(ctx, content=msg)

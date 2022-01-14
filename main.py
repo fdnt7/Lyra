@@ -1,4 +1,5 @@
 import os
+import hikari as hk
 
 from src import bot
 
@@ -9,4 +10,4 @@ if __name__ == "__main__":
 
         uvloop.install()
 
-    bot.run()
+    bot.run(activity=hk.Activity(name='/play', type=hk.ActivityType.LISTENING))

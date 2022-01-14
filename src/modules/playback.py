@@ -9,7 +9,7 @@ playback = tj.Component(checks=(guild_c,), hooks=music_h)
 
 @playback.with_slash_command
 @tj.as_slash_command(
-    'playpause', "Toggles the playback of the current song between play and pause"
+    'play-pause', "Toggles the playback of the current song between play and pause"
 )
 async def play_pause_s(
     ctx: tj.abc.SlashContext,
@@ -19,7 +19,7 @@ async def play_pause_s(
 
 
 @playback.with_message_command
-@tj.as_message_command('playpause', 'pp')
+@tj.as_message_command('playpause', 'play-pause', 'pp')
 async def play_pause_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -156,7 +156,7 @@ async def stop_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
 @tj.with_float_slash_option(
     'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
 )
-@tj.as_slash_command('fastforward', "Fast-forwards the current track")
+@tj.as_slash_command('fast-forward', "Fast-forwards the current track")
 async def fastforward_s(
     ctx: tj.abc.SlashContext,
     seconds: float,
@@ -168,7 +168,7 @@ async def fastforward_s(
 @playback.with_message_command
 @tj.with_argument('seconds', converters=float, default=10.0)
 @tj.with_parser
-@tj.as_message_command('fastforward', 'ff')
+@tj.as_message_command('fastforward', 'fast-forward', 'ff')
 async def fastforward_m(
     ctx: tj.abc.MessageContext,
     seconds: float,
@@ -195,7 +195,7 @@ async def fastforward_(ctx: tj.abc.Context, seconds: float, lvc: lv.Lavalink):
         try:
             await seek__(ctx, lvc, new_np_ms)
         except IllegalArgument:
-            await skip__(ctx, lvc)
+            await skip__(ctx, lvc, change_stop=False)
             return await reply(
                 ctx,
                 content=f"❗⏭️ ~~`{np_info.title}`~~ *(The fast-forwarded time was too large; **Skipping** to the next track)*",
@@ -300,7 +300,7 @@ async def skip_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
 
 @playback.with_slash_command
 @tj.with_int_slash_option("position", "Play the track at what position?")
-@tj.as_slash_command("playat", "Play the track at the specified position")
+@tj.as_slash_command("play-at", "Plays the track at the specified position")
 async def play_at_s(
     ctx: tj.abc.SlashContext,
     position: int,
@@ -312,7 +312,7 @@ async def play_at_s(
 @playback.with_message_command
 @tj.with_argument('position', converters=int)
 @tj.with_parser
-@tj.as_message_command('playat', 'pa', 'i', 'pos', 'skipto', 'st')
+@tj.as_message_command('playat', 'play-at', 'pa', 'i', 'pos', 'skipto', 'st')
 async def play_at_m(
     ctx: tj.abc.MessageContext,
     position: int,
@@ -325,6 +325,7 @@ async def play_at_m(
 async def play_at_(ctx: tj.abc.Context, position: int, lvc: lv.Lavalink):
     assert ctx.guild_id is not None
     async with access_queue(ctx, lvc) as q:
+        q.reset_repeat()
         if not (1 <= position <= len(q)):
             return await err_reply(
                 ctx,
@@ -368,7 +369,7 @@ async def next_m(
 async def next_(ctx: tj.abc.Context, lvc: lv.Lavalink):
     if not (up := (await get_queue(ctx, lvc)).next):
         return await err_reply(ctx, content="❗ This is the end of the queue")
-    await skip__(ctx, lvc)
+    await skip__(ctx, lvc, change_stop=False)
     await reply(ctx, content=f"⏭️ **`{up.track.info.title}`**")
 
 
@@ -394,25 +395,13 @@ async def previous_m(
 @check(Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CAN_SEEK_QUEUE)
 async def previous_(ctx: tj.abc.Context, lvc: lv.Lavalink):
     assert ctx.guild_id is not None
-    async with access_queue(ctx, lvc) as q:
-        if q.repeat_mode is RepeatMode.NONE and not q.history:
-            return await err_reply(ctx, content="❗ This is the start of the queue")
-        async with while_stop(ctx, lvc, q):
-            match q.repeat_mode:
-                case RepeatMode.ALL:
-                    q.decr()
-                    q.wrap()
-                    prev = q[q.pos]
-                case RepeatMode.ONE:
-                    prev = q.current
-                    assert prev is not None
-                case RepeatMode.NONE:
-                    prev = q.history[-1]
-                    q.decr()
+    if (
+        q := await get_queue(ctx, lvc)
+    ).repeat_mode is RepeatMode.NONE and not q.history:
+        return await err_reply(ctx, content="❗ This is the start of the queue")
 
-        await lvc.play(ctx.guild_id, prev.track).start()
-        await set_pause__(ctx, lvc, pause=False)
-        await reply(ctx, content=f"⏮️ **`{prev.track.info.title}`**")
+    prev = await back__(ctx, lvc)
+    await reply(ctx, content=f"⏮️ **`{prev.track.info.title}`**")
 
 
 # Restart

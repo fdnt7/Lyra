@@ -6,18 +6,19 @@ import lavasnek_rs as lv
 import pathlib as pl
 
 from src import EventHandler, hooks
+from src.lib.music import access_equalizer, NotConnected
 
 
 PREFIX = ','
-TOKEN = os.environ['SYMPNOIA_TOKEN']
-# TOKEN = os.environ['SYMPNOIA_DEV_TOKEN']
+# TOKEN = os.environ['SYMPNOIA_TOKEN']
+TOKEN = os.environ['SYMPNOIA_DEV_TOKEN']
 
 guild_ids = (
-    # 777069316247126036,  # Dev
-    733408768230162538,  # Cnrcord
-    703617620540391496,  # Jakkapoolu
-    689006349002342401,  # SMTE
-    674259790259814440,  # Hayacord
+    777069316247126036,  # Dev
+    # 733408768230162538,  # Cnrcord
+    # 703617620540391496,  # Jakkapoolu
+    # 689006349002342401,  # SMTE
+    # 674259790259814440,  # Hayacord
 )
 
 
@@ -55,9 +56,6 @@ async def on_shard_ready(
     ).set_type_dependency(hk.GatewayBot, bot)
 
     assert client_.shards is not None
-    await client_.shards.update_presence(
-        status=hk.Status.ONLINE, activity=hk.Activity(name=',pp')
-    )
 
     # for i,g in enumerate(guild_ids, 1):
     #     # print(await bot.rest.fetch_guild(g))
@@ -72,25 +70,34 @@ async def on_shard_ready(
 @client.with_listener(hk.VoiceStateUpdateEvent)
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
-    lavalink: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ) -> None:
     """Passes voice state updates to lavalink."""
-    await lavalink.raw_handle_event_voice_state_update(
-        event.state.guild_id,
-        event.state.user_id,
-        event.state.session_id,
-        event.state.channel_id,
+
+    new = event.state
+    # old = event.old_state
+    try:
+        async with access_equalizer(event.guild_id, lvc) as eq:
+            eq.is_muted = new.is_guild_muted
+    except NotConnected:
+        pass
+
+    await lvc.raw_handle_event_voice_state_update(
+        new.guild_id,
+        new.user_id,
+        new.session_id,
+        new.channel_id,
     )
 
 
 @client.with_listener(hk.VoiceServerUpdateEvent)
 async def on_voice_server_update(
     event: hk.VoiceServerUpdateEvent,
-    lavalink: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ) -> None:
     """Passes voice server updates to lavalink."""
     if event.endpoint is not None:
-        await lavalink.raw_handle_event_voice_server_update(
+        await lvc.raw_handle_event_voice_server_update(
             event.guild_id,
             event.endpoint,
             event.token,

@@ -8,7 +8,7 @@ info = tj.Component(checks=(guild_c,), hooks=music_h)
 
 
 @info.with_slash_command
-@tj.as_slash_command('nowplaying', "Displays info of the current track")
+@tj.as_slash_command('now-playing', "Displays info of the current track")
 async def nowplaying_s(
     ctx: tj.abc.SlashContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -17,7 +17,7 @@ async def nowplaying_s(
 
 
 @info.with_message_command
-@tj.as_message_command('nowplaying', 'np')
+@tj.as_message_command('nowplaying', 'now-playing', 'np')
 async def nowplaying_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -96,7 +96,7 @@ async def search_m(
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ):
-    await _search(ctx, query, bot, lvc=lvc)
+    await search_(ctx, query, bot, lvc=lvc)
 
 
 @info.with_slash_command
@@ -111,13 +111,13 @@ async def search_s(
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ):
-    await _search(ctx, query, bot, lvc=lvc)
+    await search_(ctx, query, bot, lvc=lvc)
 
 
-@trigger_thinking()
 @attempt_to_connect
+@trigger_thinking()
 @check(Checks.CONN)
-async def _search(
+async def search_(
     ctx: tj.abc.Context, query: str, bot: hk.GatewayBot, lvc: lv.Lavalink
 ) -> None:
     assert ctx.guild_id is not None
@@ -128,11 +128,11 @@ async def _search(
     PREVIEW_TIME = 30_000
 
     _queried = await lvc.auto_search_tracks(query)
-    if _queried.load_type in {'TRACK_LOADED', 'PLAYLIST_LOADED'}:
+    if _queried.load_type in ('TRACK_LOADED', 'PLAYLIST_LOADED'):
         await play__(ctx, lvc, tracks=_queried, respond=True)
         await hid_reply(
             ctx,
-            content="💡 It is best to input a search query to the `/search` command. For links, use `/play` instead",
+            content="💡 It is best to input a search query to the `/search` command. *For links, use `/play` instead*",
         )
         return
 
@@ -150,15 +150,17 @@ async def _search(
     pre_row = ctx.rest.build_action_row()
     ops_row = ctx.rest.build_action_row()
     for i in map(str, range(1, len(queried[:QUERIED_N]) + 1)):
-        pre_row.add_button(ButtonStyle.SECONDARY, i).set_label(i).add_to_container()
+        pre_row.add_button(hk_msg.ButtonStyle.SECONDARY, i).set_label(
+            i
+        ).add_to_container()
 
-    ops_row.add_button(ButtonStyle.SUCCESS, 'enqueue').set_label(
+    ops_row.add_button(hk_msg.ButtonStyle.SUCCESS, 'enqueue').set_label(
         "＋ Enqueue"
     ).add_to_container()
-    ops_row.add_button(ButtonStyle.PRIMARY, 'link').set_label(
+    ops_row.add_button(hk_msg.ButtonStyle.PRIMARY, 'link').set_label(
         "Get Link"
     ).add_to_container()
-    ops_row.add_button(ButtonStyle.DANGER, 'cancel').set_label(
+    ops_row.add_button(hk_msg.ButtonStyle.DANGER, 'cancel').set_label(
         "Cancel"
     ).add_to_container()
 
@@ -189,10 +191,12 @@ async def _search(
             await stop__(ctx, lvc)
 
         async for event in stream:
-            await event.interaction.create_initial_response(
+            inter = event.interaction
+            assert isinstance(inter, hk.ComponentInteraction)
+            await inter.create_initial_response(
                 hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
             )
-            key = event.interaction.custom_id
+            key = inter.custom_id
 
             if key == 'cancel':
                 if not await playing():
@@ -269,7 +273,7 @@ async def _search(
                     raise NotImplementedError
 
         await ctx.edit_initial_response(
-            components=[*disable_buttons(ctx.rest, pre_row, ops_row)]
+            components=(*disable_buttons(ctx.rest, pre_row, ops_row),)
         )
         if not prior_stop:
             await continue__(ctx, lvc)
