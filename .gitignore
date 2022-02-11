@@ -16,3 +16,4 @@ src/__pycache__
 application.yml
 headers_auth.json
 bot-startup.bat
+tggldev.py

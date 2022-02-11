@@ -1,8 +1,4 @@
-import typing as t
-import attr as a
-import hikari as hk
-import lavasnek_rs as lv
-from hikari.permissions import Permissions as P
+from ._imports import *
 
 
 T = t.TypeVar('T')
@@ -46,7 +42,7 @@ class InvalidTimestampFormat(BaseMusicCommandException):
 
 @a.define
 class Forbidden(BaseMusicCommandException):
-    perms: P
+    perms: hkperms
     channel: t.Optional[hk.Snowflakeish] = a.field(default=None, kw_only=True)
 
 
@@ -128,4 +124,9 @@ class QueryEmpty(BaseMusicCommandException):
 
 @a.define(init=False)
 class LyricsNotFound(BaseMusicCommandException):
+    pass
+
+
+@a.define(init=False)
+class VotingTimeout(TimeoutError, BaseMusicCommandException):
     pass

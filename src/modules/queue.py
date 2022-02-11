@@ -1,14 +1,8 @@
 from src.lib.music import *
+from src.lib.checks import Checks, check
 
 
-queue = tj.Component(checks=(guild_c,), hooks=music_h)
-
-
-VALID_SOURCES = {
-    "Youtube": 'ytsearch',
-    "Youtube Music": 'ytmsearch',
-    "Soundcloud": 'scsearch',
-}
+queue = tj.Component(name='Queue').add_check(guild_c).set_hooks(music_h)
 
 
 # Play
@@ -19,7 +13,7 @@ VALID_SOURCES = {
     'source',
     "Search from where? (If not given, Youtube)",
     choices=VALID_SOURCES,
-    default='ytsearch',
+    default='yt',
 )
 @tj.with_str_slash_option('song', "What song? [Could be a title or a direct link]")
 @tj.as_slash_command('play', "Plays a song, or add it to the queue")
@@ -30,31 +24,43 @@ async def play_s(
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ) -> None:
     if not URL_REGEX.fullmatch(song):
-        song = ':'.join((source, song))
+        song = '%ssearch:%s' % (source, song)
 
     await play_(ctx, song, lvc=lvc)
 
 
 @queue.with_message_command
-@tj.with_greedy_argument('song')  # Set song to be greedy
-@tj.with_parser  # Add an argument parser to the command
+@tj.with_option('source', '--source', '--src', default='yt')
+@tj.with_greedy_argument('song')
+@tj.with_parser
 @tj.as_message_command('play', 'p', 'a', 'add', '+')
 async def play_m(
     ctx: tj.abc.MessageContext,
     song: str,
+    source: str,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ) -> None:
     """Play a song, or add it to the queue."""
 
     song = song.strip("<>|")
-    await ctx.message.edit(flags=hk.MessageFlag.SUPPRESS_EMBEDS)
+    await ctx.message.edit(flags=msgflag.SUPPRESS_EMBEDS)
+    if source not in VALID_SOURCES.values():
+        await err_reply(
+            ctx,
+            content=f"❗ Invalid source given. Must be one of the following:\n> {', '.join(('`%s (%s)`' % (j, i) for i,j in VALID_SOURCES.items()))}",
+        )
+        return
+
+    if not URL_REGEX.fullmatch(song):
+        song = '%ssearch:%s' % (source, song)
+
     await play_(ctx, song, lvc=lvc)
 
 
 @attempt_to_connect
 @trigger_thinking()
 @check(Checks.IN_VC)
-async def play_(ctx: tj.abc.Context, song: str, lvc: lv.Lavalink) -> None:
+async def play_(ctx: tj.abc.Context, song: str, /, *, lvc: lv.Lavalink) -> None:
     """Attempts to play the song from youtube."""
     assert ctx.guild_id is not None
 
@@ -83,17 +89,10 @@ remove_g_s = queue.with_slash_command(
 
 @queue.with_message_command
 @tj.as_message_command_group('remove', 'rem', 'rm', 'rmv', 'del', 'd', '-', strict=True)
+@with_message_command_group_template
 async def remove_g_m(ctx: tj.abc.MessageContext):
-    cmd = ctx.command
-    assert isinstance(cmd, tj.abc.MessageCommandGroup)
-    p = next(iter(ctx.client.prefixes))
-    cmd_n = next(iter(cmd.names))
-    sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
-    valid_cmds = ', '.join(f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
-    await err_reply(
-        ctx,
-        content=f"❌ This is a command group. Use the following instead:\n{valid_cmds}",
-    )
+    """Removes tracks from the queue"""
+    ...
 
 
 ## Remove One
@@ -119,7 +118,7 @@ async def remove_one_s(
 @remove_g_m.with_command
 @tj.with_greedy_argument('track', default=None)
 @tj.with_parser
-@tj.as_message_command('one', '1', 'o', 's')
+@tj.as_message_command('one', '1', 'o', 's', '.', '^')
 async def remove_one_m(
     ctx: tj.abc.MessageContext,
     track: t.Optional[str],
@@ -129,24 +128,26 @@ async def remove_one_m(
 
 
 @check(Checks.QUEUE | Checks.CONN)
-async def remove_one_(ctx: tj.abc.Context, track: t.Optional[str], lvc: lv.Lavalink):
+async def remove_one_(
+    ctx: tj.abc.Context, track: t.Optional[str], /, *, lvc: lv.Lavalink
+):
     assert ctx.guild_id is not None
 
     try:
         rm = await remove_track__(ctx, track, lvc)
     except InvalidArgument:
-        return await err_reply(
+        await err_reply(
             ctx,
             content=f"❌ Please specify a track to remove or have a track playing first",
         )
     except IllegalArgument as xe:
         arg_exp = xe.arg.expected
-        return await err_reply(
+        await err_reply(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `{arg_exp[0]}` and `{arg_exp[1]}`**",
         )
     else:
-        return await reply(
+        await reply(
             ctx, content=f"**`ー`** Removed `{rm.track.info.title}` from the queue"
         )
 
@@ -177,7 +178,7 @@ async def remove_bulk_s(
 @tj.with_argument('start', converters=int)
 @tj.with_argument('end', converters=int, default=None)
 @tj.with_parser
-@tj.as_message_command('bulk', 'b', 'm', 'r')
+@tj.as_message_command('bulk', 'b', 'm', 'r', '<>')
 async def remove_bulk_m(
     ctx: tj.abc.MessageContext,
     start: int,
@@ -189,7 +190,7 @@ async def remove_bulk_m(
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
 async def remove_bulk_(
-    ctx: tj.abc.Context, start: int, end: t.Optional[int], lvc: lv.Lavalink
+    ctx: tj.abc.Context, start: int, end: t.Optional[int], /, *, lvc: lv.Lavalink
 ):
     assert ctx.guild_id is not None
 
@@ -201,7 +202,7 @@ async def remove_bulk_(
     try:
         await remove_tracks__(ctx, start, end, lvc)
     except IllegalArgument:
-        return await err_reply(
+        await err_reply(
             ctx,
             content=f"❌ Invalid start time or end time\n**Start time must be smaller or equal to end time *AND* both of them has to be in between 1 and the queue length **",
         )
@@ -211,8 +212,9 @@ async def remove_bulk_(
             content=f"`≡⁻` Removed track position `{start}-{end}` `({t_n} tracks)` from the queue",
         )
         if start == 1 and end is None:
-            await hid_reply(
+            await reply(
                 ctx,
+                hidden=True,
                 content="💡 It is best to only remove a part of the queue when using `/remove bulk`. *For clearing the entire queue, use `/clear` instead*",
             )
 
@@ -237,12 +239,13 @@ async def clear_m(
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def clear_(ctx: tj.abc.Context, lvc: lv.Lavalink):
+async def clear_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     async with access_queue(ctx, lvc) as q:
         l = len(q)
         async with while_stop(ctx, lvc, q):
             q.clr()
-        return await reply(ctx, content=f"💥 Cleared the queue `({l} tracks)`")
+        await reply(ctx, content=f"💥 Cleared the queue `({l} tracks)`")
+        return
 
 
 # Shuffle
@@ -265,10 +268,11 @@ async def shuffle_m(
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def shuffle_(ctx: tj.abc.Context, lvc: lv.Lavalink):
+async def shuffle_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     async with access_queue(ctx, lvc) as q:
         if not q.upcoming:
-            return await err_reply(ctx, content=f"❗ This is the end of the queue")
+            await err_reply(ctx, content=f"❗ This is the end of the queue")
+            return
         q.shuffle()
 
         await reply(
@@ -286,21 +290,11 @@ move_g_s = queue.with_slash_command(
 
 
 @queue.with_message_command
-@tj.as_message_command_group('move', 'mv', strict=True)
+@tj.as_message_command_group('move', 'mv', '=>', strict=True)
+@with_message_command_group_template
 async def move_g_m(ctx: tj.abc.MessageContext):
-    """
-    Moves the track in the queue
-    """
-    cmd = ctx.command
-    assert isinstance(cmd, tj.abc.MessageCommandGroup)
-    p = next(iter(ctx.client.prefixes))
-    cmd_n = next(iter(cmd.names))
-    sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
-    valid_cmds = ', '.join(f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
-    await err_reply(
-        ctx,
-        content=f"❌ This is a command group. Use the following instead:{valid_cmds}",
-    )
+    """Moves the track in the queue"""
+    ...
 
 
 ## Move Last
@@ -324,7 +318,7 @@ async def move_last_s(
 @move_g_m.with_command
 @tj.with_argument('track', converters=int, default=None)
 @tj.with_parser
-@tj.as_message_command('last', "l")
+@tj.as_message_command('last', 'l', '>>')
 async def move_last_m(
     ctx: tj.abc.MessageContext,
     track: t.Optional[int],
@@ -338,11 +332,9 @@ async def move_last_m(
 
 @check(Checks.QUEUE | Checks.CONN)
 async def move_last_(
-    ctx: tj.abc.Context, track: t.Optional[int], lvc: lv.Lavalink
+    ctx: tj.abc.Context, track: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
-    """
-    Moves the selected track to the end of the queue
-    """
+    """Moves the selected track to the end of the queue"""
     q = await get_queue(ctx, lvc)
     try:
         mv = await insert_track__(ctx, len(q), track, lvc)
@@ -395,7 +387,7 @@ async def move_swap_s(
 @tj.with_argument('first', converters=int)
 @tj.with_argument('second', converters=int, default=None)
 @tj.with_parser
-@tj.as_message_command('swap', 'sw')
+@tj.as_message_command('swap', 'sw', '<>', '<->', '<=>')
 async def move_swap_m(
     ctx: tj.abc.MessageContext,
     first: int,
@@ -410,11 +402,9 @@ async def move_swap_m(
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
 async def move_swap_(
-    ctx: tj.abc.Context, first: int, second: t.Optional[int], lvc: lv.Lavalink
+    ctx: tj.abc.Context, first: int, second: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
-    """
-    Swaps positions of two tracks in a queue
-    """
+    """Swaps positions of two tracks in a queue"""
     assert ctx.guild_id is not None
 
     q = await get_queue(ctx, lvc)
@@ -443,7 +433,7 @@ async def move_swap_(
     async with access_queue(ctx, lvc) as q:
         q[i_1st], q[i_2nd] = q[i_2nd], q[i_1st]
         q.reset_repeat()
-        if q.pos in (i_1st, i_2nd):
+        if q.pos in {i_1st, i_2nd}:
             async with while_stop(ctx, lvc, q):
                 swapped = q[i_1st] if q.pos == i_1st else q[i_2nd]
                 await set_pause__(ctx, lvc, pause=False)
@@ -477,7 +467,7 @@ async def move_insert_s(
 @tj.with_argument('position', converters=int)
 @tj.with_argument('track', converters=int, default=None)
 @tj.with_parser
-@tj.as_message_command('insert', 'ins')
+@tj.as_message_command('insert', 'ins', 'i', 'v', '^')
 async def move_insert_m(
     ctx: tj.abc.MessageContext,
     position: int,
@@ -492,11 +482,9 @@ async def move_insert_m(
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
 async def move_insert_(
-    ctx: tj.abc.Context, position: int, track: t.Optional[int], lvc: lv.Lavalink
+    ctx: tj.abc.Context, position: int, track: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
-    """
-    Inserts a track in the queue after a new position
-    """
+    """Inserts a track in the queue after a new position"""
     assert ctx.guild_id is not None
 
     try:
@@ -557,6 +545,8 @@ async def repeat_m(
     """
     if mode:
         mode = mode.lower()
+        from src.lib.lavaimpl import REPEAT_MODES_ALL
+
         if mode not in REPEAT_MODES_ALL:
             await err_reply(
                 ctx,
@@ -568,10 +558,10 @@ async def repeat_m(
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def repeat_(ctx: tj.abc.Context, mode: t.Optional[str], lvc: lv.Lavalink) -> None:
-    """
-    Select a repeat mode for the queue
-    """
+async def repeat_(
+    ctx: tj.abc.Context, mode: t.Optional[str], /, *, lvc: lv.Lavalink
+) -> None:
+    """Select a repeat mode for the queue"""
     async with access_queue(ctx, lvc) as q:
         if mode is None:
             modes = tuple(m.value for m in RepeatMode)

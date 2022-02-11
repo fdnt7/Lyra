@@ -1,6 +1,8 @@
 from src.lib.music import *
+from src.lib.checks import Checks, check
 
-conns = tj.Component(checks=(guild_c,), hooks=music_h)
+
+conns = tj.Component(name='Conections').add_check(guild_c).set_hooks(music_h)
 
 
 # Join
@@ -25,7 +27,7 @@ async def join_s(
 @conns.with_message_command
 @tj.with_argument('channel', converters=tj.to_channel, default=None)
 @tj.with_parser
-@tj.as_message_command('join', 'j', 'connect')
+@tj.as_message_command('join', 'j', 'connect', 'co', 'con')
 async def join_m(
     ctx: tj.abc.MessageContext,
     channel: hk.GuildVoiceChannel,
@@ -39,6 +41,8 @@ async def join_m(
 async def join_(
     ctx: tj.abc.Context,
     channel: t.Optional[hk.GuildVoiceChannel],
+    /,
+    *,
     lvc: lv.Lavalink,
 ):
     try:
@@ -46,7 +50,7 @@ async def join_(
         await reply(ctx, content=f"🖇️ <#{vc}>")
     except ChannelChange as sig:
         await reply(
-            ctx, content=f"🔗 ~~<#{sig.old_channel}>~~ ➜ __<#{sig.new_channel}>__"
+            ctx, content=f"📎🖇️ ~~<#{sig.old_channel}>~~ ➜ __<#{sig.new_channel}>__"
         )
     except NotInVoice:
         await err_reply(
@@ -65,6 +69,11 @@ async def join_(
             ctx,
             content=f"⛔ Not sufficient permissions to join channel <#{exc.channel}>",
         )
+    except TimeoutError:
+        await err_reply(
+            ctx,
+            content="⌛ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
+        )
 
 
 # Leave
@@ -80,7 +89,7 @@ async def leave_s(
 
 
 @conns.with_message_command
-@tj.as_message_command('leave', 'l', 'dc')
+@tj.as_message_command('leave', 'l', 'dc', 'disconnect', 'discon')
 async def leave_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -90,7 +99,7 @@ async def leave_m(
 
 
 @check(Checks.CATCH_ALL)
-async def leave_(ctx: tj.abc.Context, lvc: lv.Lavalink):
+async def leave_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     """Stops playback of the current song."""
     assert ctx.guild_id is not None
 
@@ -99,7 +108,7 @@ async def leave_(ctx: tj.abc.Context, lvc: lv.Lavalink):
     except NotConnected:
         await err_reply(ctx, content="❗ Not currently connected yet")
     else:
-        return await reply(ctx, content=f"📎 ~~<#{vc}>~~")
+        await reply(ctx, content=f"📎 ~~<#{vc}>~~")
 
 
 # -

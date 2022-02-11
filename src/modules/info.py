@@ -1,7 +1,33 @@
 from src.lib.music import *
+from src.lib.checks import Checks, check
 
 
-info = tj.Component(checks=(guild_c,), hooks=music_h)
+info = tj.Component(name='Info').add_check(guild_c).set_hooks(music_h)
+
+
+# Ping
+
+
+@info.with_slash_command
+@tj.as_slash_command('ping', "Shows the bot's latency")
+async def ping_s(ctx: tj.abc.SlashContext):
+    await ping_(ctx)
+
+
+@info.with_message_command
+@tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
+async def ping_m(ctx: tj.abc.MessageContext):
+    """
+    Shows the bot's latency
+    """
+    await ping_(ctx)
+
+
+async def ping_(ctx: tj.abc.Context, /) -> None:
+    """Shows the bot's latency"""
+
+    assert ctx.shards
+    await reply(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
 
 
 # Now Playing
@@ -17,7 +43,9 @@ async def nowplaying_s(
 
 
 @info.with_message_command
-@tj.as_message_command('nowplaying', 'now-playing', 'np')
+@tj.as_message_command(
+    'nowplaying', 'now-playing', 'np', 'now', 'curr', 'current', 'crr'
+)
 async def nowplaying_m(
     ctx: tj.abc.MessageContext,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -27,7 +55,7 @@ async def nowplaying_m(
 
 
 @check(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
-async def nowplaying_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
+async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Displays info on the currently playing song."""
     assert not ((ctx.guild_id is None) or (ctx.cache is None) or (ctx.member is None))
 
@@ -65,7 +93,7 @@ async def nowplaying_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
                     .replace('─', '▬', progress),
                 ),
                 url=t_info.uri,
-                color=0x3C9C9E,
+                color=(213, 111, 234),
                 # timestamp=dt.datetime.now().astimezone(),
             )
             .set_author(name="Now playing")
@@ -77,7 +105,7 @@ async def nowplaying_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
                 f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"
             )
         )
-        await hid_reply(ctx, embed=embed)
+        await reply(ctx, hidden=True, embed=embed)
     else:
         await err_reply(ctx, content="❗ Nothing is playing at the moment")
         return
@@ -89,14 +117,14 @@ async def nowplaying_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
 @info.with_message_command
 @tj.with_greedy_argument('query')
 @tj.with_parser
-@tj.as_message_command('search', 'se', 'f', 'yt')
+@tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
 async def search_m(
     ctx: tj.abc.MessageContext,
     query: str,
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ):
-    await search_(ctx, query, bot, lvc=lvc)
+    await search_(ctx, query, bot=bot, lvc=lvc)
 
 
 @info.with_slash_command
@@ -111,14 +139,14 @@ async def search_s(
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ):
-    await search_(ctx, query, bot, lvc=lvc)
+    await search_(ctx, query, bot=bot, lvc=lvc)
 
 
 @attempt_to_connect
 @trigger_thinking()
 @check(Checks.CONN)
 async def search_(
-    ctx: tj.abc.Context, query: str, bot: hk.GatewayBot, lvc: lv.Lavalink
+    ctx: tj.abc.Context, query: str, /, *, bot: hk.GatewayBot, lvc: lv.Lavalink
 ) -> None:
     assert ctx.guild_id is not None
     query = query.strip("<>|")
@@ -130,8 +158,9 @@ async def search_(
     _queried = await lvc.auto_search_tracks(query)
     if _queried.load_type in ('TRACK_LOADED', 'PLAYLIST_LOADED'):
         await play__(ctx, lvc, tracks=_queried, respond=True)
-        await hid_reply(
+        await reply(
             ctx,
+            hidden=True,
             content="💡 It is best to input a search query to the `/search` command. *For links, use `/play` instead*",
         )
         return
@@ -142,7 +171,7 @@ async def search_(
 
     queried_msg = "```css\n%s\n```" % (
         "\n".join(
-            f"{i: >2}. {ms_stamp(t.info.length):>9} | {wrap(t.info.title, 48)}"
+            f"{i: >2}. {ms_stamp(t.info.length):>9} | {wr(t.info.title, 48)}"
             for i, t in enumerate(queried[:QUERIED_N], 1)
         )
     )
@@ -167,7 +196,7 @@ async def search_(
     embed = hk.Embed(
         title=f"🔎 Searching for `{query}`",
     ).add_field("Search results", value=queried_msg)
-    msg = await def_reply(
+    msg = await reply(
         ctx,
         embed=embed,
         components=[pre_row, ops_row],
@@ -268,12 +297,14 @@ async def search_(
                         await continue__(ctx, lvc)
                     return
                 case 'link':
-                    await hid_reply(ctx, content=f"🌐 Link is <{selected_t.info.uri}>")
+                    await reply(
+                        ctx, hidden=True, content=f"🌐 Link is <{selected_t.info.uri}>"
+                    )
                 case _:
                     raise NotImplementedError
 
         await ctx.edit_initial_response(
-            components=(*disable_buttons(ctx.rest, pre_row, ops_row),)
+            components=(*disable_components(ctx.rest, pre_row, ops_row),)
         )
         if not prior_stop:
             await continue__(ctx, lvc)
@@ -285,80 +316,125 @@ async def search_(
 @info.with_slash_command
 @tj.as_slash_command('queue', "Lists out the entire queue")
 async def queue_s(
-    ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
+    ctx: tj.abc.SlashContext,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
 ):
-    await queue_(ctx, lvc=lvc)
+    await queue_(ctx, lvc=lvc, bot=bot)
 
 
 @info.with_message_command
-@tj.as_message_command('queue', 'q')
+@tj.as_message_command('queue', 'q', 'all')
 async def queue_m(
-    ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
+    ctx: tj.abc.MessageContext,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
 ):
-    await queue_(ctx, lvc=lvc)
+    await queue_(ctx, lvc=lvc, bot=bot)
 
 
 @check(Checks.QUEUE | Checks.CONN)
-async def queue_(ctx: tj.abc.Context, lvc: lv.Lavalink):
-    assert not ((ctx.guild_id is None) or (ctx.cache is None))
+async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot):
     q = await get_queue(ctx, lvc)
-    if np := q.current:
-        np_info = np.track.info
-        req = ctx.cache.get_member(ctx.guild_id, np.requester)
-        assert req is not None
-        np_text = f"```css\n{q.pos+1: >2}. {ms_stamp(np_info.length):>9} | {wrap(np_info.title, 48)}\n\t\t\t\t[{req.display_name}]\n```"
-    else:
-        np_text = f"```css\n{'---':^63}\n```"
+    pages = await generate_queue_embeds__(ctx, lvc)
+    pages_n = len(pages)
 
-    queue_durr = sum(t.track.info.length for t in q)
-    queue_elapsed = sum(t.track.info.length for t in q.history) + (q.np_position or 0)
-    queue_eta = queue_durr - queue_elapsed
+    def _page_row(*, cancel_b: bool = False):
+        row = ctx.rest.build_action_row()
 
-    prev = None if not (his := q.history) else his[0]
+        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'start').set_emoji(
+            '⏪'
+        ).add_to_container()
 
-    desc = (
-        ""
-        if q.repeat_mode is RepeatMode.NONE
-        else (
-            "**```diff\n+| Repeating this entire queue\n```**"
-            if q.repeat_mode is RepeatMode.ALL
-            else "***```diff\n-| Repeating the current track\n```***"
+        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'prev').set_emoji(
+            '◀️'
+        ).add_to_container()
+
+        if cancel_b:
+            _3rd_b = row.add_button(hk_msg.ButtonStyle.DANGER, 'delete').set_emoji(
+                c.WHITE_CROSS
+            )
+        else:
+            _3rd_b = row.add_button(hk_msg.ButtonStyle.PRIMARY, 'main').set_emoji('⏺️')
+        _3rd_b.add_to_container()
+
+        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'next').set_emoji(
+            '▶️'
+        ).add_to_container()
+
+        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'end').set_emoji(
+            '⏩'
+        ).add_to_container()
+
+        return row
+
+    _i_ori = (q.pos - 2) // FIELD_SLICE + 1
+    i = _i_ori
+
+    def _update_buttons(b: DisableableComponentsType):
+        assert isinstance(b, hk.api.ButtonBuilder)
+        return (
+            (not pages[:i] and b.emoji == '◀️')
+            or (not pages[i + 1 :] and b.emoji == '▶️')
+            or (i == 0 and b.emoji == '⏪')
+            or (i == pages_n - 1 and b.emoji == '⏩')
         )
-    )
 
-    embed = (
-        hk.Embed(
-            title="📀 Queue",
-            description=desc,
-            color=0xFDEDA1,
-        )
-        .add_field(
-            "Now playing",
-            np_text,
-        )
-        .add_field(
-            "Next up",
-            f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
-            % (
-                "\n".join(
-                    f"{i+2: >2}․ {ms_stamp(t_.track.info.length):>9} | {wrap(t_.track.info.title, 48)}"
-                    for i, t_ in enumerate(q.upcoming[:15], q.pos)
-                )
-                or f"{'---':^63}",
+    embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
+    msg = await reply(
+        ctx,
+        ensure_result=True,
+        embed=embed,
+        components=(
+            *disable_components(
+                ctx.rest, (row := _page_row(cancel_b=True)), predicates=_update_buttons
             ),
-        )
-        .add_field(
-            "Previous",
-            f"`{q.pos: >2}․ {ms_stamp(prev.track.info.length):>9} | {wrap(prev.track.info.title, 48)}`"
-            if prev
-            else f"```\n{'---':^63}\n```",
-        )
-        .set_footer(
-            f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)}"
-        )
+        ),
     )
 
-    await hid_reply(ctx, embed=embed)
+    with bot.stream(hk.InteractionCreateEvent, timeout=TIMEOUT).filter(
+        lambda e: isinstance(e.interaction, hk.ComponentInteraction)
+        and e.interaction.message == msg
+        and e.interaction.user.id == ctx.author.id
+    ) as stream:
+        _row = row
+        async for event in stream:
+            inter = event.interaction
+            assert isinstance(inter, hk.ComponentInteraction)
+            await inter.create_initial_response(
+                hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+            )
+
+            key = inter.custom_id
+
+            match key:
+                case 'main':
+                    i = _i_ori
+                case 'next':
+                    i += 1
+                case 'prev':
+                    i -= 1
+                case 'start':
+                    i = 0
+                case 'end':
+                    i = pages_n - 1
+                case 'delete':
+                    await ctx.delete_initial_response()
+                    return
+
+            _row = _page_row(cancel_b=i == _i_ori)
+            embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
+
+            await ctx.edit_initial_response(
+                embed=embed,
+                components=(
+                    *disable_components(ctx.rest, _row, predicates=_update_buttons),
+                ),
+            )
+
+        await ctx.edit_initial_response(
+            components=(*disable_components(ctx.rest, _row),)
+        )
 
 
 # Lyrics
@@ -373,8 +449,9 @@ async def lyrics_s(
     ctx: tj.abc.SlashContext,
     song: t.Optional[str],
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
 ):
-    await lyrics_(ctx, song, lvc=lvc)
+    await lyrics_(ctx, song, lvc=lvc, bot=bot)
 
 
 @info.with_message_command
@@ -385,20 +462,27 @@ async def lyrics_m(
     ctx: tj.abc.MessageContext,
     song: t.Optional[str],
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
 ):
     """
     Attempts to find the lyrics of the current song
     """
-    await lyrics_(ctx, song, lvc=lvc)
+    await lyrics_(ctx, song, lvc=lvc, bot=bot)
 
 
-@trigger_thinking(hk.MessageFlag.EPHEMERAL)
+@trigger_thinking()
 @check(Checks.CATCH_ALL)
-async def lyrics_(ctx: tj.abc.Context, song: t.Optional[str], lvc: lv.Lavalink) -> None:
+async def lyrics_(
+    ctx: tj.abc.Context,
+    song: t.Optional[str],
+    /,
+    *,
+    lvc: lv.Lavalink,
+    bot: hk.GatewayBot,
+) -> None:
     """
     Attempts to find the lyrics of the current song
     """
-    ...
     assert not (ctx.guild_id is None)
     if song is None:
         if not (np := ((await get_queue(ctx, lvc))).current):
@@ -413,31 +497,101 @@ async def lyrics_(ctx: tj.abc.Context, song: t.Optional[str], lvc: lv.Lavalink) 
     # import pstats
 
     # async def f():
+    sel_row = ctx.rest.build_action_row()
+    act_row = ctx.rest.build_action_row()
+
+    ly_sel = sel_row.add_select_menu('ly_sel')
+    cancel_b = act_row.add_button(hk_msg.ButtonStyle.DANGER, 'delete').set_emoji(
+        c.WHITE_CROSS
+    )
+
     try:
         lyrics_data = await get_lyrics(song)
-
-        if lyrics_data.link:
-            return await hid_reply(ctx, content=f"🎤 Lyrics Link: <{lyrics_data.link}>")
-
-        assert (
-            lyrics_data.title
-            and lyrics_data.lyrics
-            and lyrics_data.author
-            and lyrics_data.thumbnail
-        )
-
-        embed = hk.Embed(
-            title='🎤 ' + lyrics_data.title,
-            description=lyrics_data.lyrics,
-        )
-        embed.set_thumbnail(lyrics_data.thumbnail)
-        embed.set_author(name=lyrics_data.author)
-        embed.set_footer(lyrics_data.source)
-        await def_reply(ctx, embed=embed)
-
     except LyricsNotFound:
         await err_reply(ctx, content=f"❓ Could not find any lyrics for the song")
         return
+
+    for source in lyrics_data:
+        (
+            ly_sel.add_option(source, source)
+            .set_emoji(eval(f"c.{source.upper()}_EMOJI"))
+            .set_description(f"The lyrics fetched from {source}")
+            .add_to_menu()
+        )
+
+    icons: tuple[str] = tuple(
+        eval(f'c.{source.upper()}_ICON') for source in lyrics_data
+    )
+
+    # (
+    #     ly_sel.add_option('Cancel', 'cancel')
+    #     .set_emoji('❌')
+    #     .set_description("Delete this message")
+    #     .add_to_menu()
+    # )
+
+    embeds = {
+        ly.source: hk.Embed(
+            title='🎤 ' + ly.title,
+            description=ly.lyrics
+            if len(ly.lyrics) <= 4_096 
+            else (
+                wr(
+                    ly.lyrics,
+                    4_096,
+                    '...'
+                    if not ly.url
+                    else f"{wr(ly.lyrics, 3_996, '...')}\n\n**View full lyrics on:**\n{ly.url}",
+                )
+            ),
+            url=ly.url,
+        )
+        .set_thumbnail(ly.thumbnail)
+        .set_author(name=ly.artist, icon=ly.artist_icon, url=ly.artist_url)
+        .set_footer(ly.source, icon=i)
+        for ly, i in zip(lyrics_data.values(), icons)
+    }
+
+    ly_sel.set_placeholder("Select a Lyric source")
+
+    ly_sel.add_to_container()
+    cancel_b.add_to_container()
+    msg = await reply(
+        ctx,
+        ensure_result=True,
+        embed=next(iter(embeds.values())),
+        components=[sel_row, act_row],
+    )
+
+    with bot.stream(hk.InteractionCreateEvent, timeout=TIMEOUT).filter(
+        lambda e: isinstance(e.interaction, hk.ComponentInteraction)
+        and e.interaction.message == msg
+        and e.interaction.user.id == ctx.author.id
+    ) as stream:
+        _last_sel: t.Optional[str] = None
+        async for event in stream:
+            inter = event.interaction
+            assert isinstance(inter, hk.ComponentInteraction)
+            await inter.create_initial_response(
+                hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+            )
+
+            sel = next(iter(inter.values), None)
+            key = inter.custom_id
+
+            if key == 'delete':
+                await ctx.delete_initial_response()
+                return
+
+            assert sel is not None
+            if sel == _last_sel:
+                continue
+            _last_sel = sel
+            await ctx.edit_initial_response(embed=embeds[sel])
+
+        await ctx.edit_initial_response(
+            components=(*disable_components(ctx.rest, sel_row),)
+        )
 
     # with cProfile.Profile() as pr:
     #     await f()

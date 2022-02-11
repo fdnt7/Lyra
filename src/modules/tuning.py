@@ -1,7 +1,9 @@
 from src.lib.music import *
+from src.lib.checks import DJ_PERMS, Checks, check
+from src.lib.lavaimpl import Bands
 
 
-tuning = tj.Component(checks=(guild_c,), hooks=music_h)
+tuning = tj.Component(name='Tuning').add_check(guild_c).set_hooks(music_h)
 
 
 # Volume
@@ -14,23 +16,13 @@ volume_g_s = tuning.with_slash_command(
 
 @tuning.with_message_command
 @tj.as_message_command_group('volume', 'v', strict=True)
+@with_message_command_group_template
 async def volume_g_m(ctx: tj.abc.MessageContext):
-    """
-    Manages the volume of this guild's player
-    """
-    cmd = ctx.command
-    assert isinstance(cmd, tj.abc.MessageCommandGroup)
-    p = next(iter(ctx.client.prefixes))
-    cmd_n = next(iter(cmd.names))
-    sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
-    valid_cmds = ', '.join(f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
-    await err_reply(
-        ctx,
-        content=f"❌ This is a command group. Use the following instead:\n{valid_cmds}",
-    )
+    """Manages the volume of this guild's player"""
+    ...
 
 
-## volume set
+## Volume Set
 
 
 @volume_g_s.with_command
@@ -49,7 +41,7 @@ async def volume_set_s(
 
 
 @volume_g_m.with_command
-@tj.with_argument('scale', converters=int)
+@tj.with_argument('scale', converters=int, min_value=0, max_value=10)
 @tj.with_parser
 @tj.as_message_command('set', '=', '.')
 async def volume_set_m(
@@ -63,23 +55,131 @@ async def volume_set_m(
     if not 0 <= scale <= 10:
         await err_reply(
             ctx,
-            content=f'❗ Volume percentage must be between `0` and `10` `(got: {scale})`',
+            content=f'❌ Volume percentage must be between `0` and `10` `(got: {scale})`',
         )
         return
     await volume_set_(ctx, scale, lvc=lvc)
 
 
-@check(Checks.CONN, DJ_PERMS)
-async def volume_set_(ctx: tj.abc.Context, scale: int, lvc: lv.Lavalink) -> None:
+@check(Checks.CONN, perms=DJ_PERMS)
+async def volume_set_(ctx: tj.abc.Context, scale: int, /, *, lvc: lv.Lavalink) -> None:
+    """Set the volume of the bot from 0-10"""
+    assert ctx.guild_id is not None
+
+    async with access_equalizer(ctx, lvc) as eq:
+        eq.volume = scale
+        await lvc.volume(ctx.guild_id, scale * 10)
+        await reply(ctx, content=f"🎚️ Volume set to **`{scale}`**")
+
+
+## Volume Up
+
+
+@volume_g_s.with_command
+@tj.with_int_slash_option(
+    'amount', "Increase by how much (If not given, by 1)", default=1
+)
+@tj.as_slash_command('up', "Increase the bot's volume")
+async def volume_up_s(
+    ctx: tj.abc.SlashContext,
+    amount: int,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    await volume_up_(ctx, amount, lvc=lvc)
+
+
+@volume_g_m.with_command
+@tj.with_argument('amount', converters=int, default=1)
+@tj.with_parser
+@tj.as_message_command('up', 'u', '+', '^')
+async def volume_up_m(
+    ctx: tj.abc.MessageContext,
+    amount: int,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
     """
-    Set the volume of the bot from 0-10
+    Increase the bot's volume
+    """
+    await volume_up_(ctx, amount, lvc=lvc)
+
+
+@check(Checks.CONN, perms=DJ_PERMS)
+async def volume_up_(ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink) -> None:
+    """Increase the bot's volume"""
+    assert ctx.guild_id is not None
+
+    async with access_equalizer(ctx, lvc) as eq:
+        old = eq.volume
+        if old == 10:
+            await err_reply(ctx, content=f"❗ Already maxed out the volume")
+            return
+        eq.up(amount)
+        new = eq.volume
+        await lvc.volume(ctx.guild_id, new * 10)
+
+    await reply(ctx, content=f"🔈**`＋`** ~~`{old}`~~ ➜ **`{new}`**")
+    if not 0 <= amount <= 10 - old:
+        await reply(
+            ctx,
+            hidden=True,
+            content=f"❕ *The given amount was too large; **Maxed out** the volume*",
+        )
+
+
+## Volume Down
+
+
+@volume_g_s.with_command
+@tj.with_int_slash_option(
+    'amount', "Decrease by how much? (If not given, by 1)", default=1
+)
+@tj.as_slash_command('down', "Decrease the bot's volume")
+async def volume_down_s(
+    ctx: tj.abc.SlashContext,
+    amount: int,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    await volume_down_(ctx, amount, lvc=lvc)
+
+
+@volume_g_m.with_command
+@tj.with_argument('amount', converters=int, default=1)
+@tj.with_parser
+@tj.as_message_command('down', 'd', '-', 'v')
+async def volume_down_m(
+    ctx: tj.abc.MessageContext,
+    amount: int,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    """Decrease the bot's volume"""
+    await volume_down_(ctx, amount, lvc=lvc)
+
+
+@check(Checks.CONN, perms=DJ_PERMS)
+async def volume_down_(
+    ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink
+) -> None:
+    """
+    Decrease the bot's volume"
     """
     assert ctx.guild_id is not None
 
     async with access_equalizer(ctx, lvc) as eq:
-        eq.volume = scale * 10
-        await lvc.volume(ctx.guild_id, scale * 10)
-        await reply(ctx, content=f"🎚️ Volume set to **`{scale}`**")
+        old = eq.volume
+        if old == 0:
+            await err_reply(ctx, content=f"❗ Already muted the volume")
+            return
+        eq.down(amount)
+        new = eq.volume
+        await lvc.volume(ctx.guild_id, new * 10)
+
+    await reply(ctx, content=f"🔈**`ー`** **`{new}`** ⟸ ~~`{old}`~~")
+    if not 0 <= amount <= old:
+        await reply(
+            ctx,
+            hidden=True,
+            content=f"❕ *The given amount was too large; **Muted** the volume*",
+        )
 
 
 # Mute
@@ -104,11 +204,9 @@ async def mute_m(
     await mute_(ctx, lvc=lvc)
 
 
-@check(Checks.CONN, DJ_PERMS)
-async def mute_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
-    """
-    Server mutes the bot
-    """
+@check(Checks.CONN, perms=DJ_PERMS)
+async def mute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
+    """Server mutes the bot"""
     await set_mute__(ctx, lvc, mute=True, respond=True)
 
 
@@ -124,7 +222,7 @@ async def unmute_s(
 
 
 @tuning.with_message_command
-@tj.as_message_command('unmute', 'u')
+@tj.as_message_command('unmute', 'u', 'um')
 async def unmute_m(
     ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
 ):
@@ -134,11 +232,9 @@ async def unmute_m(
     await unmute_(ctx, lvc=lvc)
 
 
-@check(Checks.CONN, DJ_PERMS)
-async def unmute_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
-    """
-    Server unmutes the bot
-    """
+@check(Checks.CONN, perms=DJ_PERMS)
+async def unmute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
+    """Server unmutes the bot"""
     await set_mute__(ctx, lvc, mute=False, respond=True)
 
 
@@ -164,12 +260,83 @@ async def mute_unmute_m(
     await mute_unmute_(ctx, lvc=lvc)
 
 
-@check(Checks.CONN, DJ_PERMS)
-async def mute_unmute_(ctx: tj.abc.Context, lvc: lv.Lavalink) -> None:
-    """
-    Toggles between server mute and unmuting the bot
-    """
+@check(Checks.CONN, perms=DJ_PERMS)
+async def mute_unmute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
+    """Toggles between server mute and unmuting the bot"""
     await set_mute__(ctx, lvc, mute=None, respond=True)
+
+
+# Equalizer
+
+
+equalizer_g_s = tuning.with_slash_command(
+    tj.slash_command_group('equalizer', "Manages the bot's equalizer")
+)
+
+
+@tuning.with_message_command
+@tj.as_message_command_group('equalizer', 'eq', strict=True)
+@with_message_command_group_template
+async def equalizer_g_m(ctx: tj.abc.MessageContext):
+    """Manages the bot's equalizer"""
+    ...
+
+
+## Equalizer Rreset
+
+
+VALID_PRESETS: dict[str, str] = {j['name']: i for i, j in Bands._load_bands().items()} | {'Flat': 'flat'}  # type: ignore
+
+
+@equalizer_g_s.with_command
+@tj.with_str_slash_option(
+    'preset',
+    "Which present?",
+    choices=VALID_PRESETS,
+)
+@tj.as_slash_command('preset', "Sets the bot's equalizer to a preset")
+async def equalizer_preset_s(
+    ctx: tj.abc.SlashContext,
+    preset: str,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    await equalizer_preset_(ctx, preset, lvc=lvc)
+
+
+@equalizer_g_m.with_command
+@tj.with_argument('preset')
+@tj.with_parser
+@tj.as_message_command('preset', 'pre', '=')
+async def equalizer_preset_m(
+    ctx: tj.abc.MessageContext,
+    preset: str,
+    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+):
+    """
+    Sets the bot's equalizer to a preset
+    """
+    if preset not in VALID_PRESETS.values():
+        await err_reply(
+            ctx,
+            del_after=10,
+            content=f"❗ Invalid preset given. Must be one of the following:\n> {', '.join(('`%s (%s)`' % (j, i) for i,j in VALID_PRESETS.items()))}",
+        )
+        return
+    await equalizer_preset_(ctx, preset, lvc=lvc)
+
+
+@check(Checks.CONN, perms=DJ_PERMS)
+async def equalizer_preset_(
+    ctx: tj.abc.Context, preset: str, /, *, lvc: lv.Lavalink
+) -> None:
+    """Sets the bot's equalizer to a preset"""
+    assert ctx.guild_id is not None
+
+    async with access_equalizer(ctx, lvc) as eq:
+        bands = Bands.load(preset)
+        await lvc.equalize_all(ctx.guild_id, list(bands))
+        eq.bands = bands
+    await reply(ctx, content=f"🎛️ Equalizer set to preset: `{preset.capitalize()}`")
 
 
 # -
