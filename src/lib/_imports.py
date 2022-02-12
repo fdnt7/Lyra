@@ -13,6 +13,7 @@ import typing as t
 import hashlib as hl
 import requests as rq
 import traceback as tb
+import contextlib as ctxlib
 
 import attr as a
 import hikari as hk
@@ -23,7 +24,6 @@ import lyricsgenius as lg
 
 from difflib import SequenceMatcher
 from functools import reduce
-from contextlib import asynccontextmanager, nullcontext
 from ytmusicapi import YTMusic
 
 from hikari.permissions import Permissions as hkperms

@@ -58,13 +58,13 @@ async def play_m(
 
 
 @attempt_to_connect
-@trigger_thinking()
 @check(Checks.IN_VC)
 async def play_(ctx: tj.abc.Context, song: str, /, *, lvc: lv.Lavalink) -> None:
     """Attempts to play the song from youtube."""
     assert ctx.guild_id is not None
 
-    query = await lvc.get_tracks(song)
+    async with trigger_thinking(ctx):
+        query = await lvc.get_tracks(song)
     if not query.tracks:
         raise QueryEmpty
 

@@ -143,7 +143,6 @@ async def search_s(
 
 
 @attempt_to_connect
-@trigger_thinking()
 @check(Checks.CONN)
 async def search_(
     ctx: tj.abc.Context, query: str, /, *, bot: hk.GatewayBot, lvc: lv.Lavalink
@@ -155,7 +154,8 @@ async def search_(
     PREVIEW_START = 50_000
     PREVIEW_TIME = 30_000
 
-    _queried = await lvc.auto_search_tracks(query)
+    async with trigger_thinking(ctx):
+        _queried = await lvc.auto_search_tracks(query)
     if _queried.load_type in ('TRACK_LOADED', 'PLAYLIST_LOADED'):
         await play__(ctx, lvc, tracks=_queried, respond=True)
         await reply(
@@ -470,7 +470,6 @@ async def lyrics_m(
     await lyrics_(ctx, song, lvc=lvc, bot=bot)
 
 
-@trigger_thinking()
 @check(Checks.CATCH_ALL)
 async def lyrics_(
     ctx: tj.abc.Context,
@@ -480,9 +479,7 @@ async def lyrics_(
     lvc: lv.Lavalink,
     bot: hk.GatewayBot,
 ) -> None:
-    """
-    Attempts to find the lyrics of the current song
-    """
+    """Attempts to find the lyrics of the current song"""
     assert not (ctx.guild_id is None)
     if song is None:
         if not (np := ((await get_queue(ctx, lvc))).current):
@@ -506,7 +503,8 @@ async def lyrics_(
     )
 
     try:
-        lyrics_data = await get_lyrics(song)
+        async with trigger_thinking(ctx):
+            lyrics_data = await get_lyrics(song)
     except LyricsNotFound:
         await err_reply(ctx, content=f"❓ Could not find any lyrics for the song")
         return

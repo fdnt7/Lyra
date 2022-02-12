@@ -1,6 +1,6 @@
 dev_guilds:
 - 777069316247126036
-dev_mode: false
+dev_mode: true
 prefixes:
 - ','
 - .

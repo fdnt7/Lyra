@@ -227,39 +227,28 @@ def disable_components(
     return tuple(action_rows_)
 
 
-def trigger_thinking(flags: msgflag = msgflag.NONE, /):
-    P = t.ParamSpec('P')
-
-    def callback(func: t.Callable[P, VoidCoroutine]) -> t.Callable[P, VoidCoroutine]:
-        async def inner(*args: P.args, **kwargs: P.kwargs):
-            ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
-
-            assert ctx
-            assert ctx.guild_id is not None
-            if isinstance(ctx, tj.abc.MessageContext):
-                ch = ctx.get_channel()
-                assert ch is not None
-                async with ch.trigger_typing():
-                    await func(*args, **kwargs)
-                return
-
-            assert isinstance(ctx, tj.abc.SlashContext)
-            try:
-                if not ctx.has_responded:
-                    await ctx.defer(flags)
-            except RuntimeError:
-                pass
-            await func(*args, **kwargs)
-
-        return inner
-
-    return callback
+def trigger_thinking(ctx: tj.abc.Context, /, *, ephemeral: bool = False, flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED):
+    if isinstance(ctx, tj.abc.MessageContext):
+        ch = ctx.get_channel()
+        assert ch
+        return ch.trigger_typing()
+    assert isinstance(ctx, tj.abc.SlashContext)
+    
+    @ctxlib.asynccontextmanager
+    async def _defer():
+        await ctx.defer(ephemeral=ephemeral, flags=flags)
+        try:
+            yield
+        finally:
+            return
+        
+    return _defer()
 
 
-P = t.ParamSpec('P')
+_P = t.ParamSpec('_P')
 
-def with_message_command_group_template(func: t.Callable[P, VoidCoroutine], /):
-    async def inner(*args: P.args, **kwargs: P.kwargs):
+def with_message_command_group_template(func: t.Callable[_P, VoidCoroutine], /):
+    async def inner(*args: _P.args, **kwargs: _P.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
         assert ctx
 

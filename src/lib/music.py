@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-P = t.ParamSpec('P')
+_P = t.ParamSpec('_P')
 
 
-def attempt_to_connect(func: t.Callable[P, VoidCoroutine]):
-    async def inner(*args: P.args, **kwargs: P.kwargs):
+def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
+    async def inner(*args: _P.args, **kwargs: _P.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
         lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), None)
         assert ctx and lvc
@@ -343,7 +343,7 @@ async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
         q.is_stopped = False
 
 
-@asynccontextmanager
+@ctxlib.asynccontextmanager
 async def while_stop(ctx_g: Contextish, lvc: lv.Lavalink, q: QueueList, /):
     await stop__(ctx_g, lvc)
     await asyncio.sleep(STOP_REFRESH)
@@ -706,7 +706,7 @@ async def generate_queue_embeds__(
         else (
             "**```diff\n+| Repeating this entire queue\n```**"
             if q.repeat_mode is RepeatMode.ALL
-            else "***```diff\n-| Repeating the current track\n```***"
+            else "**```diff\n-| Repeating the current track\n```**"
         )
     )
 
@@ -717,6 +717,9 @@ async def generate_queue_embeds__(
     ).set_footer(f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)}")
 
     _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
+    _format_prev = (
+        f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else ''}\n%s\n```"
+    )
     _empty = f"{'---':^63}"
 
     import copy
@@ -725,7 +728,7 @@ async def generate_queue_embeds__(
         copy.deepcopy(_base_embed)
         .add_field(
             "Previous",
-            _format
+            _format_prev
             % (
                 f"{q.pos: >2}․ {ms_stamp(prev.track.info.length):>6} | {wr(prev.track.info.title, 51)}"
                 if prev
@@ -742,7 +745,7 @@ async def generate_queue_embeds__(
             % (
                 "\n".join(
                     f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
-                    for j, t_ in enumerate(upcoming[:15], q.pos + 2)
+                    for j, t_ in enumerate(upcoming[:FIELD_SLICE], q.pos + 2)
                 )
                 or _empty,
             ),
@@ -752,7 +755,7 @@ async def generate_queue_embeds__(
     prev_embeds = [
         copy.deepcopy(_base_embed).add_field(
             "Previous",
-            _format
+            _format_prev
             % "\n".join(
                 f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
                 for j, t_ in enumerate(
@@ -776,7 +779,7 @@ async def generate_queue_embeds__(
                 for j, t_ in enumerate(next_slice, q.pos + 2 + i * FIELD_SLICE)
             ),
         )
-        for i, next_slice in enumerate(chunk(upcoming[15:], FIELD_SLICE), 1)
+        for i, next_slice in enumerate(chunk(upcoming[FIELD_SLICE:], FIELD_SLICE), 1)
         if next_slice
     ]
 

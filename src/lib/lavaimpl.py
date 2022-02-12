@@ -380,7 +380,7 @@ async def set_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData, /) 
     node.set_data(data)
 
 
-@asynccontextmanager
+@ctxlib.asynccontextmanager
 async def access_queue(ctx_g: Contextish, lvc: lv.Lavalink, /):
     ctx_g = snowflakeify(ctx_g)
 
@@ -391,7 +391,7 @@ async def access_queue(ctx_g: Contextish, lvc: lv.Lavalink, /):
         await set_data(ctx_g, lvc, data)
 
 
-@asynccontextmanager
+@ctxlib.asynccontextmanager
 async def access_equalizer(ctx_g: Contextish, lvc: lv.Lavalink, /):
     ctx_g = snowflakeify(ctx_g)
 
@@ -402,7 +402,7 @@ async def access_equalizer(ctx_g: Contextish, lvc: lv.Lavalink, /):
         await set_data(ctx_g, lvc, data)
 
 
-@asynccontextmanager
+@ctxlib.asynccontextmanager
 async def access_node_data(ctx_g: Contextish, lvc: lv.Lavalink, /):
     ctx_g = snowflakeify(ctx_g)
 
