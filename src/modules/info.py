@@ -2,30 +2,19 @@ from src.lib.music import *
 from src.lib.checks import Checks, check
 
 
-info = tj.Component(name='Info').add_check(guild_c).set_hooks(music_h)
+info = tj.Component(name='Info', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
 # Ping
 
 
-@info.with_slash_command
 @tj.as_slash_command('ping', "Shows the bot's latency")
-async def ping_s(ctx: tj.abc.SlashContext):
-    await ping_(ctx)
-
-
-@info.with_message_command
+#
 @tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
-async def ping_m(ctx: tj.abc.MessageContext):
+async def ping(ctx: tj.abc.Context):
     """
     Shows the bot's latency
     """
-    await ping_(ctx)
-
-
-async def ping_(ctx: tj.abc.Context, /) -> None:
-    """Shows the bot's latency"""
-
     assert ctx.shards
     await reply(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
 
@@ -33,24 +22,18 @@ async def ping_(ctx: tj.abc.Context, /) -> None:
 # Now Playing
 
 
-@info.with_slash_command
 @tj.as_slash_command('now-playing', "Displays info of the current track")
-async def nowplaying_s(
-    ctx: tj.abc.SlashContext,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-) -> None:
-    await nowplaying_(ctx, lvc=lvc)
-
-
-@info.with_message_command
+#
 @tj.as_message_command(
     'nowplaying', 'now-playing', 'np', 'now', 'curr', 'current', 'crr'
 )
-async def nowplaying_m(
-    ctx: tj.abc.MessageContext,
+async def nowplaying(
+    ctx: tj.abc.Context,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ) -> None:
-    """Displays info on the currently playing song."""
+    """
+    Displays info on the currently playing song.
+    """
     await nowplaying_(ctx, lvc=lvc)
 
 
@@ -62,84 +45,85 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     q = await get_queue(ctx, lvc)
     e = '⏹️' if q.is_stopped else ('▶️' if q.is_paused else '⏸️')
 
+    curr_t = q.current
+    assert curr_t
     assert q.np_position
-    if curr_t := q.current:
-        t_info = curr_t.track.info
-        req = ctx.cache.get_member(ctx.guild_id, curr_t.requester)
-        assert req is not None
 
-        title_pad = int(len(t_info.title) // 1.143)
-        username_pad = (27 * len(ctx.member.display_name) + 97) // 31
-        padding = min(54, max(title_pad, username_pad)) - 2
+    t_info = curr_t.track.info
+    req = ctx.cache.get_member(ctx.guild_id, curr_t.requester)
+    assert req is not None
 
-        song_len = ms_stamp(t_info.length)
-        np_pos = ms_stamp(q.np_position)
+    title_pad = int(len(t_info.title) // 1.143)
+    username_pad = (27 * len(ctx.member.display_name) + 97) // 31
+    padding = min(54, max(title_pad, username_pad)) - 2
 
-        progress = round(
-            (q.np_position / t_info.length)
-            * (padding + 12 - len(''.join((np_pos, song_len))))
+    song_len = ms_stamp(t_info.length)
+    np_pos = ms_stamp(q.np_position)
+
+    progress = round(
+        (q.np_position / t_info.length)
+        * (padding + 12 - len(''.join((np_pos, song_len))))
+    )
+
+    embed = (
+        hk.Embed(
+            title=f"🎶 {t_info.title}",
+            description="%s\n\n%s"
+            % (
+                f'📀 **{t_info.author}**',
+                f"{e} `{np_pos:─<{padding}}{song_len:─>12}`".replace('─', ' ', 1)[::-1]
+                .replace('─', ' ', 1)[::-1]
+                .replace('─', '▬', progress),
+            ),
+            url=t_info.uri,
+            color=(213, 111, 234),
+            # timestamp=dt.datetime.now().astimezone(),
         )
-
-        embed = (
-            hk.Embed(
-                title=f"🎶 {t_info.title}",
-                description="%s\n\n%s"
-                % (
-                    f'💿 **{t_info.author}**',
-                    f"{e} `{np_pos:─<{padding}}{song_len:─>12}`".replace('─', ' ', 1)[
-                        ::-1
-                    ]
-                    .replace('─', ' ', 1)[::-1]
-                    .replace('─', '▬', progress),
-                ),
-                url=t_info.uri,
-                color=(213, 111, 234),
-                # timestamp=dt.datetime.now().astimezone(),
-            )
-            .set_author(name="Now playing")
-            .set_footer(
-                f"Requested by: {req.display_name}",
-                icon=req.avatar_url or ctx.author.default_avatar_url,
-            )
-            .set_thumbnail(
-                f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"
-            )
+        .set_author(name="Now playing")
+        .set_footer(
+            f"Requested by: {req.display_name}",
+            icon=req.avatar_url or ctx.author.default_avatar_url,
         )
-        await reply(ctx, hidden=True, embed=embed)
-    else:
-        await err_reply(ctx, content="❗ Nothing is playing at the moment")
-        return
+        .set_thumbnail(
+            f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"
+        )
+    )
+    await reply(ctx, hidden=True, embed=embed)
 
 
 # Search
 
 
-@info.with_message_command
 @tj.with_greedy_argument('query')
 @tj.with_parser
 @tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
-async def search_m(
-    ctx: tj.abc.MessageContext,
-    query: str,
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-):
-    await search_(ctx, query, bot=bot, lvc=lvc)
-
-
-@info.with_slash_command
+#
 @tj.with_str_slash_option('query', "What to be queried?")
 @tj.as_slash_command(
     'search',
     "Searches for tracks on youtube from your query and lets you hear a part of it",
 )
-async def search_s(
-    ctx: tj.abc.SlashContext,
+async def search(
+    ctx: tj.abc.Context,
     query: str,
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
 ):
     await search_(ctx, query, bot=bot, lvc=lvc)
+
+
+@info.with_menu_command
+@tj.as_message_menu('Search this song up')
+async def search_c(
+    ctx: tj.abc.MenuContext,
+    msg: hk.Message,
+    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+) -> None:
+    if not msg.content:
+        await err_reply(ctx, content="❌ Cannot process an empty message")
+        return
+    await search_(ctx, msg.content, bot=bot, lvc=lvc)
 
 
 @attempt_to_connect
@@ -150,7 +134,7 @@ async def search_(
     assert ctx.guild_id is not None
     query = query.strip("<>|")
 
-    QUERIED_N = 5
+    QUERIED_N = 10
     PREVIEW_START = 50_000
     PREVIEW_TIME = 30_000
 
@@ -176,34 +160,49 @@ async def search_(
         )
     )
 
-    pre_row = ctx.rest.build_action_row()
-    ops_row = ctx.rest.build_action_row()
-    for i in map(str, range(1, len(queried[:QUERIED_N]) + 1)):
-        pre_row.add_button(hk_msg.ButtonStyle.SECONDARY, i).set_label(
+    pre_row_1 = ctx.rest.build_action_row()
+    components: list[hk.api.ActionRowBuilder] = []
+
+    for i in (pre_row_1_ := map(str, range(1, 1 + len(queried[:5])))):
+        pre_row_1.add_button(hk_msg.ButtonStyle.SECONDARY, i).set_label(
             i
         ).add_to_container()
+    if pre_row_1_:
+        components.append(pre_row_1)
 
+        pre_row_2 = ctx.rest.build_action_row()
+        for j in (pre_row_2_ := map(str, range(6, 6 + len(queried[5:10])))):
+            pre_row_2.add_button(hk_msg.ButtonStyle.SECONDARY, j).set_label(
+                j
+            ).add_to_container()
+        if pre_row_2_:
+            components.append(pre_row_2)
+
+    ops_row = ctx.rest.build_action_row()
     ops_row.add_button(hk_msg.ButtonStyle.SUCCESS, 'enqueue').set_label(
         "＋ Enqueue"
     ).add_to_container()
+
     ops_row.add_button(hk_msg.ButtonStyle.PRIMARY, 'link').set_label(
         "Get Link"
     ).add_to_container()
-    ops_row.add_button(hk_msg.ButtonStyle.DANGER, 'cancel').set_label(
-        "Cancel"
+    ops_row.add_button(hk_msg.ButtonStyle.DANGER, 'cancel').set_emoji(
+        c.WHITE_CROSS
     ).add_to_container()
+    components.append(ops_row)
 
     embed = hk.Embed(
         title=f"🔎 Searching for `{query}`",
     ).add_field("Search results", value=queried_msg)
     msg = await reply(
         ctx,
+        ensure_result=True,
         embed=embed,
-        components=[pre_row, ops_row],
+        components=components,
     )
     ch = await ctx.fetch_channel()
 
-    async def playing() -> bool:
+    async def on_going_tracks() -> bool:
         return bool((q := await get_queue(ctx, lvc)) and q.current)
 
     prior_stop = (await get_queue(ctx, lvc)).is_stopped
@@ -216,19 +215,16 @@ async def search_(
         selected: t.Optional[str] = None
         sel_msg: t.Optional[hk.Message] = None
 
-        if not await playing():
+        if not await on_going_tracks():
             await stop__(ctx, lvc)
 
         async for event in stream:
             inter = event.interaction
             assert isinstance(inter, hk.ComponentInteraction)
-            await inter.create_initial_response(
-                hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
-            )
             key = inter.custom_id
 
             if key == 'cancel':
-                if not await playing():
+                if not await on_going_tracks():
                     await lvc.stop(
                         ctx.guild_id,
                     )
@@ -246,9 +242,10 @@ async def search_(
 
                 selected = key
 
-                if await playing():
+                if await on_going_tracks():
                     sel_msg = await reply(
-                        ctx,
+                        inter,
+                        ensure_result=True,
                         content=f"👆 Selected track **`{key}`** `({track.info.title})`",
                     )
                     continue
@@ -256,9 +253,13 @@ async def search_(
                 # prev_start = PREVIEW_START
                 # prev_time = PREVIEW_TIME
 
+                await inter.create_initial_response(
+                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                )
                 sel_msg = await reply(
                     ctx,
-                    content=f"🎶 Playing a preview of **`{key}`** `({track.info.title})`",
+                    ensure_result=True,
+                    content=f"🎧 Playing a preview of **`{key}`** `({track.info.title})`",
                     delete_after=PREVIEW_TIME / 1000,
                 )
                 await lvc.play(ctx.guild_id, track).start_time_millis(
@@ -267,16 +268,19 @@ async def search_(
                 continue
 
             if selected is None:
-                await err_reply(ctx, content=f"❗ No tracks has been selected yet")
+                await err_reply(inter, content=f"❗ No tracks has been selected yet")
                 continue
             selected_t = queried[int(selected) - 1]
-            assert sel_msg is not None
             match key:
                 case 'enqueue':
-                    if not await playing():
+                    if not await on_going_tracks():
                         await lvc.stop(
                             ctx.guild_id,
                         )
+                    if sel_msg:
+                        await ch.delete_messages(sel_msg)
+                    if not prior_stop:
+                        await continue__(ctx, lvc)
                     async with access_queue(ctx, lvc) as q:
                         await enqueue_track__(
                             ctx,
@@ -286,25 +290,25 @@ async def search_(
                             respond=False,
                             ignore_stop=True,
                         )
-                    await ctx.edit_initial_response(
+                    await inter.create_initial_response(
+                        hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                    )
+                    await inter.edit_initial_response(
                         f"**🔎`＋`** Added `{selected_t.info.title}` to the queue",
                         embed=None,
                         user_mentions=False,
                         components=[],
                     )
-                    await ch.delete_messages(sel_msg)
-                    if not prior_stop:
-                        await continue__(ctx, lvc)
                     return
                 case 'link':
                     await reply(
-                        ctx, hidden=True, content=f"🌐 Link is <{selected_t.info.uri}>"
+                        inter, hidden=True, content=f"🌐 Link is {selected_t.info.uri}"
                     )
                 case _:
                     raise NotImplementedError
 
         await ctx.edit_initial_response(
-            components=(*disable_components(ctx.rest, pre_row, ops_row),)
+            components=(*disable_components(ctx.rest, *components),)
         )
         if not prior_stop:
             await continue__(ctx, lvc)
@@ -313,20 +317,11 @@ async def search_(
 # Queue
 
 
-@info.with_slash_command
 @tj.as_slash_command('queue', "Lists out the entire queue")
-async def queue_s(
-    ctx: tj.abc.SlashContext,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
-):
-    await queue_(ctx, lvc=lvc, bot=bot)
-
-
-@info.with_message_command
+#
 @tj.as_message_command('queue', 'q', 'all')
-async def queue_m(
-    ctx: tj.abc.MessageContext,
+async def queue(
+    ctx: tj.abc.Context,
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
 ):
@@ -368,10 +363,10 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
 
         return row
 
-    _i_ori = (q.pos - 2) // FIELD_SLICE + 1
+    _i_ori = (q.pos - 2) // Q_DIV + 1
     i = _i_ori
 
-    def _update_buttons(b: DisableableComponentsType):
+    def _update_buttons(b: EditableComponentsType):
         assert isinstance(b, hk.api.ButtonBuilder)
         return (
             (not pages[:i] and b.emoji == '◀️')
@@ -419,16 +414,18 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
                 case 'end':
                     i = pages_n - 1
                 case 'delete':
-                    await ctx.delete_initial_response()
+                    await inter.delete_initial_response()
                     return
 
             _row = _page_row(cancel_b=i == _i_ori)
             embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
 
-            await ctx.edit_initial_response(
+            await inter.edit_initial_response(
                 embed=embed,
                 components=(
-                    *disable_components(ctx.rest, _row, predicates=_update_buttons),
+                    *disable_components(
+                        inter.app.rest, _row, predicates=_update_buttons
+                    ),
                 ),
             )
 
@@ -440,26 +437,16 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
 # Lyrics
 
 
-@info.with_slash_command
 @tj.with_str_slash_option(
     'song', "What song? (If not given, the current song)", default=None
 )
 @tj.as_slash_command('lyrics', 'Attempts to find the lyrics of the current song')
-async def lyrics_s(
-    ctx: tj.abc.SlashContext,
-    song: t.Optional[str],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
-):
-    await lyrics_(ctx, song, lvc=lvc, bot=bot)
-
-
-@info.with_message_command
+#
 @tj.with_greedy_argument('song', default=None)
 @tj.with_parser
 @tj.as_message_command('lyrics', 'ly')
-async def lyrics_m(
-    ctx: tj.abc.MessageContext,
+async def lyrics(
+    ctx: tj.abc.Context,
     song: t.Optional[str],
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
@@ -504,12 +491,12 @@ async def lyrics_(
 
     try:
         async with trigger_thinking(ctx):
-            lyrics_data = await get_lyrics(song)
+            lyrics = await get_lyrics(song)
     except LyricsNotFound:
         await err_reply(ctx, content=f"❓ Could not find any lyrics for the song")
         return
 
-    for source in lyrics_data:
+    for source in lyrics:
         (
             ly_sel.add_option(source, source)
             .set_emoji(eval(f"c.{source.upper()}_EMOJI"))
@@ -517,9 +504,7 @@ async def lyrics_(
             .add_to_menu()
         )
 
-    icons: tuple[str] = tuple(
-        eval(f'c.{source.upper()}_ICON') for source in lyrics_data
-    )
+    icons: tuple[str] = tuple(eval(f'c.{source.upper()}_ICON') for source in lyrics)
 
     # (
     #     ly_sel.add_option('Cancel', 'cancel')
@@ -532,14 +517,14 @@ async def lyrics_(
         ly.source: hk.Embed(
             title='🎤 ' + ly.title,
             description=ly.lyrics
-            if len(ly.lyrics) <= 4_096 
+            if len(ly.lyrics) <= 4_096
             else (
                 wr(
                     ly.lyrics,
                     4_096,
                     '...'
                     if not ly.url
-                    else f"{wr(ly.lyrics, 3_996, '...')}\n\n**View full lyrics on:**\n{ly.url}",
+                    else f"{wr(ly.lyrics, 3_996, '...')}\n\n🔺 **View full lyrics on the link in the title**",
                 )
             ),
             url=ly.url,
@@ -547,7 +532,7 @@ async def lyrics_(
         .set_thumbnail(ly.thumbnail)
         .set_author(name=ly.artist, icon=ly.artist_icon, url=ly.artist_url)
         .set_footer(ly.source, icon=i)
-        for ly, i in zip(lyrics_data.values(), icons)
+        for ly, i in zip(lyrics.values(), icons)
     }
 
     ly_sel.set_placeholder("Select a Lyric source")
@@ -578,14 +563,14 @@ async def lyrics_(
             key = inter.custom_id
 
             if key == 'delete':
-                await ctx.delete_initial_response()
+                await inter.delete_initial_response()
                 return
 
             assert sel is not None
             if sel == _last_sel:
                 continue
             _last_sel = sel
-            await ctx.edit_initial_response(embed=embeds[sel])
+            await inter.edit_initial_response(embed=embeds[sel])
 
         await ctx.edit_initial_response(
             components=(*disable_components(ctx.rest, sel_row),)
@@ -603,6 +588,4 @@ async def lyrics_(
 # -
 
 
-@tj.as_loader
-def load_component(client: tj.abc.Client) -> None:
-    client.add_component(info.copy())
+loader = info.load_from_scope().make_loader()

@@ -11,6 +11,7 @@ import aiohttp
 import random as rd
 import typing as t
 import hashlib as hl
+import datetime as dt
 import requests as rq
 import traceback as tb
 import contextlib as ctxlib
@@ -18,12 +19,14 @@ import contextlib as ctxlib
 import attr as a
 import hikari as hk
 import tanjun as tj
+import yuyo as yy
+
+# import miru as mr
 import lavasnek_rs as lv
 import hikari.messages as hk_msg
 import lyricsgenius as lg
 
 from difflib import SequenceMatcher
-from functools import reduce
 from ytmusicapi import YTMusic
 
 from hikari.permissions import Permissions as hkperms

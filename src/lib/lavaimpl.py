@@ -1,6 +1,6 @@
 from ._imports import *
-from .errors import NotConnected, QueueIsEmpty
-from .utils import curr_time_ms, snowflakeify, Contextish
+from .errors import NotConnected, QueueEmpty
+from .utils import curr_time_ms, snowflakeify, GuildInferable, Contextish
 
 
 REPEAT_MODES_ALL = 'off|0|one|o|1|all|a|q'.split('|')
@@ -50,8 +50,8 @@ class QueueList(list):
     repeat_mode: RepeatMode = RepeatMode.NONE
     is_paused: bool = a.field(factory=bool, kw_only=True)
     is_stopped: bool = a.field(factory=bool, kw_only=True)
-    _last_np_position: t.Optional[int] = a.field(default=None, init=False)
-    _last_track_played: int = a.field(factory=curr_time_ms, init=False)
+    _paused_np_position: t.Optional[int] = a.field(default=None, init=False)
+    _curr_t_started: int = a.field(factory=curr_time_ms, init=False)
 
     @t.overload
     def __getitem__(self, y: int) -> lv.TrackQueue:
@@ -67,6 +67,12 @@ class QueueList(list):
     def __iter__(self) -> t.Iterator[lv.TrackQueue]:
         return super().__iter__()
 
+    def __repr__(self) -> str:
+        return "<<\n\t%s\n>>" % '\n\t'.join(
+            f'{i} {t.track.info.title}{" <-" if i == self.pos else ""}'
+            for i, t in enumerate(self)
+        )
+
     @classmethod
     def from_seq(cls, l: t.Sequence[lv.TrackQueue]):
         obj = cls()
@@ -76,16 +82,16 @@ class QueueList(list):
     @property
     def np_position(self) -> t.Optional[int]:
         if self.is_paused:
-            return self._last_np_position
+            return self._paused_np_position
         if not self.current:
             return None
 
-        return curr_time_ms() - self._last_track_played
+        return curr_time_ms() - self._curr_t_started
 
     @property
     def current(self) -> t.Optional[lv.TrackQueue]:
         if not self:
-            raise QueueIsEmpty
+            raise QueueEmpty
 
         if self.pos <= len(self) - 1:
             return self[self.pos]
@@ -99,14 +105,14 @@ class QueueList(list):
     @property
     def upcoming(self) -> list[lv.TrackQueue]:
         if not self:
-            raise QueueIsEmpty
+            raise QueueEmpty
 
         return self[self.pos + 1 :]
 
     @property
     def history(self) -> list[lv.TrackQueue]:
         if not self:
-            raise QueueIsEmpty
+            raise QueueEmpty
 
         return self[: self.pos]
 
@@ -133,7 +139,7 @@ class QueueList(list):
     @property
     def next(self) -> t.Optional[lv.TrackQueue]:
         if not self:
-            raise QueueIsEmpty
+            raise QueueEmpty
 
         pos = self.pos
 
@@ -154,7 +160,7 @@ class QueueList(list):
 
     def shuffle(self) -> None:
         if not self:
-            raise QueueIsEmpty
+            raise QueueEmpty
 
         upcoming = self.upcoming
         rd.shuffle(upcoming)
@@ -273,9 +279,15 @@ class Equalizer(object):
 
 @a.define
 class NodeData:
-    queue: QueueList = a.field(factory=QueueList, kw_only=True)
-    equalizer: Equalizer = a.field(factory=Equalizer, kw_only=True)
-    out_channel_id: t.Optional[hk.Snowflakeish] = a.field(default=None, kw_only=True)
+    queue: QueueList = a.field(factory=QueueList, init=False)
+    equalizer: Equalizer = a.field(factory=Equalizer, init=False)
+    out_channel_id: t.Optional[hk.Snowflakeish] = a.field(default=None, init=False)
+
+    _nowplaying_msg: t.Optional[hk.Message] = a.field(default=None, init=False)
+    _nowplaying_components: t.Optional[t.Sequence[hk.api.ActionRowBuilder]] = a.field(
+        default=None, init=False
+    )
+    _track_finished_fired: bool = a.field(factory=bool, init=False)
     ...
 
 
@@ -284,35 +296,94 @@ loggerX.setLevel(logging.DEBUG)
 
 
 class EventHandler:
-    async def track_start(self, lvc: lv.Lavalink, event: lv.TrackStart) -> None:
+    async def track_start(
+        self,
+        lvc: lv.Lavalink,
+        event: lv.TrackStart,
+    ) -> None:
         t = (await lvc.decode_track(event.track)).title
 
-        async with access_queue(event.guild_id, lvc) as q:
-            l = len(q)
-            q._last_track_played = curr_time_ms()
+        async with access_data(event.guild_id, lvc) as d:
+            q = d.queue
+            l = len(d.queue)
+            if q.is_stopped:
+                return
+            q._curr_t_started = curr_time_ms()
             loggerX.debug(
                 f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] started: '{t}'"
             )
 
-            from src.client import client
+            from src.client import client, guild_config
+            from .music import generate_nowplaying_embed__
 
-            ch = (await get_data(event.guild_id, lvc)).out_channel_id
-            assert ch
-            # await client.rest.create_message(
-            #     ch,
-            # )
+            cfg = guild_config.copy()
+
+            if cfg[str(event.guild_id)].setdefault('send_nowplaying_msg', False):
+                ch = d.out_channel_id
+                assert ch and client.cache
+                embed = await generate_nowplaying_embed__(
+                    event.guild_id, client.cache, lvc
+                )
+                controls = client.rest.build_action_row()
+                (
+                    controls.add_button(hk_msg.ButtonStyle.SECONDARY, 'lyra_shuffle')
+                    .set_emoji('🔀')
+                    .add_to_container()
+                )
+                (
+                    controls.add_button(hk_msg.ButtonStyle.SECONDARY, 'lyra_previous')
+                    .set_emoji('⏮️')
+                    .add_to_container()
+                )
+                (
+                    controls.add_button(hk_msg.ButtonStyle.PRIMARY, 'lyra_playpause')
+                    .set_emoji('⏸️')
+                    .add_to_container()
+                )
+                (
+                    controls.add_button(hk_msg.ButtonStyle.SECONDARY, 'lyra_skip')
+                    .set_emoji('⏭️')
+                    .add_to_container()
+                )
+                (
+                    controls.add_button(hk_msg.ButtonStyle.SUCCESS, 'lyra_repeat')
+                    .set_emoji('➡️')
+                    .add_to_container()
+                )
+
+                d._nowplaying_components = components = (controls,)
+                d._nowplaying_msg = await client.rest.create_message(
+                    ch, embed=embed, components=components
+                )
 
             # await asyncio.sleep(1)
             # await skip__(event.guild_id, lvc)
 
     async def track_finish(self, lvc: lv.Lavalink, event: lv.TrackFinish) -> None:
         t = (await lvc.decode_track(event.track)).title
-        async with access_queue(event.guild_id, lvc) as q:
+        async with access_data(event.guild_id, lvc) as d:
+            q = d.queue
             l = len(q)
+
+            from src.client import client, guild_config
+
+            cfg = guild_config.copy()
+
+            if cfg[str(event.guild_id)].get('send_nowplaying_msg', False) and (
+                msg := d._nowplaying_msg
+            ):
+                ch = d.out_channel_id
+                assert ch
+                try:
+                    await client.rest.delete_messages(ch, msg)
+                finally:
+                    d._nowplaying_msg = d._nowplaying_components = None
+
             if q.is_stopped:
                 loggerX.info(
                     f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] stopped: '{t}'"
                 )
+                d._track_finished_fired = True
                 return
             try:
                 if next_t := q.next:
@@ -325,12 +396,13 @@ class EventHandler:
                         q.adv()
                     case RepeatMode.ONE:
                         pass
-            except QueueIsEmpty:
+            except QueueEmpty:
                 return
             finally:
                 loggerX.debug(
                     f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] ended  : '{t}'"
                 )
+                d._track_finished_fired = True
 
     async def track_exception(self, lvc: lv.Lavalink, event: lv.TrackException) -> None:
         t = (await lvc.decode_track(event.track)).title
@@ -341,9 +413,11 @@ class EventHandler:
 
         match event.exception_severity:
             case 'COMMON':
-                loggerX.warning(msg.format('blocked'))
+                loggerX.warning(msg.format('inaccessible'))
             case 'SUSPICIOUS':
                 loggerX.error(msg.format('malformed'))
+            case 'FAULT':
+                loggerX.critical(msg.format('corrupted'))
             case _:
                 raise NotImplementedError
 
@@ -381,39 +455,50 @@ async def set_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData, /) 
 
 
 @ctxlib.asynccontextmanager
-async def access_queue(ctx_g: Contextish, lvc: lv.Lavalink, /):
-    ctx_g = snowflakeify(ctx_g)
+async def access_queue(g_inf: GuildInferable, lvc: lv.Lavalink, /):
+    g_inf = snowflakeify(g_inf)
 
-    data = await get_data(ctx_g, lvc)
+    data = await get_data(g_inf, lvc)
     try:
         yield data.queue
     finally:
-        await set_data(ctx_g, lvc, data)
+        await set_data(g_inf, lvc, data)
 
 
 @ctxlib.asynccontextmanager
-async def access_equalizer(ctx_g: Contextish, lvc: lv.Lavalink, /):
-    ctx_g = snowflakeify(ctx_g)
+async def access_equalizer(g_inf: GuildInferable, lvc: lv.Lavalink, /):
+    g_inf = snowflakeify(g_inf)
 
-    data = await get_data(ctx_g, lvc)
+    data = await get_data(g_inf, lvc)
     try:
         yield data.equalizer
     finally:
-        await set_data(ctx_g, lvc, data)
+        await set_data(g_inf, lvc, data)
 
 
 @ctxlib.asynccontextmanager
-async def access_node_data(ctx_g: Contextish, lvc: lv.Lavalink, /):
-    ctx_g = snowflakeify(ctx_g)
+async def access_data(g_inf: GuildInferable, lvc: lv.Lavalink, /):
+    g_inf = snowflakeify(g_inf)
 
-    data = await get_data(ctx_g, lvc)
+    data = await get_data(g_inf, lvc)
     try:
         yield data
     finally:
-        await set_data(ctx_g, lvc, data)
+        await set_data(g_inf, lvc, data)
 
 
-async def get_queue(ctx_g: Contextish, lvc: lv.Lavalink, /) -> QueueList:
-    ctx_g = snowflakeify(ctx_g)
+async def get_queue(g_inf: GuildInferable, lvc: lv.Lavalink, /) -> QueueList:
+    g_inf = snowflakeify(g_inf)
 
-    return (await get_data(ctx_g, lvc)).queue
+    return (await get_data(g_inf, lvc)).queue
+
+
+async def edit_now_playing_components(
+    rest: hk.api.RESTClient,
+    data: NodeData,
+    components: tuple[hk.api.ComponentBuilder],
+    /,
+):
+    if _np_msg := data._nowplaying_msg:
+        assert _np_msg and components and data.out_channel_id
+        await rest.edit_message(data.out_channel_id, _np_msg, components=components)

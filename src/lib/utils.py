@@ -3,13 +3,14 @@ import src.lib.consts as c
 from .errors import *
 
 
-Contextish = tj.abc.Context | hk.Snowflakeish
+Contextish = tj.abc.Context | hk.ComponentInteraction
+GuildInferable = Contextish | hk.Snowflakeish
 VoidCoroutine = t.Coroutine[t.Any, t.Any, None]
-DisableableComponentsType = (
+EditableComponentsType = (
     hk.api.ButtonBuilder[hk.api.ActionRowBuilder]
     | hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
 )
-DisableableComponents = hk.api.ButtonBuilder | hk.api.SelectMenuBuilder
+EditableComponents = hk.api.ButtonBuilder | hk.api.SelectMenuBuilder
 
 Sentinel = object
 
@@ -38,7 +39,7 @@ GENIUS_REGEX_2 = re.compile(r'^.+ Lyrics\n')
 
 TIMEOUT = 60
 RETRIES = 3
-FIELD_SLICE = 15
+Q_DIV = 15
 
 hooks = tj.AnyHooks()
 guild_c = tj.checks.GuildCheck(
@@ -54,8 +55,9 @@ REMOVED: Sentinel = object()
 
 
 @a.define(hash=True)
-class GuildSettings(dict):
-    pass
+class GuildConfig(dict):
+    def __getitem__(self, key: str) -> dict:
+        return super().__getitem__(key)
 
 
 class LyricsData(t.NamedTuple):
@@ -144,19 +146,19 @@ async def get_lyrics_ge_2(song: str, /) -> t.Optional[LyricsData]:
 
 
 async def get_lyrics(song: str, /) -> dict[str, LyricsData]:
-    tests = (get_lyrics_ge_2, get_lyrics_yt)
-    if not (lyrics := {l.source: l for t in tests if (l := await t(song))}):
+    tests = (get_lyrics_ge_2(song), get_lyrics_yt(song))
+    if not any(lyrics := await asyncio.gather(*tests)):
         raise LyricsNotFound
-    return lyrics
+    return {l.source: l for l in lyrics if l}
 
 
-async def err_reply(ctx: tj.abc.Context, /, *, del_after: float = 3.5, **kwargs: t.Any):
+async def err_reply(ctx: Contextish, /, *, del_after: float = 3.5, **kwargs: t.Any):
     return await reply(ctx, hidden=True, delete_after=del_after, **kwargs)
 
 
 @t.overload
 async def reply(
-    ctx: tj.abc.Context,
+    ctx_: Contextish,
     /,
     *,
     hidden: bool = False,
@@ -168,7 +170,7 @@ async def reply(
 
 @t.overload
 async def reply(
-    ctx: tj.abc.Context,
+    ctx_: Contextish,
     /,
     *,
     hidden: bool = False,
@@ -179,61 +181,121 @@ async def reply(
 
 
 async def reply(
-    ctx: tj.abc.Context,
+    ctx_: Contextish,
     /,
     *,
     hidden: bool = False,
     ensure_result: bool = False,
     **kwargs: t.Any,
 ):
-    if isinstance(ctx, tj.abc.MessageContext):
-        msg = await ctx.respond(**kwargs, reply=True)
-    else:
-        assert isinstance(ctx, tj.abc.SlashContext)
-        flags = msgflag.EPHEMERAL if hidden else hk.UNDEFINED
-        try:
-            if ctx.has_responded:
-                msg = await ctx.create_followup(**kwargs, flags=flags)
-            else:
-                msg = await ctx.create_initial_response(**kwargs, flags=flags)
-        except (RuntimeError, hk.NotFoundError):
-            msg = await ctx.edit_initial_response(**kwargs)
+    msg: t.Optional[hk.Message] = None
+    try:
+        if isinstance(ctx_, hk.ComponentInteraction):
+            kwargs.pop('delete_after', None)
 
-    return msg if not ensure_result else await ctx.fetch_last_response()
+        flags = msgflag.EPHEMERAL if hidden else hk.UNDEFINED
+        if isinstance(ctx_, tj.abc.MessageContext):
+            msg = await ctx_.respond(**kwargs, reply=True)
+        else:
+            assert isinstance(ctx_, hk.ComponentInteraction | tj.abc.AppCommandContext)
+            if isinstance(ctx_, tj.abc.AppCommandContext):
+                if ctx_.has_responded:
+                    msg = await ctx_.create_followup(**kwargs, flags=flags)
+                else:
+                    msg = await ctx_.create_initial_response(**kwargs, flags=flags)
+            else:
+                assert isinstance(ctx_, hk.ComponentInteraction)
+                msg = await ctx_.create_initial_response(
+                    hk.ResponseType.MESSAGE_CREATE, **kwargs, flags=flags
+                )
+    except (RuntimeError, hk.NotFoundError):
+        msg = await ctx_.edit_initial_response(**kwargs)
+    finally:
+        if not ensure_result or msg:
+            return msg
+        if isinstance(ctx_, hk.ComponentInteraction):
+            return await ctx_.fetch_initial_response()
+        return await ctx_.fetch_last_response()
 
 
 def disable_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    predicates: t.Callable[[DisableableComponentsType], bool] = lambda _: True,
+    predicates: t.Callable[[EditableComponentsType], bool] = lambda _: True,
+) -> tuple[hk.api.ActionRowBuilder, ...]:
+    return edit_components(
+        rest,
+        *action_rows,
+        edits=lambda x: x.set_is_disabled(True),
+        reverts=lambda x: x.set_is_disabled(False),
+        predicates=predicates,
+    )
+
+
+_TC = t.TypeVar(
+    '_TC',
+    hk.api.ComponentBuilder,
+    hk.api.ButtonBuilder[hk.api.ActionRowBuilder],
+    hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder],
+)
+
+
+def edit_components(
+    rest: hk.api.RESTClient,
+    /,
+    *action_rows: hk.api.ActionRowBuilder,
+    edits: t.Callable[[_TC], _TC],
+    reverts: t.Callable[[_TC], _TC] = lambda _: _,
+    predicates: t.Callable[[_TC], bool] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder, ...]:
     action_rows_ = list(action_rows)
     for a in action_rows_:
         components = a.components
         a = rest.build_action_row()
         for c in map(
-            lambda c_: c_
-            if not isinstance(c_, DisableableComponents)
-            else (
-                c_.set_is_disabled(True)
-                if predicates(c_)
-                else c_.set_is_disabled(False)
-            ),
+            lambda c_: (edits(c_) if predicates(c_) else reverts(c_)),
             components,
         ):
-            assert isinstance(c, DisableableComponents)
+            assert isinstance(c, EditableComponents)
             a.add_component(c)
     return tuple(action_rows_)
 
 
-def trigger_thinking(ctx: tj.abc.Context, /, *, ephemeral: bool = False, flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED):
+@t.overload
+def trigger_thinking(
+    ctx: tj.abc.MessageContext,
+    /,
+    *,
+    ephemeral: bool = False,
+) -> hk.api.TypingIndicator:
+    ...
+
+
+@t.overload
+def trigger_thinking(
+    ctx: tj.abc.Context,
+    /,
+    *,
+    ephemeral: bool = False,
+    flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED,
+) -> ctxlib._AsyncGeneratorContextManager[None]:
+    ...
+
+
+def trigger_thinking(
+    ctx: tj.abc.Context,
+    /,
+    *,
+    ephemeral: bool = False,
+    flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED,
+):
     if isinstance(ctx, tj.abc.MessageContext):
         ch = ctx.get_channel()
         assert ch
         return ch.trigger_typing()
-    assert isinstance(ctx, tj.abc.SlashContext)
-    
+    assert isinstance(ctx, tj.abc.AppCommandContext)
+
     @ctxlib.asynccontextmanager
     async def _defer():
         await ctx.defer(ephemeral=ephemeral, flags=flags)
@@ -241,11 +303,12 @@ def trigger_thinking(ctx: tj.abc.Context, /, *, ephemeral: bool = False, flags: 
             yield
         finally:
             return
-        
+
     return _defer()
 
 
 _P = t.ParamSpec('_P')
+
 
 def with_message_command_group_template(func: t.Callable[_P, VoidCoroutine], /):
     async def inner(*args: _P.args, **kwargs: _P.kwargs):
@@ -286,6 +349,13 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
 
     await ctx.respond(f"⁉️ An unhandled error occurred: {error_tb}")
     return False
+
+
+@hooks.with_pre_execution
+async def pre_execution(
+    ctx: tj.abc.Context, cfg: GuildConfig = tj.inject(type=GuildConfig)
+) -> None:
+    cfg.setdefault(str(ctx.guild_id), {})
 
 
 def curr_time_ms() -> int:
@@ -343,11 +413,54 @@ def format_flags(flags: e.Flag, /) -> str:
     return ' & '.join(f.replace('_', ' ').title() for f in str(flags).split('|'))
 
 
-def snowflakeify(ctx_g: Contextish, /):
-    if isinstance(ctx_g, tj.abc.Context):
-        assert ctx_g.guild_id is not None
-        ctx_g = ctx_g.guild_id
-    return ctx_g
+def snowflakeify(g_inf: GuildInferable, /):
+    if isinstance(g_inf, tj.abc.Context | hk.ComponentInteraction):
+        assert g_inf.guild_id
+        return g_inf.guild_id
+    return g_inf
+
+
+def get_pref(ctx: Contextish):
+    if isinstance(ctx, yy.ComponentContext):
+        return next(iter(get_client(ctx).prefixes))
+    if isinstance(ctx, tj.abc.MessageContext):
+        return next(iter(ctx.client.prefixes))
+    if isinstance(ctx, tj.abc.SlashContext):
+        return '/'
+    if isinstance(ctx, tj.abc.AppCommandContext):
+        return '.>'
+    return '/'
+
+
+async def fetch_permissions(ctx: Contextish) -> hk.Permissions:
+    if isinstance(ctx, tj.abc.Context):
+        member = ctx.member
+        assert member
+        auth_perms = await tj.utilities.fetch_permissions(
+            ctx.client, member, channel=ctx.channel_id
+        )
+    else:
+        member = ctx.member
+        assert member
+        auth_perms = member.permissions
+    return auth_perms
+
+
+def get_client(ctx: Contextish):
+    if isinstance(ctx, tj.abc.Context):
+        return ctx.client
+    else:
+        from src.client import client
+
+        return client
+
+
+def get_cmd_n(ctx: tj.abc.Context):
+    cmd = ctx.command
+    if isinstance(cmd, tj.abc.MessageCommand):
+        return next(iter(cmd.names))
+    assert isinstance(cmd, tj.abc.SlashCommand | tj.abc.MenuCommand)
+    return cmd.name
 
 
 _E = t.TypeVar('_E')

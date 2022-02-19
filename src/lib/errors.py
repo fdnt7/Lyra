@@ -103,7 +103,7 @@ class NotPlaying(PlaybackException):
 
 
 @a.define(init=False)
-class QueueIsEmpty(PlaybackException):
+class QueueEmpty(PlaybackException):
     pass
 
 

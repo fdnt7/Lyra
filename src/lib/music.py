@@ -1,11 +1,16 @@
 from .utils import *
+from .checks import check, Checks
 from .lavaimpl import (
     get_queue,
+    get_data,
+    set_data,
     access_queue,
-    access_node_data,
+    access_data,
     access_equalizer,
+    edit_now_playing_components,
     QueueList,
     RepeatMode,
+    NodeData,
 )
 
 
@@ -22,7 +27,9 @@ def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
     async def inner(*args: _P.args, **kwargs: _P.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
         lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), None)
+
         assert ctx and lvc
+        p = get_pref(ctx)
 
         assert ctx.guild_id is not None
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
@@ -35,7 +42,7 @@ def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
                 except NotInVoice:
                     await err_reply(
                         ctx,
-                        content=f"❌ Please join a voice channel first. You can also do `/join channel:` `[🔊 ...]`",
+                        content=f"❌ Please join a voice channel first. You can also do `{p}join channel:` `[🔊 ...]`",
                     )
                     return
                 except TimeoutError:
@@ -67,16 +74,12 @@ async def init_listeners_voting(
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
     cmd = ctx.command
-    if isinstance(cmd, tj.abc.MessageCommand):
-        cmd_n = f'{next(iter(ctx.client.prefixes))}{next(iter(cmd.names))}'
-    else:
-        assert isinstance(cmd, tj.abc.SlashCommand)
-        cmd_n = f'/{cmd.name}'
+    cmd_n = ''.join((get_pref(ctx), get_cmd_n(ctx)))
 
     row = (
         ctx.rest.build_action_row()
         .add_button(hk_msg.ButtonStyle.SUCCESS, 'vote')
-        .set_label('✔')
+        .set_emoji('🗳️')
         .add_to_container()
     )
 
@@ -94,7 +97,7 @@ async def init_listeners_voting(
         )
     )
 
-    voted: set[hk.Snowflake] = set()
+    voted = {ctx.author.id}
     threshold = round((len(listeners) + 1) / 2)
 
     pad_f: t.Callable[[int], int] = lambda x: int(38 * x / 31 + 861 / 31)
@@ -110,7 +113,7 @@ async def init_listeners_voting(
         return hk.Embed(
             title=f"🎫 Voting for command `{cmd_n}`",
             description=f"{m.mention} wanted to use the command `{cmd_n}`\n\n`{vote_b}` **{vote_n}/{threshold}**{' 🎉' if vote_n==threshold else ''}",
-            color=(194, 206, 213),
+            color=0xC2CED5,
         )
 
     msg = await reply(
@@ -121,11 +124,9 @@ async def init_listeners_voting(
     )
 
     np = (await get_queue(ctx, lvc)).current
-    assert np
+    np_timeout = TIMEOUT if not np else np.track.info.length // 1_000
 
-    with bot.stream(
-        hk.InteractionCreateEvent, timeout=min(TIMEOUT, np.track.info.length // 1000)
-    ).filter(
+    with bot.stream(hk.InteractionCreateEvent, timeout=min(TIMEOUT, np_timeout)).filter(
         lambda e: isinstance(e.interaction, hk.ComponentInteraction)
         and e.interaction.message == msg
         and e.interaction.user.id in {u.user_id for u in listeners}
@@ -134,27 +135,24 @@ async def init_listeners_voting(
         async for event in stream:
             inter = event.interaction
             assert isinstance(inter, hk.ComponentInteraction)
-            await inter.create_initial_response(
-                hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
-            )
-
-            # print(inter.message, msg)
-            # print(inter.user.id, {u.user_id for u in listeners})
 
             key = inter.custom_id
             if key == 'vote':
                 if (user_id := inter.user.id) in voted:
-                    await err_reply(ctx, content="❗ You've already voted")
+                    await err_reply(inter, content="❗ You've already voted")
                     continue
 
                 voted.add(user_id)
 
-                await ctx.edit_initial_response(embed=v_embed())
+                await inter.create_initial_response(
+                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                )
+                await inter.edit_initial_response(embed=v_embed())
 
             if len(voted) >= threshold:
-                await reply(ctx, content='🗳️ Vote threshold reached')
-                await ctx.edit_initial_response(
-                    components=(*disable_components(ctx.rest, row),)
+                await reply(inter, content='☑️ Vote threshold reached')
+                await inter.edit_initial_response(
+                    components=(*disable_components(inter.app.rest, row),)
                 )
                 return
 
@@ -162,6 +160,45 @@ async def init_listeners_voting(
             components=(*disable_components(ctx.rest, row),)
         )
         raise VotingTimeout
+
+
+async def generate_nowplaying_embed__(
+    guild_id: hk.Snowflakeish, cache: hk.api.Cache, lvc: lv.Lavalink, /
+):
+    q = await get_queue(guild_id, lvc)
+    # e = '⏹️' if q.is_stopped else ('▶️' if q.is_paused else '⏸️')
+
+    curr_t = q.current
+    assert curr_t
+    assert q.np_position
+
+    t_info = curr_t.track.info
+    req = cache.get_member(guild_id, curr_t.requester)
+    assert req, "That member has left the guild"
+
+    song_len = ms_stamp(t_info.length)
+    # np_pos = q.np_position // 1_000
+    # now = int(time.time())
+
+    embed = (
+        hk.Embed(
+            title=f"🎧 {t_info.title}",
+            description=f'📀 **{t_info.author}** ({song_len})',
+            url=t_info.uri,
+            color=0xF1656F,
+            timestamp=dt.datetime.now().astimezone(),
+        )
+        .set_author(name="Currently playing")
+        .set_footer(
+            f"Requested by: {req.display_name}",
+            icon=req.avatar_url or req.default_avatar_url,
+        )
+        .set_thumbnail(
+            f"https://i.ytimg.com/vi/{t_info.identifier}/maxresdefault.jpg"
+            # f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"
+        )
+    )
+    return embed
 
 
 music_h = tj.AnyHooks()
@@ -178,17 +215,15 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
 @music_h.with_post_execution
 async def post_execution(
     ctx: tj.abc.Context,
-    gsts: GuildSettings = tj.injected(type=GuildSettings),
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    cfg: GuildConfig = tj.inject(type=GuildConfig),
 ) -> None:
     assert ctx.guild_id
-    if (g := str(ctx.guild_id)) not in gsts:
-        gsts[g] = {'prefixes': []}
 
-    from src.lib.music import access_node_data
+    from src.lib.music import access_data
 
     try:
-        async with access_node_data(ctx, lvc) as d:
+        async with access_data(ctx, lvc) as d:
             d.out_channel_id = ctx.channel_id
     except NotConnected:
         pass
@@ -279,7 +314,7 @@ async def join__(
     if old_conn and old_channel:
         raise ChannelChange(old_channel, target_channel)
 
-    async with access_node_data(ctx, lvc) as d:
+    async with access_data(ctx, lvc) as d:
         d.out_channel_id = ctx.channel_id
 
     loggerA.debug(f"In guild {ctx.guild_id} joined channel {target_channel}")
@@ -329,12 +364,22 @@ async def cleanups__(
 loggerB = logging.getLogger(__name__ + '.playback')
 
 
-async def stop__(ctx_g: Contextish, lvc: lv.Lavalink, /) -> None:
-    ctx_g = snowflakeify(ctx_g)
-    async with access_queue(ctx_g, lvc) as q:
+async def stop__(g_inf: GuildInferable, lvc: lv.Lavalink, /) -> None:
+    g = snowflakeify(g_inf)
+    async with access_queue(g, lvc) as q:
         q.is_stopped = True
 
-    await lvc.stop(ctx_g)  # Stop the player
+    await lvc.stop(g)
+
+
+async def stop_in_ctx__(
+    g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /
+) -> None:
+    g = snowflakeify(g_inf)
+
+    data.queue.is_stopped = True
+    await set_data(g, lvc, data)
+    await lvc.stop(g)
 
 
 async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
@@ -343,18 +388,27 @@ async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
         q.is_stopped = False
 
 
-@ctxlib.asynccontextmanager
-async def while_stop(ctx_g: Contextish, lvc: lv.Lavalink, q: QueueList, /):
-    await stop__(ctx_g, lvc)
+async def wait_for_track_finish_event_fire(
+    g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /
+):
+    while not (await get_data(snowflakeify(g_inf), lvc))._track_finished_fired:
+        await asyncio.sleep(0.333)
     await asyncio.sleep(STOP_REFRESH)
+    data._track_finished_fired = False
+
+
+@ctxlib.asynccontextmanager
+async def while_stop(g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /):
+    await stop_in_ctx__(g_inf, lvc, data)
     try:
         yield
     finally:
-        q.is_stopped = False
+        await wait_for_track_finish_event_fire(g_inf, lvc, data)
+        data.queue.is_stopped = False
 
 
 async def set_pause__(
-    ctx_g: Contextish,
+    g_inf: GuildInferable,
     lvc: lv.Lavalink,
     /,
     *,
@@ -362,48 +416,82 @@ async def set_pause__(
     respond: bool = False,
     strict: bool = False,
 ) -> None:
-    _ctx = ctx_g if isinstance(ctx_g, tj.abc.Context) else None
-    ctx_g = snowflakeify(ctx_g)
+    _ctx = g_inf if isinstance(g_inf, Contextish) else None
+    g = snowflakeify(g_inf)
 
     try:
-        async with access_queue(ctx_g, lvc) as q:
-            if q.is_stopped:
-                if strict:
-                    raise TrackStopped
+        d = await get_data(g, lvc)
+        q = d.queue
+        if q.is_stopped:
+            if strict:
+                raise TrackStopped
+            return
+        if pause is None:
+            pause = not q.is_paused
+        if respond and _ctx:
+            if pause and q.is_paused:
+                await err_reply(_ctx, content="❗ Already paused")
                 return
-            if pause is None:
-                pause = not q.is_paused
-            if respond and _ctx:
-                if pause and q.is_paused:
-                    await err_reply(_ctx, content="❗ Already paused")
-                    return
-                if not (pause or q.is_paused):
-                    await err_reply(_ctx, content="❗ Already resumed")
-                    return
+            if not (pause or q.is_paused):
+                await err_reply(_ctx, content="❗ Already resumed")
+                return
 
-            np_pos = q.np_position
-            if np_pos is None:
-                raise NotPlaying
+        np_pos = q.np_position
+        if np_pos is None:
+            raise NotPlaying
 
-            q._last_np_position = np_pos if pause else curr_time_ms() - np_pos
-            q.is_paused = pause
-            if pause:
-                await lvc.pause(ctx_g)
-                msg = "▶️ Paused"
-            else:
-                await lvc.resume(ctx_g)
-                msg = "⏸️ Resumed"
+        q.is_paused = pause
+        if pause:
+            q._paused_np_position = np_pos
+            await lvc.pause(g)
+            e = '▶️'
+            msg = "Paused"
+        else:
+            q._curr_t_started = curr_time_ms() - np_pos
+            await lvc.resume(g)
+            e = '⏸️'
+            msg = "Resumed"
+
+        await set_data(g, lvc, d)
         if respond:
-            assert _ctx is not None
-            await reply(_ctx, content=msg)
-    except (QueueIsEmpty, NotPlaying):
+            assert _ctx
+            await reply(_ctx, content=f"{e} {msg}")
+
+        if d._nowplaying_msg:
+            if isinstance(_ctx, hk.ComponentInteraction):
+                rest = _ctx.app.rest
+            else:
+                assert isinstance(_ctx, tj.abc.Context)
+                rest = _ctx.rest
+
+            assert d._nowplaying_components
+            components = edit_components(
+                rest,
+                *d._nowplaying_components,
+                edits=lambda x: x.set_emoji(e),
+                predicates=lambda x: x.emoji in {'▶️', '⏸️'},
+            )
+
+            await edit_now_playing_components(rest, d, components)
+    except (QueueEmpty, NotPlaying):
         if strict:
             raise
         pass
 
 
+@check(
+    Checks.PLAYING
+    | Checks.ADVANCE
+    | Checks.CONN
+    | Checks.QUEUE
+    | Checks.ALONE_OR_CURR_T_YOURS
+)
+async def play_pause_impl(ctx: Contextish, /, *, lvc: lv.Lavalink):
+    await set_pause__(ctx, lvc, pause=None, respond=True)
+
+
 async def skip__(
-    ctx_g: Contextish,
+    g_inf: GuildInferable,
     lvc: lv.Lavalink,
     /,
     *,
@@ -411,41 +499,49 @@ async def skip__(
     change_repeat: bool = False,
     change_stop: bool = True,
 ) -> t.Optional[lv.TrackQueue]:
-    guild = snowflakeify(ctx_g)
+    guild = snowflakeify(g_inf)
 
     async with access_queue(guild, lvc) as q:
         skip = q.current
         if change_repeat:
             q.reset_repeat()
+        await lvc.stop(guild)
         if q.is_stopped and (next_t := q.next):
             if advance:
                 q.adv()
             if change_stop:
                 q.is_stopped = False
             await lvc.play(guild, next_t.track).start()
-            await set_pause__(ctx_g, lvc, pause=False)
-            return skip
-        try:
-            return skip
-        finally:
-            await lvc.stop(guild)
+            await set_pause__(g_inf, lvc, pause=False)
+        return skip
+
+
+async def skip_impl(
+    ctx_: Contextish, /, *, lvc: lv.Lavalink, bot: t.Optional[hk.GatewayBot] = None
+):
+    skip = await skip__(ctx_, lvc, change_repeat=True)
+
+    assert skip is not None
+    await reply(ctx_, content=f"⏭️ ~~`{skip.track.info.title}`~~")
 
 
 async def back__(
-    ctx_g: Contextish,
+    g_inf: GuildInferable,
     lvc: lv.Lavalink,
     /,
     *,
     advance: bool = True,
     change_repeat: bool = False,
 ) -> lv.TrackQueue:
-    ctx_g = snowflakeify(ctx_g)
+    g_inf = snowflakeify(g_inf)
 
-    async with access_queue(ctx_g, lvc) as q:
+    async with access_data(g_inf, lvc) as d:
+        q = d.queue
         i = q.pos
         if change_repeat:
             q.reset_repeat()
-        async with while_stop(ctx_g, lvc, q):
+
+        async with while_stop(g_inf, lvc, d):
             match q.repeat_mode:
                 case RepeatMode.ALL:
                     i -= 1
@@ -458,12 +554,25 @@ async def back__(
                     prev = q.history[-1]
                     i -= 1
 
-        if advance:
-            q.pos = i
+            if advance:
+                q.pos = i
 
-        await lvc.play(ctx_g, prev.track).start()
-        await set_pause__(ctx_g, lvc, pause=False)
-        return prev
+        await lvc.play(g_inf, prev.track).start()
+    await set_pause__(g_inf, lvc, pause=False)
+    return prev
+
+
+async def previous_impl(
+    ctx_: Contextish, /, *, lvc: lv.Lavalink, bot: t.Optional[hk.GatewayBot] = None
+):
+    if (
+        q := await get_queue(ctx_, lvc)
+    ).repeat_mode is RepeatMode.NONE and not q.history:
+        await err_reply(ctx_, content="❗ This is the start of the queue")
+        return
+
+    prev = await back__(ctx_, lvc)
+    await reply(ctx_, content=f"⏮️ **`{prev.track.info.title}`**")
 
 
 async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
@@ -474,7 +583,7 @@ async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
         assert q.current is not None
         if total_ms >= (song_len := q.current.track.info.length):
             raise IllegalArgument(Argument(total_ms, song_len))
-        q._last_track_played = curr_time_ms() - total_ms
+        q._curr_t_started = curr_time_ms() - total_ms
         await lvc.seek_millis(ctx.guild_id, total_ms)
         return total_ms
 
@@ -559,7 +668,8 @@ async def remove_track__(
 ) -> lv.TrackQueue:
     assert ctx.guild_id is not None
 
-    q = await get_queue(ctx, lvc)
+    d = await get_data(ctx.guild_id, lvc)
+    q = d.queue
     np = q.current
     if track is None:
         if not np:
@@ -588,48 +698,66 @@ async def remove_track__(
 
         # q.is_stopped = False
 
-    async with access_queue(ctx, lvc) as q:
-        if rm == np:
-            async with while_stop(ctx, lvc, q):
-                await skip__(ctx, lvc, advance=False, change_repeat=True)
+    if rm == np:
+        async with while_stop(ctx, lvc, d):
+            await skip__(ctx, lvc, advance=False, change_repeat=True)
 
-        if i < q.pos:
-            q.pos = max(0, q.pos - 1)
-        q.sub(rm)
+    if i < q.pos:
+        q.pos = max(0, q.pos - 1)
+    q.sub(rm)
 
-        loggerC.info(
-            f"In guild {ctx.guild_id} track [{i: >3}+1/{len(q)}] removed: '{rm.track.info.title}'"
-        )
-        return rm
+    loggerC.info(
+        f"In guild {ctx.guild_id} track [{i: >3}+1/{len(q)}] removed: '{rm.track.info.title}'"
+    )
+
+    await set_data(ctx.guild_id, lvc, d)
+    return rm
 
 
 async def remove_tracks__(
     ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
 ) -> list[lv.TrackQueue]:
     assert ctx.guild_id is not None
-    async with access_queue(ctx, lvc) as q:
-        if not (1 <= start <= end <= len(q)):
-            raise IllegalArgument(Argument((start, end), (1, len(q))))
 
-        i_s = start - 1
-        i_e = end - 1
-        t_n = end - i_s
-        rm = q[i_s:end]
-        if q.current in rm:
-            q.reset_repeat()
-            async with while_stop(ctx, lvc, q):
-                pass
+    d = await get_data(ctx.guild_id, lvc)
+    q = d.queue
+    if not (1 <= start <= end <= len(q)):
+        raise IllegalArgument(Argument((start, end), (1, len(q))))
+
+    i_s = start - 1
+    i_e = end - 1
+    t_n = end - i_s
+    rm = q[i_s:end]
+    if q.current in rm:
+        q.reset_repeat()
+        async with while_stop(ctx, lvc, d):
             if next_t := None if len(q) <= end else q[end]:
                 await set_pause__(ctx, lvc, pause=False)
                 await lvc.play(ctx.guild_id, next_t.track).start()
-        if i_s < q.pos:
-            q.pos = i_s + (q.pos - i_e - 1)
-        q.sub(*rm)
+    if i_s < q.pos:
+        q.pos = max(0, i_s + (q.pos - i_e - 1))
+    q.sub(*rm)
 
-        loggerC.info(
-            f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}+1/{len(q)}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
+    loggerC.info(
+        f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}/{len(q)}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
+    )
+
+    await set_data(ctx.guild_id, lvc, d)
+    return rm
+
+
+@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
+async def shuffle_impl(ctx_: Contextish, /, *, lvc: lv.Lavalink):
+    async with access_queue(ctx_, lvc) as q:
+        if not q.upcoming:
+            await err_reply(ctx_, content=f"❗ This is the end of the queue")
+            return
+        q.shuffle()
+
+        await reply(
+            ctx_,
+            content=f"🔀 Shuffled the upcoming tracks. `(Track #{q.pos+2}-{len(q)}; {len(q) - q.pos - 1} tracks)`",
         )
-        return rm
 
 
 async def insert_track__(
@@ -637,13 +765,14 @@ async def insert_track__(
 ) -> lv.TrackQueue:
     assert ctx.guild_id is not None
 
-    q = await get_queue(ctx, lvc)
+    d = await get_data(ctx.guild_id, lvc)
+    q = d.queue
     np = q.current
     p_ = q.pos
     if track is None:
         if not np:
             raise InvalidArgument(Argument(np, track))
-        t_ = q.pos
+        t_ = p_
         ins = np
     else:
         t_ = track - 1
@@ -655,25 +784,69 @@ async def insert_track__(
     if not ((0 <= t_ < len(q)) and (0 <= i_ < len(q))):
         raise IllegalArgument(Argument((track, insert), (1, len(q))))
 
-    async with access_queue(ctx, lvc):
-        if t_ < p_ <= i_:
-            q.decr()
-        elif i_ < p_ < t_:
-            q.adv()
+    if t_ < p_ <= i_:
+        q.decr()
+    elif i_ < p_ < t_:
+        q.adv()
 
-        prev = i_ < p_ == t_
-        if (skip := p_ == t_ < i_) or prev:
-            async with while_stop(ctx, lvc, q):
-                if skip:
-                    await skip__(ctx, lvc, advance=False, change_repeat=True)
-                elif prev:
-                    await back__(ctx, lvc, advance=False, change_repeat=True)
+    elif i_ < p_ == t_:
+        await back__(ctx, lvc, advance=False, change_repeat=True)
 
-        q[t_] = REMOVED
-        q.insert(insert, ins)
-        q.remove(REMOVED)
+    elif p_ == t_ < i_:
+        async with while_stop(ctx, lvc, d):
+            await skip__(ctx, lvc, advance=False, change_repeat=True, change_stop=False)
 
-        return ins
+    q[t_] = REMOVED
+    q.insert(insert, ins)
+    q.remove(REMOVED)
+
+    await set_data(ctx.guild_id, lvc, d)
+    return ins
+
+
+@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
+async def repeat_impl(
+    ctx_: Contextish, mode: t.Optional[str], /, *, lvc: lv.Lavalink
+) -> None:
+    """Select a repeat mode for the queue"""
+    async with access_data(ctx_, lvc) as d:
+        q = d.queue
+        if mode is None:
+            modes = tuple(m.value for m in RepeatMode)
+            mode = modes[(modes.index(q.repeat_mode.value) + 1) % 3]
+            assert mode is not None
+        m = q.set_repeat(mode)
+
+    match m:
+        case RepeatMode.NONE:
+            e = '➡️'
+            msg = "Disabled repeat"
+        case RepeatMode.ALL:
+            e = '🔁'
+            msg = "Repeating the entire queue"
+        case RepeatMode.ONE:
+            e = '🔂'
+            msg = "Repeating only this current track"
+        case _:
+            raise NotImplementedError
+
+    await reply(ctx_, content=f"{e} {msg}")
+    if d._nowplaying_msg:
+        if isinstance(ctx_, hk.ComponentInteraction):
+            rest = ctx_.app.rest
+        else:
+            assert isinstance(ctx_, tj.abc.Context)
+            rest = ctx_.rest
+
+        assert d._nowplaying_components
+        components = edit_components(
+            rest,
+            *d._nowplaying_components,
+            edits=lambda x: x.set_emoji(e),
+            predicates=lambda x: x.emoji in {'➡️', '🔁', '🔂'},
+        )
+
+        await edit_now_playing_components(rest, d, components)
 
 
 ## Info
@@ -688,9 +861,9 @@ async def generate_queue_embeds__(
         np_info = np.track.info
         req = ctx.cache.get_member(ctx.guild_id, np.requester)
         assert req is not None
-        np_text = f"```css\n{q.pos+1: >2}. {ms_stamp(np_info.length):>6} | {wr(np_info.title, 51)}\n\t\t\t[{req.display_name}]\n```"
+        np_text = f"```arm\n{q.pos+1: >2}. {ms_stamp(np_info.length):>6} | {wr(np_info.title, 50)} |\n````Requested by:` {req.mention}"
     else:
-        np_text = f"```css\n{'---':^63}\n```"
+        np_text = f"```yaml\n{'---':^63}\n```"
 
     queue_durr = sum(t.track.info.length for t in q)
     queue_elapsed = sum(t.track.info.length for t in q.history) + (q.np_position or 0)
@@ -711,14 +884,14 @@ async def generate_queue_embeds__(
     )
 
     _base_embed = hk.Embed(
-        title="📀 Queue",
+        title="💿 Queue",
         description=desc,
         color=(32, 126, 172),
     ).set_footer(f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)}")
 
     _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
     _format_prev = (
-        f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else ''}\n%s\n```"
+        f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'yaml'}\n%s\n```"
     )
     _empty = f"{'---':^63}"
 
@@ -730,13 +903,13 @@ async def generate_queue_embeds__(
             "Previous",
             _format_prev
             % (
-                f"{q.pos: >2}․ {ms_stamp(prev.track.info.length):>6} | {wr(prev.track.info.title, 51)}"
+                f"{q.pos: >2}․ {ms_stamp(prev.track.info.length):>6} # {wr(prev.track.info.title, 51)}"
                 if prev
                 else _empty
             ),
         )
         .add_field(
-            "Now playing",
+            f"{'🎶 ' if np and not q.is_paused else ''}Now playing",
             np_text,
         )
         .add_field(
@@ -745,7 +918,7 @@ async def generate_queue_embeds__(
             % (
                 "\n".join(
                     f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
-                    for j, t_ in enumerate(upcoming[:FIELD_SLICE], q.pos + 2)
+                    for j, t_ in enumerate(upcoming[:Q_DIV], q.pos + 2)
                 )
                 or _empty,
             ),
@@ -757,16 +930,14 @@ async def generate_queue_embeds__(
             "Previous",
             _format_prev
             % "\n".join(
-                f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
+                f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} # {wr(t_.track.info.title, 51)}"
                 for j, t_ in enumerate(
                     prev_slice,
-                    1
-                    + max(0, i) * FIELD_SLICE
-                    + (0 if i == -1 else len(his[:-1]) % FIELD_SLICE),
+                    1 + max(0, i) * Q_DIV + (0 if i == -1 else len(his[:-1]) % Q_DIV),
                 )
             ),
         )
-        for i, prev_slice in enumerate(chunk_b(his[:-1], FIELD_SLICE), -1)
+        for i, prev_slice in enumerate(chunk_b(his[:-1], Q_DIV), -1)
         if prev_slice
     ]
 
@@ -776,10 +947,10 @@ async def generate_queue_embeds__(
             _format
             % "\n".join(
                 f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
-                for j, t_ in enumerate(next_slice, q.pos + 2 + i * FIELD_SLICE)
+                for j, t_ in enumerate(next_slice, q.pos + 2 + i * Q_DIV)
             ),
         )
-        for i, next_slice in enumerate(chunk(upcoming[FIELD_SLICE:], FIELD_SLICE), 1)
+        for i, next_slice in enumerate(chunk(upcoming[Q_DIV:], Q_DIV), 1)
         if next_slice
     ]
 

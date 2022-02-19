@@ -2,7 +2,7 @@ from src.lib.music import *
 from src.lib.checks import Checks, check
 
 
-queue = tj.Component(name='Queue').add_check(guild_c).set_hooks(music_h)
+queue = tj.Component(name='Queue', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
 # Play
@@ -21,10 +21,28 @@ async def play_s(
     ctx: tj.abc.SlashContext,
     song: str,
     source: str,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     if not URL_REGEX.fullmatch(song):
         song = '%ssearch:%s' % (source, song)
+
+    await play_(ctx, song, lvc=lvc)
+
+
+@queue.with_menu_command
+@tj.as_message_menu('Enqueue this song')
+async def play_c(
+    ctx: tj.abc.MenuContext,
+    msg: hk.Message,
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+) -> None:
+    if not msg.content:
+        await err_reply(ctx, content="❌ Cannot process an empty message")
+        return
+
+    song = msg.content.strip("<>|")
+    if not URL_REGEX.fullmatch(song):
+        song = 'ytsearch:%s' % song
 
     await play_(ctx, song, lvc=lvc)
 
@@ -38,7 +56,7 @@ async def play_m(
     ctx: tj.abc.MessageContext,
     song: str,
     source: str,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     """Play a song, or add it to the queue."""
 
@@ -90,7 +108,7 @@ remove_g_s = queue.with_slash_command(
 @queue.with_message_command
 @tj.as_message_command_group('remove', 'rem', 'rm', 'rmv', 'del', 'd', '-', strict=True)
 @with_message_command_group_template
-async def remove_g_m(ctx: tj.abc.MessageContext):
+async def remove_g_m(_: tj.abc.MessageContext):
     """Removes tracks from the queue"""
     ...
 
@@ -110,7 +128,7 @@ async def remove_g_m(ctx: tj.abc.MessageContext):
 async def remove_one_s(
     ctx: tj.abc.SlashContext,
     track: t.Optional[str],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     await remove_one_(ctx, track, lvc=lvc)
 
@@ -122,7 +140,7 @@ async def remove_one_s(
 async def remove_one_m(
     ctx: tj.abc.MessageContext,
     track: t.Optional[str],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     await remove_one_(ctx, track, lvc=lvc)
 
@@ -169,21 +187,21 @@ async def remove_bulk_s(
     ctx: tj.abc.SlashContext,
     start: int,
     end: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     await remove_bulk_(ctx, start, end, lvc=lvc)
 
 
 @remove_g_m.with_command
-@tj.with_argument('start', converters=int)
 @tj.with_argument('end', converters=int, default=None)
+@tj.with_argument('start', converters=int)
 @tj.with_parser
 @tj.as_message_command('bulk', 'b', 'm', 'r', '<>')
 async def remove_bulk_m(
     ctx: tj.abc.MessageContext,
     start: int,
     end: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     await remove_bulk_(ctx, start, end, lvc=lvc)
 
@@ -204,7 +222,8 @@ async def remove_bulk_(
     except IllegalArgument:
         await err_reply(
             ctx,
-            content=f"❌ Invalid start time or end time\n**Start time must be smaller or equal to end time *AND* both of them has to be in between 1 and the queue length **",
+            del_after=6.5,
+            content=f"❌ Invalid start position or end position\n**Start position must be smaller or equal to end position *AND* both of them has to be in between 1 and the queue length **",
         )
     else:
         await reply(
@@ -222,27 +241,19 @@ async def remove_bulk_(
 # Clear
 
 
-@queue.with_command
 @tj.as_slash_command('clear', "Clears the queue; Equivalent to /remove bulk start:1")
-async def clear_s(
-    ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
-):
-    await clear_(ctx, lvc=lvc)
-
-
-@queue.with_command
-@tj.as_message_command('clear', 'd', 'destroy', 'clr', 'c')
-async def clear_m(
-    ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
-):
+#
+@tj.as_message_command('clear', 'destroy', 'clr', 'c')
+async def clear(ctx: tj.abc.Context, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)):
     await clear_(ctx, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
 async def clear_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
-    async with access_queue(ctx, lvc) as q:
+    async with access_data(ctx, lvc) as d:
+        q = d.queue
         l = len(q)
-        async with while_stop(ctx, lvc, q):
+        async with while_stop(ctx, lvc, d):
             q.clr()
         await reply(ctx, content=f"💥 Cleared the queue `({l} tracks)`")
         return
@@ -251,34 +262,11 @@ async def clear_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 # Shuffle
 
 
-@queue.with_command
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
-async def shuffle_s(
-    ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
-):
-    await shuffle_(ctx, lvc=lvc)
-
-
-@queue.with_command
+#
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
-async def shuffle_m(
-    ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.injected(type=lv.Lavalink)
-):
-    await shuffle_(ctx, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def shuffle_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
-    async with access_queue(ctx, lvc) as q:
-        if not q.upcoming:
-            await err_reply(ctx, content=f"❗ This is the end of the queue")
-            return
-        q.shuffle()
-
-        await reply(
-            ctx,
-            content=f"🔀 Shuffled the upcoming tracks. `(Track #{q.pos+2}-{len(q)}; {len(q) - q.pos - 1} tracks)`",
-        )
+async def shuffle(ctx: tj.abc.Context, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)):
+    await shuffle_impl(ctx, lvc=lvc)
 
 
 # Move
@@ -292,7 +280,7 @@ move_g_s = queue.with_slash_command(
 @queue.with_message_command
 @tj.as_message_command_group('move', 'mv', '=>', strict=True)
 @with_message_command_group_template
-async def move_g_m(ctx: tj.abc.MessageContext):
+async def move_g_m(_: tj.abc.MessageContext):
     """Moves the track in the queue"""
     ...
 
@@ -310,7 +298,7 @@ async def move_g_m(ctx: tj.abc.MessageContext):
 async def move_last_s(
     ctx: tj.abc.SlashContext,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     await move_last_(ctx, track, lvc=lvc)
 
@@ -322,7 +310,7 @@ async def move_last_s(
 async def move_last_m(
     ctx: tj.abc.MessageContext,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     """
     Moves the selected track to the end of the queue
@@ -378,7 +366,7 @@ async def move_swap_s(
     ctx: tj.abc.SlashContext,
     first: int,
     second: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     await move_swap_(ctx, first, second, lvc=lvc)
 
@@ -392,7 +380,7 @@ async def move_swap_m(
     ctx: tj.abc.MessageContext,
     first: int,
     second: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     """
     Swaps positions of two tracks in a queue
@@ -407,7 +395,8 @@ async def move_swap_(
     """Swaps positions of two tracks in a queue"""
     assert ctx.guild_id is not None
 
-    q = await get_queue(ctx, lvc)
+    d = await get_data(ctx.guild_id, lvc)
+    q = d.queue
     np = q.current
     if second is None:
         if not np:
@@ -430,14 +419,16 @@ async def move_swap_(
             content=f"❌ Invalid position. **Both tracks' position must be between `1` and `{len(q)}`**",
         )
         return
-    async with access_queue(ctx, lvc) as q:
-        q[i_1st], q[i_2nd] = q[i_2nd], q[i_1st]
-        q.reset_repeat()
-        if q.pos in {i_1st, i_2nd}:
-            async with while_stop(ctx, lvc, q):
-                swapped = q[i_1st] if q.pos == i_1st else q[i_2nd]
-                await set_pause__(ctx, lvc, pause=False)
-                await lvc.play(ctx.guild_id, swapped.track).start()
+
+    q[i_1st], q[i_2nd] = q[i_2nd], q[i_1st]
+    q.reset_repeat()
+    if q.pos in {i_1st, i_2nd}:
+        async with while_stop(ctx, lvc, d):
+            swapped = q[i_1st] if q.pos == i_1st else q[i_2nd]
+            await set_pause__(ctx, lvc, pause=False)
+            await lvc.play(ctx.guild_id, swapped.track).start()
+
+    await set_data(ctx.guild_id, lvc, d)
 
     await reply(
         ctx,
@@ -458,21 +449,21 @@ async def move_insert_s(
     ctx: tj.abc.SlashContext,
     position: int,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     await move_insert_(ctx, position, track, lvc=lvc)
 
 
 @move_g_m.with_command
-@tj.with_argument('position', converters=int)
 @tj.with_argument('track', converters=int, default=None)
+@tj.with_argument('position', converters=int)
 @tj.with_parser
 @tj.as_message_command('insert', 'ins', 'i', 'v', '^')
 async def move_insert_m(
     ctx: tj.abc.MessageContext,
     position: int,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     """
     Inserts a track in the queue after a new position
@@ -526,19 +517,19 @@ async def move_insert_(
 async def repeat_s(
     ctx: tj.abc.SlashContext,
     mode: t.Optional[str],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
-    await repeat_(ctx, mode, lvc=lvc)
+    await repeat_impl(ctx, mode, lvc=lvc)
 
 
 @queue.with_message_command
 @tj.with_argument('mode', default=None)
 @tj.with_parser
-@tj.as_message_command('repeat', 'r', 'lp', 'rp', 'loop')
+@tj.as_message_command('repeat', 'r', 'rep', 'lp', 'rp', 'loop')
 async def repeat_m(
     ctx: tj.abc.MessageContext,
     mode: t.Optional[str],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
     """
     Select a repeat mode for the queue
@@ -554,37 +545,10 @@ async def repeat_m(
             )
             return
 
-    await repeat_(ctx, mode, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def repeat_(
-    ctx: tj.abc.Context, mode: t.Optional[str], /, *, lvc: lv.Lavalink
-) -> None:
-    """Select a repeat mode for the queue"""
-    async with access_queue(ctx, lvc) as q:
-        if mode is None:
-            modes = tuple(m.value for m in RepeatMode)
-            mode = modes[(modes.index(q.repeat_mode.value) + 1) % 3]
-            assert mode is not None
-        m = q.set_repeat(mode)
-
-    match m:
-        case RepeatMode.NONE:
-            mes = "➡️ Disabled repeat"
-        case RepeatMode.ALL:
-            mes = "🔁 Repeating the entire queue"
-        case RepeatMode.ONE:
-            mes = "🔂 Repeating only this current track"
-        case _:
-            raise NotImplementedError
-
-    await reply(ctx, content=mes)
+    await repeat_impl(ctx, mode, lvc=lvc)
 
 
 # -
 
 
-@tj.as_loader
-def load_component(client: tj.abc.Client) -> None:
-    client.add_component(queue.copy())
+loader = queue.load_from_scope().make_loader()

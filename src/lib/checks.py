@@ -44,20 +44,19 @@ class Checks(e.Flag):
     """Checks whether the currently playing track had been paused"""
 
 
-async def check_others_not_in_vc__(ctx: tj.abc.Context, perms: hkperms, conn: dict):
-    m = ctx.member
-    assert not ((ctx.guild_id is None) or (m is None) or (ctx.client.cache is None))
-    auth_perms = await tj.utilities.fetch_permissions(
-        ctx.client, m, channel=ctx.channel_id
-    )
-
+async def check_others_not_in_vc__(ctx_: Contextish, perms: hkperms, conn: dict):
+    auth_perms = await fetch_permissions(ctx_)
+    member = ctx_.member
+    client = get_client(ctx_)
+    assert client.cache and ctx_.guild_id and member
     channel = conn['channel_id']
-    voice_states = ctx.client.cache.get_voice_states_view_for_channel(
-        ctx.guild_id, channel
+
+    voice_states = client.cache.get_voice_states_view_for_channel(
+        ctx_.guild_id, channel
     )
     others_in_voice = set(
         filter(
-            lambda v: not v.member.is_bot and v.member.id != m.id,
+            lambda v: not v.member.is_bot and v.member.id != member.id,
             voice_states.values(),
         )
     )
@@ -66,11 +65,12 @@ async def check_others_not_in_vc__(ctx: tj.abc.Context, perms: hkperms, conn: di
         raise OthersInVoice(channel)
 
 
-async def check_others_not_in_vc(ctx: tj.abc.Context, lvc: lv.Lavalink):
-    assert ctx.guild_id is not None
-    conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
+async def check_others_not_in_vc(ctx_: Contextish, lvc: lv.Lavalink):
+    assert ctx_.guild_id
+
+    conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
     assert isinstance(conn, dict)
-    await check_others_not_in_vc__(ctx, DJ_PERMS, conn)
+    await check_others_not_in_vc__(ctx_, DJ_PERMS, conn)
 
 
 def check(
@@ -86,20 +86,21 @@ def check(
 
     P = t.ParamSpec('P')
 
-    async def check_auth_in_vc__(ctx: tj.abc.Context, perms: hkperms, conn: dict):
-        m = ctx.member
-        assert not ((ctx.guild_id is None) or (m is None) or (ctx.client.cache is None))
-        auth_perms = await tj.utilities.fetch_permissions(
-            ctx.client, m, channel=ctx.channel_id
-        )
+    async def check_auth_in_vc__(ctx_: Contextish, perms: hkperms, conn: dict):
+        member = ctx_.member
+        assert member and ctx_.guild_id
+
+        client = get_client(ctx_)
+        assert client.cache
+        auth_perms = await fetch_permissions(ctx_)
 
         channel = conn['channel_id']
-        voice_states = ctx.client.cache.get_voice_states_view_for_channel(
-            ctx.guild_id, channel
+        voice_states = client.cache.get_voice_states_view_for_channel(
+            ctx_.guild_id, channel
         )
         author_in_voice = set(
             filter(
-                lambda v: v.member.id == m.id,
+                lambda v: v.member.id == member.id,
                 voice_states.values(),
             )
         )
@@ -107,79 +108,78 @@ def check(
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
             raise NotInVoice(channel)
 
-    async def check_in_vc(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        assert ctx.guild_id is not None
-        conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
-        assert isinstance(conn, dict)
-        await check_auth_in_vc__(ctx, DJ_PERMS, conn)
+    async def check_in_vc(ctx_: Contextish, lvc: lv.Lavalink):
+        assert ctx_.guild_id
 
-    async def check_curr_t_yours(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        assert not (ctx.guild_id is None or ctx.member is None)
-        auth_perms = await tj.utilities.fetch_permissions(
-            ctx.client, ctx.member, channel=ctx.channel_id
-        )
-        q = await get_queue(ctx, lvc)
+        conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
+        assert isinstance(conn, dict)
+        await check_auth_in_vc__(ctx_, DJ_PERMS, conn)
+
+    async def check_curr_t_yours(ctx_: Contextish, lvc: lv.Lavalink):
+        assert ctx_.member
+
+        auth_perms = await fetch_permissions(ctx_)
+        q = await get_queue(ctx_, lvc)
         assert q.current is not None
-        if ctx.author.id != q.current.requester and not auth_perms & (
+        if ctx_.member.id != q.current.requester and not auth_perms & (
             DJ_PERMS | hkperms.ADMINISTRATOR
         ):
             raise PlaybackChangeRefused(q.current)
 
-    async def check_can_play_at(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        assert not (ctx.guild_id is None or ctx.member is None)
-        auth_perms = await tj.utilities.fetch_permissions(
-            ctx.client, ctx.member, channel=ctx.channel_id
-        )
+    async def check_can_play_at(ctx_: Contextish, lvc: lv.Lavalink):
+        assert ctx_.member
+
+        auth_perms = await fetch_permissions(ctx_)
         if not (auth_perms & (DJ_PERMS | hkperms.ADMINISTRATOR)):
-            if not (np := (await get_queue(ctx, lvc)).current):
+            if not (np := (await get_queue(ctx_, lvc)).current):
                 raise Forbidden(DJ_PERMS)
-            if ctx.author.id != np.requester:
+            if ctx_.member.id != np.requester:
                 raise PlaybackChangeRefused(np)
 
-    async def check_stop(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        assert ctx.guild_id is not None
-        if (await get_queue(ctx, lvc)).is_stopped:
+    async def check_stop(ctx_: Contextish, lvc: lv.Lavalink):
+        if (await get_queue(ctx_, lvc)).is_stopped:
             raise TrackStopped
 
-    async def check_conn(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        assert ctx.guild_id is not None
-        conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
+    async def check_conn(ctx_: Contextish, lvc: lv.Lavalink):
+        assert ctx_.guild_id
+
+        conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
         if not conn:
             raise NotConnected
 
-    async def check_queue(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        if not await get_queue(ctx, lvc):
-            raise QueueIsEmpty
+    async def check_queue(ctx_: Contextish, lvc: lv.Lavalink):
+        if not await get_queue(ctx_, lvc):
+            raise QueueEmpty
 
-    async def check_playing(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        if not (await get_queue(ctx, lvc)).current:
+    async def check_playing(ctx_: Contextish, lvc: lv.Lavalink):
+        if not (await get_queue(ctx_, lvc)).current:
             raise NotPlaying
 
-    async def check_pause(ctx: tj.abc.Context, lvc: lv.Lavalink):
-        if (await get_queue(ctx, lvc)).is_paused:
+    async def check_pause(ctx_: Contextish, lvc: lv.Lavalink):
+        if (await get_queue(ctx_, lvc)).is_paused:
             raise TrackPaused
 
     def callback(func: t.Callable[P, VoidCoroutine]) -> t.Callable[P, VoidCoroutine]:
         async def inner(*args: P.args, **kwargs: P.kwargs) -> None:
 
-            ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
+            ctx = next((a for a in args if isinstance(a, Contextish)), None)
             bot = next(
                 (a for a in kwargs.values() if isinstance(a, hk.GatewayBot)), None
             )
             lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), None)
 
             assert ctx
+            p = get_pref(ctx)
 
             try:
                 if perms:
-                    assert ctx.member
-                    auth_perms = await tj.utilities.fetch_permissions(
-                        ctx.client, ctx.member, channel=ctx.channel_id
-                    )
+                    auth_perms = await fetch_permissions(ctx)
                     if not (auth_perms & (perms | hkperms.ADMINISTRATOR)):
                         raise Forbidden(perms)
 
-                assert lvc, "Missing a lv.Lavalink object"
+                if not lvc:
+                    await func(*args, **kwargs)
+                    return
 
                 if Checks.CONN & checks:
                     await check_conn(ctx, lvc)
@@ -206,7 +206,7 @@ def check(
                             Forbidden,
                         ) as exc_:
                             if vote:
-                                assert bot
+                                assert bot and isinstance(ctx, tj.abc.Context)
                                 try:
                                     await init_listeners_voting(ctx, bot, lvc)
                                 except VotingTimeout:
@@ -243,9 +243,9 @@ def check(
             except NotConnected:
                 await err_reply(
                     ctx,
-                    content=f"❌ Not currently connected to any channel. Use `/join` or `/play` first",
+                    content=f"❌ Not currently connected to any channel. Use `{p}join` or `{p}play` first",
                 )
-            except QueueIsEmpty:
+            except QueueEmpty:
                 await err_reply(ctx, content="❗ The queue is empty")
             except NotPlaying:
                 await err_reply(ctx, content="❗ Nothing is playing at the moment")
@@ -259,7 +259,7 @@ def check(
             except TrackStopped:
                 await err_reply(
                     ctx,
-                    content="❗ The current track had been stopped. Use `/skip`, `/restart` or `/remove` the current track first",
+                    content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
                 )
             except QueryEmpty:
                 await err_reply(

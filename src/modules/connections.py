@@ -2,13 +2,96 @@ from src.lib.music import *
 from src.lib.checks import Checks, check
 
 
-conns = tj.Component(name='Conections').add_check(guild_c).set_hooks(music_h)
+conns = (
+    tj.Component(name='Conections', strict=True).add_check(guild_c).set_hooks(music_h)
+)
+
+
+@conns.with_listener(hk.VoiceStateUpdateEvent)
+async def on_voice_state_update(
+    event: hk.VoiceStateUpdateEvent,
+    client: tj.Client = tj.inject(type=tj.Client),
+    bot: hk.GatewayBot = tj.inject(type=hk.GatewayBot),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+):
+    async def _conn():
+        return lvc.get_guild_gateway_connection_info(event.guild_id)
+
+    new = event.state
+    old = event.old_state
+    if not (conn := await _conn()):
+        return
+
+    assert isinstance(conn, dict)
+
+    _in_voice = lambda: set(
+        filter(
+            lambda v: not v.member.is_bot,
+            client.cache.get_voice_states_view_for_channel(  # type: ignore
+                event.guild_id, conn['channel_id']
+            ).values(),
+        )
+    )
+
+    ch = (d := await get_data(event.guild_id, lvc)).out_channel_id
+    assert ch
+
+    q = d.queue
+
+    async def on_everyone_leaves_vc():
+        logger.debug(
+            f"In guild {event.guild_id} started channel {conn['channel_id']} timeout inactivity"
+        )
+        for _ in range(10):
+            if len(_in_voice()) >= 1 or not (await _conn()):
+                logger.debug(
+                    f"In guild {event.guild_id} stopped channel {conn['channel_id']} timeout inactivity"
+                )
+                return False
+            await asyncio.sleep(60)
+
+        __conn = await _conn()
+        assert isinstance(__conn, dict)
+
+        await cleanups__(event.guild_id, client.shards, lvc)
+        logger.info(
+            f"In guild {event.guild_id} left   channel {(_vc := __conn['channel_id'])} due to inactivity"
+        )
+        await client.rest.create_message(
+            ch, f"🍃📎 ~~<#{_vc}>~~ `(Left due to inactivity)`"
+        )
+
+        return True
+
+    from src.lib.music import set_pause__
+
+    in_voice = _in_voice()
+    vc: int = conn['channel_id']
+    bot_u = bot.get_me()
+    assert bot_u
+    # if new.channel_id == vc and len(in_voice) == 1 and new.user_id != bot_u.id:
+    #     # Someone rejoined
+    #     try:
+    #         await set_pause__(event.guild_id, lvc, pause=False)
+    #         await client.rest.create_message(ch, f"✨⏸️ Resumed")
+    #     except NotConnected:
+    #         pass
+
+    if (new.channel_id != vc) and not in_voice:
+        if old and old.channel_id == vc:
+            # Everyone left
+            await set_pause__(event.guild_id, lvc, pause=True)
+            await client.rest.create_message(ch, f"✨▶️ Paused as no one is listening")
+
+            await asyncio.wait(
+                [loop.create_task(on_everyone_leaves_vc())],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
 
 
 # Join
 
 
-@conns.with_slash_command
 @tj.with_channel_slash_option(
     'channel',
     "Which channel? (If not parsed, your currently connected channel)",
@@ -16,22 +99,14 @@ conns = tj.Component(name='Conections').add_check(guild_c).set_hooks(music_h)
     default=None,
 )
 @tj.as_slash_command('join', "Connects the bot to a voice channel")
-async def join_s(
-    ctx: tj.abc.SlashContext,
-    channel: hk.GuildVoiceChannel,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-) -> None:
-    await join_(ctx, channel, lvc=lvc)
-
-
-@conns.with_message_command
+#
 @tj.with_argument('channel', converters=tj.to_channel, default=None)
 @tj.with_parser
 @tj.as_message_command('join', 'j', 'connect', 'co', 'con')
-async def join_m(
-    ctx: tj.abc.MessageContext,
+async def join(
+    ctx: tj.abc.Context,
     channel: hk.GuildVoiceChannel,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     """Connect the bot to a voice channel."""
     await join_(ctx, channel, lvc=lvc)
@@ -79,22 +154,13 @@ async def join_(
 # Leave
 
 
-@conns.with_slash_command
 @tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")
-async def leave_s(
-    ctx: tj.abc.SlashContext,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+#
+@tj.as_message_command('leave', 'l', 'lv', 'dc', 'disconnect', 'discon')
+async def leave(
+    ctx: tj.abc.Context,
+    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
-    await leave_(ctx, lvc=lvc)
-
-
-@conns.with_message_command
-@tj.as_message_command('leave', 'l', 'dc', 'disconnect', 'discon')
-async def leave_m(
-    ctx: tj.abc.MessageContext,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-) -> None:
-    """Leaves the voice channel and clears the queue."""
     await leave_(ctx, lvc=lvc)
 
 
@@ -114,6 +180,4 @@ async def leave_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 # -
 
 
-@tj.as_loader
-def load_component(client: tj.abc.Client) -> None:
-    client.add_component(conns.copy())
+loader = conns.load_from_scope().make_loader()
