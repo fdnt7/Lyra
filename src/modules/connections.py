@@ -14,24 +14,25 @@ async def on_voice_state_update(
     bot: hk.GatewayBot = tj.inject(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ):
-    async def _conn():
+    def _conn():
         return lvc.get_guild_gateway_connection_info(event.guild_id)
 
     new = event.state
     old = event.old_state
-    if not (conn := await _conn()):
+    if not await lvc.get_guild_node(event.guild_id) or not (conn := _conn()):
         return
 
     assert isinstance(conn, dict)
 
-    _in_voice = lambda: set(
-        filter(
-            lambda v: not v.member.is_bot,
-            client.cache.get_voice_states_view_for_channel(  # type: ignore
-                event.guild_id, conn['channel_id']
-            ).values(),
+    def _in_voice():
+        return set(
+            filter(
+                lambda v: not v.member.is_bot,
+                client.cache.get_voice_states_view_for_channel(  # type: ignore
+                    event.guild_id, conn['channel_id']
+                ).values(),
+            )
         )
-    )
 
     ch = (d := await get_data(event.guild_id, lvc)).out_channel_id
     assert ch
@@ -43,14 +44,14 @@ async def on_voice_state_update(
             f"In guild {event.guild_id} started channel {conn['channel_id']} timeout inactivity"
         )
         for _ in range(10):
-            if len(_in_voice()) >= 1 or not (await _conn()):
+            if len(_in_voice()) >= 1 or not (_conn()):
                 logger.debug(
                     f"In guild {event.guild_id} stopped channel {conn['channel_id']} timeout inactivity"
                 )
                 return False
             await asyncio.sleep(60)
 
-        __conn = await _conn()
+        __conn = _conn()
         assert isinstance(__conn, dict)
 
         await cleanups__(event.guild_id, client.shards, lvc)
@@ -80,11 +81,13 @@ async def on_voice_state_update(
     if (new.channel_id != vc) and not in_voice:
         if old and old.channel_id == vc:
             # Everyone left
-            await set_pause__(event.guild_id, lvc, pause=True)
+
+            # TODO: Should be in `playback.py`
+            await set_pause__(event, lvc, pause=True, update_controller=True)
             await client.rest.create_message(ch, f"✨▶️ Paused as no one is listening")
 
             await asyncio.wait(
-                [loop.create_task(on_everyone_leaves_vc())],
+                (loop.create_task(on_everyone_leaves_vc()),),
                 return_when=asyncio.FIRST_COMPLETED,
             )
 

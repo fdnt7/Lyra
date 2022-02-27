@@ -9,6 +9,11 @@ queue = tj.Component(name='Queue', strict=True).add_check(guild_c).set_hooks(mus
 
 
 @queue.with_slash_command
+@tj.with_bool_slash_option(
+    'shuffle',
+    "Also shuffles the queue after enqueuing? (If not given, False)",
+    default=False,
+)
 @tj.with_str_slash_option(
     'source',
     "Search from where? (If not given, Youtube)",
@@ -21,34 +26,34 @@ async def play_s(
     ctx: tj.abc.SlashContext,
     song: str,
     source: str,
+    shuffle: bool,
     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     if not URL_REGEX.fullmatch(song):
         song = '%ssearch:%s' % (source, song)
 
-    await play_(ctx, song, lvc=lvc)
+    await play_(ctx, song, shuffle, lvc=lvc)
 
 
 @queue.with_menu_command
-@tj.as_message_menu('Enqueue this song')
+@tj.as_message_menu("Enqueue this song")
+@with_message_menu_template
 async def play_c(
     ctx: tj.abc.MenuContext,
     msg: hk.Message,
     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
-    if not msg.content:
-        await err_reply(ctx, content="❌ Cannot process an empty message")
-        return
-
+    assert msg.content
     song = msg.content.strip("<>|")
     if not URL_REGEX.fullmatch(song):
         song = 'ytsearch:%s' % song
 
-    await play_(ctx, song, lvc=lvc)
+    await play_(ctx, song, False, lvc=lvc)
 
 
 @queue.with_message_command
 @tj.with_option('source', '--source', '--src', default='yt')
+@tj.with_option('shuffle', '--shuffle', '--sh', default=False, empty_value=True)
 @tj.with_greedy_argument('song')
 @tj.with_parser
 @tj.as_message_command('play', 'p', 'a', 'add', '+')
@@ -56,6 +61,7 @@ async def play_m(
     ctx: tj.abc.MessageContext,
     song: str,
     source: str,
+    shuffle: bool,
     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
 ) -> None:
     """Play a song, or add it to the queue."""
@@ -72,12 +78,14 @@ async def play_m(
     if not URL_REGEX.fullmatch(song):
         song = '%ssearch:%s' % (source, song)
 
-    await play_(ctx, song, lvc=lvc)
+    await play_(ctx, song, shuffle, lvc=lvc)
 
 
 @attempt_to_connect
 @check(Checks.IN_VC)
-async def play_(ctx: tj.abc.Context, song: str, /, *, lvc: lv.Lavalink) -> None:
+async def play_(
+    ctx: EitherContext, song: str, shuffle: bool, /, *, lvc: lv.Lavalink
+) -> None:
     """Attempts to play the song from youtube."""
     assert ctx.guild_id is not None
 
@@ -87,7 +95,7 @@ async def play_(ctx: tj.abc.Context, song: str, /, *, lvc: lv.Lavalink) -> None:
         raise QueryEmpty
 
     try:
-        await play__(ctx, lvc, tracks=query, respond=True)
+        await play__(ctx, lvc, tracks=query, respond=True, shuffle=shuffle)
     except lv.NoSessionPresent:
         # Occurs if lavalink crashes
         await err_reply(

@@ -11,6 +11,7 @@ from .lavaimpl import (
     QueueList,
     RepeatMode,
     NodeData,
+    REPEAT_EMOJIS,
 )
 
 
@@ -73,12 +74,11 @@ async def init_listeners_voting(
 ):
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
-    cmd = ctx.command
     cmd_n = ''.join((get_pref(ctx), get_cmd_n(ctx)))
 
     row = (
         ctx.rest.build_action_row()
-        .add_button(hk_msg.ButtonStyle.SUCCESS, 'vote')
+        .add_button(bttstyle.SUCCESS, 'vote')
         .set_emoji('🗳️')
         .add_to_container()
     )
@@ -220,8 +220,6 @@ async def post_execution(
 ) -> None:
     assert ctx.guild_id
 
-    from src.lib.music import access_data
-
     try:
         async with access_data(ctx, lvc) as d:
             d.out_channel_id = ctx.channel_id
@@ -328,7 +326,7 @@ async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
         raise NotConnected
 
     assert isinstance(conn, dict)
-    curr_channel = conn['channel_id']
+    curr_channel: int = conn['channel_id']
     assert isinstance(curr_channel, int)
 
     from .checks import check_others_not_in_vc__, DJ_PERMS
@@ -364,18 +362,17 @@ async def cleanups__(
 loggerB = logging.getLogger(__name__ + '.playback')
 
 
-async def stop__(g_inf: GuildInferable, lvc: lv.Lavalink, /) -> None:
-    g = snowflakeify(g_inf)
-    async with access_queue(g, lvc) as q:
+async def stop__(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
+    async with access_queue(g_inf, lvc) as q:
         q.is_stopped = True
 
-    await lvc.stop(g)
+    await lvc.stop(infer_guild(g_inf))
 
 
 async def stop_in_ctx__(
-    g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /
+    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
 ) -> None:
-    g = snowflakeify(g_inf)
+    g = infer_guild(g_inf)
 
     data.queue.is_stopped = True
     await set_data(g, lvc, data)
@@ -389,16 +386,15 @@ async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
 
 
 async def wait_for_track_finish_event_fire(
-    g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /
+    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
 ):
-    while not (await get_data(snowflakeify(g_inf), lvc))._track_finished_fired:
-        await asyncio.sleep(0.333)
-    await asyncio.sleep(STOP_REFRESH)
-    data._track_finished_fired = False
+    while not (await get_data(infer_guild(g_inf), lvc))._track_stopped_fired:
+        await asyncio.sleep(STOP_REFRESH)
+    data._track_stopped_fired = False
 
 
 @ctxlib.asynccontextmanager
-async def while_stop(g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /):
+async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /):
     await stop_in_ctx__(g_inf, lvc, data)
     try:
         yield
@@ -408,16 +404,16 @@ async def while_stop(g_inf: GuildInferable, lvc: lv.Lavalink, data: NodeData, /)
 
 
 async def set_pause__(
-    g_inf: GuildInferable,
+    g_r_inf: GuildOrRESTInferable,
     lvc: lv.Lavalink,
     /,
     *,
     pause: t.Optional[bool],
     respond: bool = False,
     strict: bool = False,
+    update_controller: bool = False,
 ) -> None:
-    _ctx = g_inf if isinstance(g_inf, Contextish) else None
-    g = snowflakeify(g_inf)
+    g = infer_guild(g_r_inf)
 
     try:
         d = await get_data(g, lvc)
@@ -428,12 +424,12 @@ async def set_pause__(
             return
         if pause is None:
             pause = not q.is_paused
-        if respond and _ctx:
+        if respond:
             if pause and q.is_paused:
-                await err_reply(_ctx, content="❗ Already paused")
+                await err_reply(g_r_inf, content="❗ Already paused")
                 return
             if not (pause or q.is_paused):
-                await err_reply(_ctx, content="❗ Already resumed")
+                await err_reply(g_r_inf, content="❗ Already resumed")
                 return
 
         np_pos = q.np_position
@@ -447,22 +443,24 @@ async def set_pause__(
             e = '▶️'
             msg = "Paused"
         else:
-            q._curr_t_started = curr_time_ms() - np_pos
+            q.update_curr_t_started(-np_pos)
             await lvc.resume(g)
             e = '⏸️'
             msg = "Resumed"
 
         await set_data(g, lvc, d)
         if respond:
-            assert _ctx
-            await reply(_ctx, content=f"{e} {msg}")
-
-        if d._nowplaying_msg:
-            if isinstance(_ctx, hk.ComponentInteraction):
-                rest = _ctx.app.rest
+            if isinstance(g_r_inf, Contextish):
+                await reply(g_r_inf, content=f"{e} {msg}")
             else:
-                assert isinstance(_ctx, tj.abc.Context)
-                rest = _ctx.rest
+                g_r_inf
+
+        if update_controller and d._nowplaying_msg:
+            if not isinstance(g_r_inf, RESTInferable):
+                raise ValueError(
+                    "`g_r_inf` was not type `RESTInferable` but `update_controller` was passed `True`"
+                )
+            rest = get_rest(g_r_inf)
 
             assert d._nowplaying_components
             components = edit_components(
@@ -487,11 +485,11 @@ async def set_pause__(
     | Checks.ALONE_OR_CURR_T_YOURS
 )
 async def play_pause_impl(ctx: Contextish, /, *, lvc: lv.Lavalink):
-    await set_pause__(ctx, lvc, pause=None, respond=True)
+    await set_pause__(ctx, lvc, pause=None, respond=True, update_controller=True)
 
 
 async def skip__(
-    g_inf: GuildInferable,
+    g_inf: GuildOrInferable,
     lvc: lv.Lavalink,
     /,
     *,
@@ -499,19 +497,17 @@ async def skip__(
     change_repeat: bool = False,
     change_stop: bool = True,
 ) -> t.Optional[lv.TrackQueue]:
-    guild = snowflakeify(g_inf)
-
-    async with access_queue(guild, lvc) as q:
+    async with access_queue(g_inf, lvc) as q:
         skip = q.current
         if change_repeat:
             q.reset_repeat()
-        await lvc.stop(guild)
+        await lvc.stop(g := infer_guild(g_inf))
         if q.is_stopped and (next_t := q.next):
             if advance:
                 q.adv()
             if change_stop:
                 q.is_stopped = False
-            await lvc.play(guild, next_t.track).start()
+            await lvc.play(g, next_t.track).start()
             await set_pause__(g_inf, lvc, pause=False)
         return skip
 
@@ -526,39 +522,37 @@ async def skip_impl(
 
 
 async def back__(
-    g_inf: GuildInferable,
+    ctx_: Contextish,
     lvc: lv.Lavalink,
     /,
     *,
     advance: bool = True,
     change_repeat: bool = False,
 ) -> lv.TrackQueue:
-    g_inf = snowflakeify(g_inf)
-
-    async with access_data(g_inf, lvc) as d:
+    async with access_data(ctx_, lvc) as d:
         q = d.queue
         i = q.pos
         if change_repeat:
             q.reset_repeat()
 
-        async with while_stop(g_inf, lvc, d):
-            match q.repeat_mode:
-                case RepeatMode.ALL:
-                    i -= 1
-                    i %= len(q)
-                    prev = q[i]
-                case RepeatMode.ONE:
-                    prev = q.current
-                    assert prev is not None
-                case RepeatMode.NONE:
-                    prev = q.history[-1]
-                    i -= 1
+        async with while_stop(ctx_, lvc, d):
+            rep = q.repeat_mode
+            if rep is RepeatMode.ALL:
+                i -= 1
+                i %= len(q)
+                prev = q[i]
+            elif rep is RepeatMode.ONE:
+                prev = q.current
+                assert prev is not None
+            else:
+                prev = q.history[-1]
+                i -= 1
 
             if advance:
                 q.pos = i
 
-        await lvc.play(g_inf, prev.track).start()
-    await set_pause__(g_inf, lvc, pause=False)
+        await lvc.play(infer_guild(ctx_), prev.track).start()
+    await set_pause__(ctx_, lvc, pause=False)
     return prev
 
 
@@ -583,7 +577,7 @@ async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
         assert q.current is not None
         if total_ms >= (song_len := q.current.track.info.length):
             raise IllegalArgument(Argument(total_ms, song_len))
-        q._curr_t_started = curr_time_ms() - total_ms
+        q.update_curr_t_started(-total_ms)
         await lvc.seek_millis(ctx.guild_id, total_ms)
         return total_ms
 
@@ -608,14 +602,22 @@ async def play__(
     *,
     tracks: lv.Tracks,
     respond: bool = False,
+    shuffle: bool = False,
 ) -> None:
     assert ctx.guild_id is not None
     async with access_queue(ctx, lvc) as q:
         if tracks.load_type == 'PLAYLIST_LOADED':
-            await enqueue_tracks__(ctx, lvc, tracks=tracks, queue=q, respond=respond)
+            await enqueue_tracks__(
+                ctx, lvc, tracks=tracks, queue=q, respond=respond, shuffle=shuffle
+            )
         else:
             await enqueue_track__(
-                ctx, lvc, track=tracks.tracks[0], queue=q, respond=respond
+                ctx,
+                lvc,
+                track=tracks.tracks[0],
+                queue=q,
+                respond=respond,
+                shuffle=shuffle,
             )
 
 
@@ -627,15 +629,25 @@ async def enqueue_track__(
     track: lv.Track,
     queue: QueueList,
     respond: bool = False,
+    shuffle: bool = False,
     ignore_stop: bool = False,
 ) -> None:
     assert ctx.guild_id is not None
     player = lvc.play(ctx.guild_id, track).requester(ctx.author.id).replace(False)
     queue.ext(player.to_track_queue())
     if respond:
-        await reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
+        if shuffle:
+            await reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
+        else:
+            await reply(
+                ctx,
+                content=f"🔀**`＋`** Added `{track.info.title}` and shuffled the queue",
+            )
     if not queue.is_stopped or ignore_stop:
         await player.start()
+    if shuffle:
+        queue.shuffle()
+        await reply(ctx, content=f"")
 
 
 async def enqueue_tracks__(
@@ -646,6 +658,7 @@ async def enqueue_tracks__(
     tracks: lv.Tracks,
     queue: QueueList,
     respond: bool = False,
+    shuffle: bool = False,
 ) -> None:
     assert ctx.guild_id is not None
     players = tuple(
@@ -654,13 +667,22 @@ async def enqueue_tracks__(
     )
     queue.ext(*map(lambda p: p.to_track_queue(), players))
     if respond:
-        await reply(
-            ctx,
-            content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
-        )
+        if shuffle:
+            await reply(
+                ctx,
+                content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
+            )
+        else:
+            await reply(
+                ctx,
+                content=f"🔀**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` and shuffled the queue",
+            )
     player = next(iter(players))
     if not queue.is_stopped:
         await player.start()
+    if shuffle:
+        queue.shuffle()
+        await reply(ctx, content=f"")
 
 
 async def remove_track__(
@@ -684,7 +706,10 @@ async def remove_track__(
         rm = q[i]
     else:
         rm = max(
-            q, key=lambda t: SequenceMatcher(None, t.track.info.title, track).ratio()
+            q,
+            key=lambda t: dfflib.SequenceMatcher(
+                None, t.track.info.title, track
+            ).ratio(),
         )
         i = q.index(rm)
 
@@ -726,7 +751,7 @@ async def remove_tracks__(
 
     i_s = start - 1
     i_e = end - 1
-    t_n = end - i_s
+    # t_n = end - i_s
     rm = q[i_s:end]
     if q.current in rm:
         q.reset_repeat()
@@ -796,9 +821,9 @@ async def insert_track__(
         async with while_stop(ctx, lvc, d):
             await skip__(ctx, lvc, advance=False, change_repeat=True, change_stop=False)
 
-    q[t_] = REMOVED
+    q[t_] = NullType  # type: ignore
     q.insert(insert, ins)
-    q.remove(REMOVED)
+    q.remove(NullType)  # type: ignore
 
     await set_data(ctx.guild_id, lvc, d)
     return ins
@@ -817,33 +842,28 @@ async def repeat_impl(
             assert mode is not None
         m = q.set_repeat(mode)
 
-    match m:
-        case RepeatMode.NONE:
-            e = '➡️'
-            msg = "Disabled repeat"
-        case RepeatMode.ALL:
-            e = '🔁'
-            msg = "Repeating the entire queue"
-        case RepeatMode.ONE:
-            e = '🔂'
-            msg = "Repeating only this current track"
-        case _:
-            raise NotImplementedError
+    if m is RepeatMode.NONE:
+        msg = "Disabled repeat"
+    elif m is RepeatMode.ALL:
+        msg = "Repeating the entire queue"
+    elif m is RepeatMode.ONE:
+        msg = "Repeating only this current track"
+    else:
+        raise NotImplementedError
 
+    from .lavaimpl import get_repeat_emoji
+
+    e = get_repeat_emoji(q)
     await reply(ctx_, content=f"{e} {msg}")
     if d._nowplaying_msg:
-        if isinstance(ctx_, hk.ComponentInteraction):
-            rest = ctx_.app.rest
-        else:
-            assert isinstance(ctx_, tj.abc.Context)
-            rest = ctx_.rest
+        rest = get_rest(ctx_)
 
         assert d._nowplaying_components
         components = edit_components(
             rest,
             *d._nowplaying_components,
             edits=lambda x: x.set_emoji(e),
-            predicates=lambda x: x.emoji in {'➡️', '🔁', '🔂'},
+            predicates=lambda x: x.emoji in REPEAT_EMOJIS,
         )
 
         await edit_now_playing_components(rest, d, components)

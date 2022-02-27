@@ -1,3 +1,5 @@
+import src.lib.consts as c
+
 from src.lib.music import *
 from src.lib.checks import Checks, check
 
@@ -104,7 +106,7 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     "Searches for tracks on youtube from your query and lets you hear a part of it",
 )
 async def search(
-    ctx: tj.abc.Context,
+    ctx: EitherContext,
     query: str,
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
@@ -129,7 +131,7 @@ async def search_c(
 @attempt_to_connect
 @check(Checks.CONN)
 async def search_(
-    ctx: tj.abc.Context, query: str, /, *, bot: hk.GatewayBot, lvc: lv.Lavalink
+    ctx: EitherContext, query: str, /, *, bot: hk.GatewayBot, lvc: lv.Lavalink
 ) -> None:
     assert ctx.guild_id is not None
     query = query.strip("<>|")
@@ -164,29 +166,25 @@ async def search_(
     components: list[hk.api.ActionRowBuilder] = []
 
     for i in (pre_row_1_ := map(str, range(1, 1 + len(queried[:5])))):
-        pre_row_1.add_button(hk_msg.ButtonStyle.SECONDARY, i).set_label(
-            i
-        ).add_to_container()
+        pre_row_1.add_button(bttstyle.SECONDARY, i).set_label(i).add_to_container()
     if pre_row_1_:
         components.append(pre_row_1)
 
         pre_row_2 = ctx.rest.build_action_row()
         for j in (pre_row_2_ := map(str, range(6, 6 + len(queried[5:10])))):
-            pre_row_2.add_button(hk_msg.ButtonStyle.SECONDARY, j).set_label(
-                j
-            ).add_to_container()
+            pre_row_2.add_button(bttstyle.SECONDARY, j).set_label(j).add_to_container()
         if pre_row_2_:
             components.append(pre_row_2)
 
     ops_row = ctx.rest.build_action_row()
-    ops_row.add_button(hk_msg.ButtonStyle.SUCCESS, 'enqueue').set_label(
+    ops_row.add_button(bttstyle.SUCCESS, 'enqueue').set_label(
         "＋ Enqueue"
     ).add_to_container()
 
-    ops_row.add_button(hk_msg.ButtonStyle.PRIMARY, 'link').set_label(
+    ops_row.add_button(bttstyle.PRIMARY, 'link').set_label(
         "Get Link"
     ).add_to_container()
-    ops_row.add_button(hk_msg.ButtonStyle.DANGER, 'cancel').set_emoji(
+    ops_row.add_button(bttstyle.DANGER, 'cancel').set_emoji(
         c.WHITE_CROSS
     ).add_to_container()
     components.append(ops_row)
@@ -271,41 +269,40 @@ async def search_(
                 await err_reply(inter, content=f"❗ No tracks has been selected yet")
                 continue
             selected_t = queried[int(selected) - 1]
-            match key:
-                case 'enqueue':
-                    if not await on_going_tracks():
-                        await lvc.stop(
-                            ctx.guild_id,
-                        )
-                    if sel_msg:
-                        await ch.delete_messages(sel_msg)
-                    if not prior_stop:
-                        await continue__(ctx, lvc)
-                    async with access_queue(ctx, lvc) as q:
-                        await enqueue_track__(
-                            ctx,
-                            lvc,
-                            track=selected_t,
-                            queue=q,
-                            respond=False,
-                            ignore_stop=True,
-                        )
-                    await inter.create_initial_response(
-                        hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+            if key == 'enqueue':
+                if not await on_going_tracks():
+                    await lvc.stop(
+                        ctx.guild_id,
                     )
-                    await inter.edit_initial_response(
-                        f"**🔎`＋`** Added `{selected_t.info.title}` to the queue",
-                        embed=None,
-                        user_mentions=False,
-                        components=[],
+                if sel_msg:
+                    await ch.delete_messages(sel_msg)
+                if not prior_stop:
+                    await continue__(ctx, lvc)
+                async with access_queue(ctx, lvc) as q:
+                    await enqueue_track__(
+                        ctx,
+                        lvc,
+                        track=selected_t,
+                        queue=q,
+                        respond=False,
+                        ignore_stop=True,
                     )
-                    return
-                case 'link':
-                    await reply(
-                        inter, hidden=True, content=f"🌐 Link is {selected_t.info.uri}"
-                    )
-                case _:
-                    raise NotImplementedError
+                await inter.create_initial_response(
+                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                )
+                await inter.edit_initial_response(
+                    f"**🔎`＋`** Added `{selected_t.info.title}` to the queue",
+                    embed=None,
+                    user_mentions=False,
+                    components=[],
+                )
+                return
+            elif key == 'link':
+                await reply(
+                    inter, hidden=True, content=f"🌐 Link is {selected_t.info.uri}"
+                )
+            else:
+                raise NotImplementedError
 
         await ctx.edit_initial_response(
             components=(*disable_components(ctx.rest, *components),)
@@ -337,29 +334,19 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
     def _page_row(*, cancel_b: bool = False):
         row = ctx.rest.build_action_row()
 
-        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'start').set_emoji(
-            '⏪'
-        ).add_to_container()
+        row.add_button(bttstyle.SECONDARY, 'start').set_emoji('⏪').add_to_container()
 
-        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'prev').set_emoji(
-            '◀️'
-        ).add_to_container()
+        row.add_button(bttstyle.SECONDARY, 'prev').set_emoji('◀️').add_to_container()
 
         if cancel_b:
-            _3rd_b = row.add_button(hk_msg.ButtonStyle.DANGER, 'delete').set_emoji(
-                c.WHITE_CROSS
-            )
+            _3rd_b = row.add_button(bttstyle.DANGER, 'delete').set_emoji(c.WHITE_CROSS)
         else:
-            _3rd_b = row.add_button(hk_msg.ButtonStyle.PRIMARY, 'main').set_emoji('⏺️')
+            _3rd_b = row.add_button(bttstyle.PRIMARY, 'main').set_emoji('⏺️')
         _3rd_b.add_to_container()
 
-        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'next').set_emoji(
-            '▶️'
-        ).add_to_container()
+        row.add_button(bttstyle.SECONDARY, 'next').set_emoji('▶️').add_to_container()
 
-        row.add_button(hk_msg.ButtonStyle.SECONDARY, 'end').set_emoji(
-            '⏩'
-        ).add_to_container()
+        row.add_button(bttstyle.SECONDARY, 'end').set_emoji('⏩').add_to_container()
 
         return row
 
@@ -402,20 +389,19 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
 
             key = inter.custom_id
 
-            match key:
-                case 'main':
-                    i = _i_ori
-                case 'next':
-                    i += 1
-                case 'prev':
-                    i -= 1
-                case 'start':
-                    i = 0
-                case 'end':
-                    i = pages_n - 1
-                case 'delete':
-                    await inter.delete_initial_response()
-                    return
+            if key == 'main':
+                i = _i_ori
+            elif key == 'next':
+                i += 1
+            elif key == 'prev':
+                i -= 1
+            elif key == 'start':
+                i = 0
+            elif key == 'end':
+                i = pages_n - 1
+            elif key == 'delete':
+                await inter.delete_initial_response()
+                return
 
             _row = _page_row(cancel_b=i == _i_ori)
             embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
@@ -446,7 +432,7 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
 @tj.with_parser
 @tj.as_message_command('lyrics', 'ly')
 async def lyrics(
-    ctx: tj.abc.Context,
+    ctx: EitherContext,
     song: t.Optional[str],
     lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
     bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
@@ -459,7 +445,7 @@ async def lyrics(
 
 @check(Checks.CATCH_ALL)
 async def lyrics_(
-    ctx: tj.abc.Context,
+    ctx: EitherContext,
     song: t.Optional[str],
     /,
     *,
@@ -469,7 +455,7 @@ async def lyrics_(
     """Attempts to find the lyrics of the current song"""
     assert not (ctx.guild_id is None)
     if song is None:
-        if not (np := ((await get_queue(ctx, lvc))).current):
+        if not ((q := await get_queue(ctx, lvc)) and (np := q.current)):
             await err_reply(
                 ctx, content=f"❌ Please specify a song title or play a track first"
             )
@@ -485,9 +471,7 @@ async def lyrics_(
     act_row = ctx.rest.build_action_row()
 
     ly_sel = sel_row.add_select_menu('ly_sel')
-    cancel_b = act_row.add_button(hk_msg.ButtonStyle.DANGER, 'delete').set_emoji(
-        c.WHITE_CROSS
-    )
+    cancel_b = act_row.add_button(bttstyle.DANGER, 'delete').set_emoji(c.WHITE_CROSS)
 
     try:
         async with trigger_thinking(ctx):

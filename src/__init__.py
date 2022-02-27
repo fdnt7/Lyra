@@ -1,1 +1,1 @@
-from .client import bot
+from .client import bot, activity

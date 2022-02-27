@@ -48,7 +48,7 @@ async def pause_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Pauses the current song."""
     assert ctx.guild_id is not None
 
-    await set_pause__(ctx, lvc, pause=True, respond=True)
+    await set_pause__(ctx, lvc, pause=True, respond=True, update_controller=True)
 
 
 # Resume
@@ -76,7 +76,7 @@ async def resume_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Resumes playing the current song."""
     assert not ((ctx.guild_id is None) or (ctx.member is None))
 
-    await set_pause__(ctx, lvc, pause=False, respond=True)
+    await set_pause__(ctx, lvc, pause=False, respond=True, update_controller=True)
 
 
 # Stop

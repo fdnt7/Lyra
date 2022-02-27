@@ -22,26 +22,23 @@ async def on_interaction_create(
     except NotConnected:
         return
 
-    match inter.custom_id:
-        case 'lyra_skip':
-            await check(
-                Checks.PLAYING
-                | Checks.CONN
-                | Checks.QUEUE
-                | Checks.ALONE_OR_CURR_T_YOURS,
-            )(skip_impl)(inter, lvc=lvc)
-        case 'lyra_previous':
-            await check(Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CAN_SEEK_QUEUE)(
-                previous_impl
-            )(inter, lvc=lvc)
-        case 'lyra_playpause':
-            await play_pause_impl(inter, lvc=lvc)
-        case 'lyra_shuffle':
-            await shuffle_impl(inter, lvc=lvc)
-        case 'lyra_repeat':
-            await repeat_impl(inter, None, lvc=lvc)
-        case _:
-            return
+    btt = inter.custom_id
+    if btt == 'lyra_skip':
+        await check(
+            Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CURR_T_YOURS,
+        )(skip_impl)(inter, lvc=lvc)
+    elif btt == 'lyra_previous':
+        await check(Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CAN_SEEK_QUEUE)(
+            previous_impl
+        )(inter, lvc=lvc)
+    elif btt == 'lyra_playpause':
+        await play_pause_impl(inter, lvc=lvc)
+    elif btt == 'lyra_shuffle':
+        await shuffle_impl(inter, lvc=lvc)
+    elif btt == 'lyra_repeat':
+        await repeat_impl(inter, None, lvc=lvc)
+    else:
+        return
 
 
 # -

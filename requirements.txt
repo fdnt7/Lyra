@@ -1,0 +1,12 @@
+alluka==0.1.0
+attrs==21.4.0
+black==22.1.0
+hikari==2.0.0.dev106
+hikari-tanjun==2.4.1a1
+lyricsgenius==3.0.1
+PyYAML==6.0
+requests==2.27.1
+ytmusicapi==0.20.0
+uvloop
+python-dotenv
+./lavasnek_rs-0.1.0_alpha.4-cp310-cp310-manylinux_2_24_x86_64.whl

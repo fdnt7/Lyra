@@ -6,17 +6,17 @@ import yaml
 # import miru
 import typing as t
 import logging
+import dotenv
 import hikari as hk
 import tanjun as tj
 import lavasnek_rs as lv
 import pathlib as pl
 
-from src.lib import *
+from .lib import *
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
 
 with open('config.yml', 'r') as f:
     _y = yaml.load(f, yaml.Loader)
@@ -42,10 +42,10 @@ client = (
     .set_hooks(hooks)
     .load_modules(*(p for p in pl.Path('.').glob('./src/modules/*.py')))
 )
-# miru.load(bot)
+
+activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
 
 
-# yuyo_client = yuyo.ComponentClient.from_gateway_bot(bot)
 lavalink_client: lv.Lavalink
 
 
@@ -67,6 +67,13 @@ async def prefix_getter(ctx: tj.abc.MessageContext) -> t.Iterable[str]:
         if ctx.guild_id
         else []
     )
+
+
+# @client.with_listener(hk.StartedEvent)
+# async def on_started(event: hk.StartedEvent, client_: tj.Client = tj.inject(type=tj.Client)) -> None:
+#     from src.lib.utils import get_client
+
+#     get_client = tj.injecting.SelfInjectingCallback(client_, get_client)
 
 
 @client.with_listener(hk.ShardReadyEvent)

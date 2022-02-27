@@ -1,7 +1,9 @@
 import os
-import hikari as hk
+import dotenv
 
-from src import bot
+dotenv.load_dotenv()
+
+from src import bot, activity
 
 
 if __name__ == '__main__':
@@ -10,4 +12,4 @@ if __name__ == '__main__':
 
         uvloop.install()
 
-    bot.run(activity=hk.Activity(name='/play', type=hk.ActivityType.LISTENING))
+    bot.run(activity=activity)
