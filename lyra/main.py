@@ -1,7 +1,7 @@
 import os
 import dotenv
 
-dotenv.load_dotenv()
+dotenv.load_dotenv('../.env')
 
 from src import bot, activity
 

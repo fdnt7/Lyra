@@ -637,17 +637,17 @@ async def enqueue_track__(
     queue.ext(player.to_track_queue())
     if respond:
         if shuffle:
-            await reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
-        else:
             await reply(
                 ctx,
                 content=f"🔀**`＋`** Added `{track.info.title}` and shuffled the queue",
             )
+        else:
+            await reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
+
     if not queue.is_stopped or ignore_stop:
         await player.start()
     if shuffle:
         queue.shuffle()
-        await reply(ctx, content=f"")
 
 
 async def enqueue_tracks__(
@@ -670,19 +670,19 @@ async def enqueue_tracks__(
         if shuffle:
             await reply(
                 ctx,
-                content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
+                content=f"🔀**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` and shuffled the queue",
             )
         else:
             await reply(
                 ctx,
-                content=f"🔀**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` and shuffled the queue",
+                content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
             )
+
     player = next(iter(players))
     if not queue.is_stopped:
         await player.start()
     if shuffle:
         queue.shuffle()
-        await reply(ctx, content=f"")
 
 
 async def remove_track__(

@@ -5,6 +5,7 @@ from .utils import (
     curr_time_ms,
     infer_guild,
     get_client,
+    inj_glob,
 )
 
 
@@ -200,7 +201,8 @@ class Bands(tuple[float]):
 
     @classmethod
     def _load_bands(cls) -> JSONBands:
-        with open('src/lib/bands.yaml', 'r') as f:
+        fn = next(inj_glob('./bands.yml'))
+        with open(fn.resolve(), 'r') as f:
             data = yaml.load(f, yaml.Loader)  # type: ignore
             cls.__loaded_bands = data
             # with open('src/lib/bands.yaml', 'a') as f:

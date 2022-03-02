@@ -1,0 +1,20 @@
+---
+version: "2.1"
+services:
+  app:
+    image: lyra_app
+    build:
+      context: .
+      dockerfile: ./lyra/Dockerfile
+    container_name: app
+    env_file:
+      - .env
+    restart: unless-stopped
+      
+  lavalink:
+    image: lyra_lavalink
+    build: ./lavalink
+    container_name: lavalink
+    environment: 
+      - PASSWORD=youshallnotpass
+    restart: unless-stopped

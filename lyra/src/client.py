@@ -6,11 +6,11 @@ import yaml
 # import miru
 import typing as t
 import logging
+import pathlib as pl
 import dotenv
 import hikari as hk
 import tanjun as tj
 import lavasnek_rs as lv
-import pathlib as pl
 
 from .lib import *
 
@@ -18,7 +18,10 @@ from .lib import *
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-with open('config.yml', 'r') as f:
+
+fn = next(inj_glob('./config.yml'))
+
+with open(fn.resolve(), 'r') as f:
     _y = yaml.load(f, yaml.Loader)
 
     PREFIX: list[str] = _y['prefixes']
@@ -26,16 +29,13 @@ with open('config.yml', 'r') as f:
     _dev: bool = _y['dev_mode']
     TOKEN: str = os.environ['LYRA_DEV_TOKEN' if _dev else 'LYRA_TOKEN']
 
-    guild_ids: list[int] = _y['dev_guilds'] if _dev else _y['rel_guilds']
+    decl_glob_cmds: list[int] | t.Literal[True] = _y['guilds'] if _dev else True
 
 
 client = (
     tj.Client.from_gateway_bot(
         bot := hk.GatewayBot(token=TOKEN),
-        declare_global_commands=(
-            guild_ids
-            # True
-        ),
+        declare_global_commands=(decl_glob_cmds),
         mention_prefix=True,
     )
     .add_prefix(PREFIX)
@@ -49,10 +49,9 @@ activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
 lavalink_client: lv.Lavalink
 
 
-with open('guild_settings.json', 'r') as f:
-    guild_config: GuildConfig = json.load(f)
-    logger.info("Loaded guild_settings.json")
-
+cfg_fetched: t.Any = cfg_ref.get()
+guild_config = GuildConfig(cfg_fetched)
+logger.info("Loaded guild_configs")
 
 (
     client.set_type_dependency(GuildConfig, guild_config)
@@ -61,9 +60,11 @@ with open('guild_settings.json', 'r') as f:
 
 
 @client.with_prefix_getter
-async def prefix_getter(ctx: tj.abc.MessageContext) -> t.Iterable[str]:
+async def prefix_getter(
+    ctx: tj.abc.MessageContext, cfg: GuildConfig = tj.inject(type=GuildConfig)
+) -> t.Iterable[str]:
     return (
-        guild_config.setdefault(str(ctx.guild_id), {}).setdefault('prefixes', [])
+        cfg.setdefault(str(ctx.guild_id), {}).setdefault('prefixes', [])
         if ctx.guild_id
         else []
     )
@@ -82,9 +83,15 @@ async def on_shard_ready(
     client_: tj.Client = tj.inject(type=tj.Client),
 ) -> None:
     """Event that triggers when the hikari gateway is ready."""
+    host = (
+        os.environ['LAVALINK_HOST']
+        if os.environ.get('IN_DOCKER', False)
+        else '127.0.0.1'
+    )
+
     builder = (
         lv.LavalinkBuilder(event.my_user.id, TOKEN)
-        .set_host(os.environ['LAVALINK_HOST'])
+        .set_host(host)
         .set_password(os.environ['LAVALINK_PASSWORD'])
         .set_port(int(os.environ['LAVALINK_PORT']))
         .set_start_gateway(False)
@@ -139,7 +146,8 @@ async def on_voice_server_update(
 
 
 @client.with_listener(hk.StoppingEvent)
-async def on_stopping(_: hk.StoppingEvent) -> None:
-    with open('guild_settings.json', 'w') as f:
-        json.dump(guild_config, f, indent=4)
-        logger.info("Saved to guild_settings.json")
+async def on_stopping(
+    _: hk.StoppingEvent, cfg: GuildConfig = tj.inject(type=GuildConfig)
+) -> None:
+    cfg_ref.set(dict(cfg))
+    logger.info("Saved to guild_configs")

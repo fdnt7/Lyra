@@ -7,6 +7,9 @@ lyricsgenius==3.0.1
 PyYAML==6.0
 requests==2.27.1
 ytmusicapi==0.20.0
-uvloop
 python-dotenv
+firebase_admin
+# ./lavasnek_rs-0.1.0_alpha.4-cp310-none-win_amd64.whl
+
+uvloop
 ./lavasnek_rs-0.1.0_alpha.4-cp310-cp310-manylinux_2_24_x86_64.whl

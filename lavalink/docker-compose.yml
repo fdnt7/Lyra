@@ -1,0 +1,11 @@
+---
+version: "2.1"
+services:
+  lavalink:
+    image: lyra_lavalink
+    container_name: lavalink
+    environment: 
+      - PASSWORD=PASSWORD 
+    ports:
+      - 2333:2333
+    restart: unless-stopped

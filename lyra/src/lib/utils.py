@@ -72,10 +72,7 @@ genius.verbose = False
 loop = asyncio.get_event_loop()
 
 
-@a.define(hash=True)
-class GuildConfig(dict[str, dict[str, t.Any]]):
-    def __getitem__(self, key: str):
-        return super().__getitem__(key)
+GuildConfig = t.NewType('GuildConfig', dict[str, dict[str, t.Any]])
 
 
 @a.define(hash=True, init=False, frozen=True)
@@ -575,3 +572,11 @@ def chunk_b(seq: t.Sequence[_E], n: int, /) -> t.Generator[t.Sequence[_E], None,
     for end in range(len(seq) % n, len(seq) + 1, n):
         yield seq[start:end]
         start = end
+
+
+def inj_glob(pattern: str):
+    if os.environ.get('IN_DOCKER', False):
+        p = pl.Path('.') / 'shared'
+    else:
+        p = pl.Path('.') / '..'
+    return p.glob(pattern)
