@@ -102,15 +102,16 @@ async def on_shard_ready(
     global lavalink_client
     lavalink_client = lvc
     client_.set_type_dependency(lv.Lavalink, lvc)
-
-    # for i,g in enumerate(guild_ids, 1):
+    # app_id = 0
+    # guild_ids = []
+    # _L = len(guild_ids)
+    # for i, g in enumerate(guild_ids, 1):
     #     # print(await bot.rest.fetch_guild(g))
-    #     _L = len(guild_ids)
-    #     cmds = await bot.rest.fetch_application_commands(901543206947262475)
+    #     cmds = await bot.rest.fetch_application_commands(698222394548027492, g)
     #     L = len(cmds)
-    #     for j,cmd in enumerate(cmds, 1):
+    #     for j, cmd in enumerate(cmds, 1):
     #         await cmd.delete()
-    #         print(f"{i}/{_L} {j}/{L}", cmd)
+    #         print(f"#{i}/{_L} {j}/{L} {g}", cmd)
 
 
 @client.with_listener(hk.VoiceStateUpdateEvent)

@@ -20,7 +20,6 @@ lyra/src/lib/__pycache__/
 lyra/src/modules/__pycache__/
 
 .env
-application.yml
 headers_auth.json
 guild_settings.json
 config.yml
