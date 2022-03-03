@@ -32,7 +32,7 @@ def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
         assert ctx and lvc
         p = get_pref(ctx)
 
-        assert ctx.guild_id is not None
+        assert ctx.guild_id
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
 
         async def __join():
@@ -240,7 +240,7 @@ async def join__(
     /,
 ) -> hk.Snowflake:
     """Joins your voice channel."""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     if not (ctx.client.cache and ctx.client.shards):
         raise InternalError
@@ -320,7 +320,7 @@ async def join__(
 
 
 async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     if not (conn := lvc.get_guild_gateway_connection_info(ctx.guild_id)):
         raise NotConnected
@@ -380,7 +380,7 @@ async def stop_in_ctx__(
 
 
 async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     async with access_queue(ctx, lvc) as q:
         q.is_stopped = False
 
@@ -570,7 +570,7 @@ async def previous_impl(
 
 
 async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     if total_ms < 0:
         raise IllegalArgument(Argument(total_ms, 0))
     async with access_queue(ctx, lvc) as q:
@@ -604,7 +604,7 @@ async def play__(
     respond: bool = False,
     shuffle: bool = False,
 ) -> None:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     async with access_queue(ctx, lvc) as q:
         if tracks.load_type == 'PLAYLIST_LOADED':
             await enqueue_tracks__(
@@ -632,7 +632,7 @@ async def enqueue_track__(
     shuffle: bool = False,
     ignore_stop: bool = False,
 ) -> None:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     player = lvc.play(ctx.guild_id, track).requester(ctx.author.id).replace(False)
     queue.ext(player.to_track_queue())
     if respond:
@@ -660,7 +660,7 @@ async def enqueue_tracks__(
     respond: bool = False,
     shuffle: bool = False,
 ) -> None:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     players = tuple(
         lvc.play(ctx.guild_id, t).requester(ctx.author.id).replace(False)
         for t in tracks.tracks
@@ -688,7 +688,7 @@ async def enqueue_tracks__(
 async def remove_track__(
     ctx: tj.abc.Context, track: t.Optional[str], lvc: lv.Lavalink, /
 ) -> lv.TrackQueue:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
     q = d.queue
@@ -742,7 +742,7 @@ async def remove_track__(
 async def remove_tracks__(
     ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
 ) -> list[lv.TrackQueue]:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
     q = d.queue
@@ -788,7 +788,7 @@ async def shuffle_impl(ctx_: Contextish, /, *, lvc: lv.Lavalink):
 async def insert_track__(
     ctx: tj.abc.Context, insert: int, track: t.Optional[int], lvc: lv.Lavalink, /
 ) -> lv.TrackQueue:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
     q = d.queue

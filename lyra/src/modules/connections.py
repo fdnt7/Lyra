@@ -87,7 +87,7 @@ async def on_voice_state_update(
             await client.rest.create_message(ch, f"✨▶️ Paused as no one is listening")
 
             await asyncio.wait(
-                (loop.create_task(on_everyone_leaves_vc()),),
+                (asyncio.create_task(on_everyone_leaves_vc()),),
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
@@ -170,7 +170,7 @@ async def leave(
 @check(Checks.CATCH_ALL)
 async def leave_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     """Stops playback of the current song."""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     try:
         vc = await leave__(ctx, lvc)

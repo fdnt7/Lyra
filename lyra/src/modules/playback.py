@@ -46,7 +46,7 @@ async def pause(
 )
 async def pause_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Pauses the current song."""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     await set_pause__(ctx, lvc, pause=True, respond=True, update_controller=True)
 
@@ -242,7 +242,7 @@ async def play_at(
 
 @check(Checks.QUEUE | Checks.CONN | Checks.ALONE_OR_CAN_SEEK_QUEUE)
 async def play_at_(ctx: tj.abc.Context, position: int, /, *, lvc: lv.Lavalink):
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
     q = d.queue
@@ -323,7 +323,7 @@ async def restart(ctx: tj.abc.Context, lvc: lv.Lavalink = tj.inject(type=lv.Lava
     | Checks.PAUSE
 )
 async def restart_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     async with access_queue(ctx, lvc) as q:
         if q.is_stopped and (np := q.current):
             await lvc.play(ctx.guild_id, np.track).start()

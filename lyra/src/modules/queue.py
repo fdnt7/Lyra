@@ -87,7 +87,7 @@ async def play_(
     ctx: EitherContext, song: str, shuffle: bool, /, *, lvc: lv.Lavalink
 ) -> None:
     """Attempts to play the song from youtube."""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     async with trigger_thinking(ctx):
         query = await lvc.get_tracks(song)
@@ -157,7 +157,7 @@ async def remove_one_m(
 async def remove_one_(
     ctx: tj.abc.Context, track: t.Optional[str], /, *, lvc: lv.Lavalink
 ):
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     try:
         rm = await remove_track__(ctx, track, lvc)
@@ -218,7 +218,7 @@ async def remove_bulk_m(
 async def remove_bulk_(
     ctx: tj.abc.Context, start: int, end: t.Optional[int], /, *, lvc: lv.Lavalink
 ):
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     q = await get_queue(ctx, lvc)
     end = end or len(q)
@@ -401,7 +401,7 @@ async def move_swap_(
     ctx: tj.abc.Context, first: int, second: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
     """Swaps positions of two tracks in a queue"""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
     q = d.queue
@@ -484,7 +484,7 @@ async def move_insert_(
     ctx: tj.abc.Context, position: int, track: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
     """Inserts a track in the queue after a new position"""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     try:
         mv = await insert_track__(ctx, position, track, lvc)

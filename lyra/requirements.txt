@@ -9,6 +9,7 @@ requests==2.27.1
 ytmusicapi==0.20.0
 python-dotenv
 firebase_admin
+colorama
 # ./lavasnek_rs-0.1.0_alpha.4-cp310-none-win_amd64.whl
 
 uvloop

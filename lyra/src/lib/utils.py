@@ -373,8 +373,8 @@ def trigger_thinking(
         await ctx.defer(ephemeral=ephemeral, flags=flags)
         try:
             yield
-        finally:
-            return
+        except:
+            raise
 
     return _defer()
 

@@ -1,9 +1,4 @@
 desktop.ini
-bot.bat
-bot-startup.bat
-server.bat
-test.bat
-tggldev.py
 
 lyra/.idea
 lyra/.vscode
@@ -12,6 +7,9 @@ lyra/.venv
 lyra/shared
 lyra/old
 lyra/temp
+
+lavalink-win
+lavalink-linux
 
 /__pycache__
 lyra/__pycache__/

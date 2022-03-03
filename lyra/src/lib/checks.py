@@ -168,7 +168,7 @@ def check(
             )
             lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), None)
 
-            assert ctx
+            assert ctx, "Missing a Contextish object"
             p = get_pref(ctx)
 
             try:

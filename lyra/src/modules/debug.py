@@ -64,7 +64,7 @@ async def unload_module(
 @tj.with_argument('module')
 @tj.as_message_command('load', 'lo')
 async def load_module(
-    ctx: tj.abc.SlashContext,
+    ctx: tj.abc.Context,
     module: str,
     client: tj.Client = tj.inject(type=tj.Client),
 ):
@@ -81,6 +81,24 @@ async def load_module(
 
     await reply(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
 
+
+# @tj.as_message_menu("test")
+# @with_message_menu_template
+# async def test(
+#     ctx: tj.abc.MenuContext,
+#     msg: hk.Message,
+#     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+# ) -> None:
+#     print(msg.app)
+#     await reply(ctx, content=lvc)
+
+
+# @tj.as_message_command('test')
+# async def test2(
+#     ctx: tj.abc.MenuContext,
+#     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+# ) -> None:
+#     await reply(ctx, content=lvc)
 
 # -
 

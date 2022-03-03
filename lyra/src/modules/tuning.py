@@ -75,7 +75,7 @@ async def volume_set_m(
 @check(Checks.CONN, perms=DJ_PERMS)
 async def volume_set_(ctx: tj.abc.Context, scale: int, /, *, lvc: lv.Lavalink) -> None:
     """Set the volume of the bot from 0-10"""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     async with access_equalizer(ctx, lvc) as eq:
         eq.volume = scale
@@ -117,7 +117,7 @@ async def volume_up_m(
 @check(Checks.CONN, perms=DJ_PERMS)
 async def volume_up_(ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink) -> None:
     """Increase the bot's volume"""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     async with access_equalizer(ctx, lvc) as eq:
         old = eq.volume
@@ -173,7 +173,7 @@ async def volume_down_(
     """
     Decrease the bot's volume"
     """
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     async with access_equalizer(ctx, lvc) as eq:
         old = eq.volume
@@ -341,7 +341,7 @@ async def equalizer_preset_(
     ctx: tj.abc.Context, preset: str, /, *, lvc: lv.Lavalink
 ) -> None:
     """Sets the bot's equalizer to a preset"""
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
 
     async with access_equalizer(ctx, lvc) as eq:
         bands = Bands.load(preset)

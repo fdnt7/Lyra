@@ -133,7 +133,7 @@ async def search_c(
 async def search_(
     ctx: EitherContext, query: str, /, *, bot: hk.GatewayBot, lvc: lv.Lavalink
 ) -> None:
-    assert ctx.guild_id is not None
+    assert ctx.guild_id
     query = query.strip("<>|")
 
     QUERIED_N = 10
