@@ -42,17 +42,13 @@ async def prefix_sg_m(_: tj.abc.MessageContext):
 
 @prefix_sg_s.with_command
 @tj.as_slash_command('list', "Lists all usable of the bot")
-async def prefix_list_s(
-    ctx: tj.abc.SlashContext, cfg: GuildConfig = tj.inject(type=GuildConfig)
-):
+async def prefix_list_s(ctx: tj.abc.SlashContext, cfg: al.Injected[GuildConfig]):
     await prefix_list_(ctx, cfg=cfg)
 
 
 @prefix_sg_m.with_command
 @tj.as_message_command('list', 'l', '.')
-async def prefix_list_m(
-    ctx: tj.abc.MessageContext, cfg: GuildConfig = tj.inject(type=GuildConfig)
-):
+async def prefix_list_m(ctx: tj.abc.MessageContext, cfg: al.Injected[GuildConfig]):
     """
     Lists all usable prefixes of the bot
     """
@@ -86,7 +82,7 @@ async def prefix_list_(ctx: tj.abc.Context, /, *, cfg: GuildConfig) -> None:
 async def prefix_add_s(
     ctx: tj.abc.SlashContext,
     prefix: str,
-    cfg: GuildConfig = tj.inject(type=GuildConfig),
+    cfg: al.Injected[GuildConfig],
 ):
     await prefix_add_(ctx, prefix, cfg=cfg)
 
@@ -98,7 +94,7 @@ async def prefix_add_s(
 async def prefix_add_m(
     ctx: tj.abc.MessageContext,
     prefix: str,
-    cfg: GuildConfig = tj.inject(type=GuildConfig),
+    cfg: al.Injected[GuildConfig],
 ):
     """
     Adds a new prefix of the bot for this guild
@@ -132,7 +128,7 @@ async def prefix_add_(ctx: tj.abc.Context, prefix: str, /, *, cfg: GuildConfig) 
 async def prefix_remove_s(
     ctx: tj.abc.SlashContext,
     prefix: str,
-    cfg: GuildConfig = tj.inject(type=GuildConfig),
+    cfg: al.Injected[GuildConfig],
 ):
     await prefix_remove_(ctx, prefix, cfg=cfg)
 
@@ -144,7 +140,7 @@ async def prefix_remove_s(
 async def prefix_remove_m(
     ctx: tj.abc.MessageContext,
     prefix: str,
-    cfg: GuildConfig = tj.inject(type=GuildConfig),
+    cfg: al.Injected[GuildConfig],
 ):
     """
     Removes an existing prefix of the bot for this guild
@@ -198,7 +194,7 @@ async def nowplayingmsg_sg_m(_: tj.abc.MessageContext):
     'toggle', "Toggles the now playing messages to be automatically sent or not"
 )
 async def nowplayingmsg_toggle_s(
-    ctx: tj.abc.SlashContext, cfg: GuildConfig = tj.inject(type=GuildConfig)
+    ctx: tj.abc.SlashContext, cfg: al.Injected[GuildConfig]
 ):
     await nowplayingmsg_toggle_(ctx, cfg=cfg)
 
@@ -207,7 +203,7 @@ async def nowplayingmsg_toggle_s(
 @tj.with_parser
 @tj.as_message_command('toggle', 'tggl', '.')
 async def nowplayingmsg_toggle_m(
-    ctx: tj.abc.MessageContext, cfg: GuildConfig = tj.inject(type=GuildConfig)
+    ctx: tj.abc.MessageContext, cfg: al.Injected[GuildConfig]
 ):
     """
     Toggles the now playing messages to be automatically sent or not

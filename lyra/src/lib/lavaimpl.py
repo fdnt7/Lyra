@@ -2,6 +2,7 @@ from ._imports import *
 from .errors import NotConnected, QueueEmpty
 from .utils import (
     GuildOrInferable,
+    get_pallete_from_img,
     curr_time_ms,
     infer_guild,
     get_client,
@@ -58,7 +59,7 @@ def match_repeat(mode: str) -> RepeatMode:
 #         return QueuePosition(super().__add__(__x))
 
 
-@a.define
+@a.s(auto_attribs=False, auto_detect=True)
 class QueueList(list[lv.TrackQueue]):
     pos: int = 0
     repeat_mode: RepeatMode = RepeatMode.NONE
@@ -66,6 +67,8 @@ class QueueList(list[lv.TrackQueue]):
     is_stopped: bool = a.field(factory=bool, kw_only=True)
     _paused_np_position: t.Optional[int] = a.field(default=None, init=False)
     _curr_t_started: int = a.field(factory=curr_time_ms, init=False)
+
+    __cached_np_colors: tuple[tuple[int, ...], ...] = ()
 
     def __repr__(self) -> str:
         return "[\n\t%s\n]" % '\n\t'.join(
@@ -184,6 +187,19 @@ class QueueList(list[lv.TrackQueue]):
     def update_curr_t_started(self, delta_ms: int = 0):
         self._curr_t_started = curr_time_ms() + delta_ms
 
+    def get_palette_from_now_playing(self):
+        if self.__cached_np_colors:
+            return self.__cached_np_colors
+        np = self.current
+        assert np
+        t_info = np.track.info
+        url = get_thumbnail(t_info)
+        self.__cached_np_colors = (c := get_pallete_from_img(url))
+        return c
+
+    def reset_cached_np_colors(self):
+        self.__cached_np_colors = ()
+
 
 @a.s(frozen=True, auto_attribs=False, auto_detect=True)
 class Bands(tuple[float]):
@@ -278,6 +294,7 @@ class NodeData:
         default=None, init=False
     )
     _track_stopped_fired: bool = a.field(factory=bool, init=False)
+    _dc_by_cmd: bool = a.field(factory=bool, init=False)
     ...
 
 
@@ -361,6 +378,8 @@ class EventHandler:
             q = d.queue
             l = len(q)
 
+            q.reset_cached_np_colors()
+
             from src.client import client, guild_config
 
             cfg = guild_config.copy()
@@ -404,6 +423,8 @@ class EventHandler:
         t = (await lvc.decode_track(event.track)).title
         q = await get_queue(event.guild_id, lvc)
         l = len(q)
+
+        q.reset_cached_np_colors()
 
         msg = f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] {{0}}: '{t}'\n\t{event.exception_message}\n\tCaused by: {event.exception_cause}"
 
@@ -508,3 +529,7 @@ def get_repeat_emoji(q: QueueList, /):
         if q.repeat_mode is RepeatMode.NONE
         else (REPEAT_EMOJIS[1] if q.repeat_mode is RepeatMode.ALL else REPEAT_EMOJIS[2])
     )
+
+
+def get_thumbnail(t_info: lv.Info, /):
+    return f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"

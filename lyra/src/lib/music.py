@@ -7,6 +7,7 @@ from .lavaimpl import (
     access_queue,
     access_data,
     access_equalizer,
+    get_thumbnail,
     edit_now_playing_components,
     QueueList,
     RepeatMode,
@@ -179,13 +180,14 @@ async def generate_nowplaying_embed__(
     song_len = ms_stamp(t_info.length)
     # np_pos = q.np_position // 1_000
     # now = int(time.time())
+    thumbnail = get_thumbnail(t_info)
 
     embed = (
         hk.Embed(
             title=f"🎧 {t_info.title}",
             description=f'📀 **{t_info.author}** ({song_len})',
             url=t_info.uri,
-            color=0xF1656F,
+            color=q.get_palette_from_now_playing()[0],
             timestamp=dt.datetime.now().astimezone(),
         )
         .set_author(name="Currently playing")
@@ -193,10 +195,7 @@ async def generate_nowplaying_embed__(
             f"Requested by: {req.display_name}",
             icon=req.avatar_url or req.default_avatar_url,
         )
-        .set_thumbnail(
-            f"https://i.ytimg.com/vi/{t_info.identifier}/maxresdefault.jpg"
-            # f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"
-        )
+        .set_thumbnail(thumbnail)
     )
     return embed
 
@@ -215,8 +214,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
 @music_h.with_post_execution
 async def post_execution(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
-    cfg: GuildConfig = tj.inject(type=GuildConfig),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     assert ctx.guild_id
 
@@ -331,7 +329,10 @@ async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
 
     from .checks import check_others_not_in_vc__, DJ_PERMS
 
-    await check_others_not_in_vc__(ctx, DJ_PERMS, conn)
+    await check_others_not_in_vc__(ctx, hkperms.MOVE_MEMBERS, conn)
+
+    async with access_data(ctx, lvc) as d:
+        d._dc_by_cmd = True
 
     await cleanups__(ctx.guild_id, ctx.client.shards, lvc)
 
@@ -903,10 +904,12 @@ async def generate_queue_embeds__(
         )
     )
 
+    color = None if q.is_paused else q.get_palette_from_now_playing()[2]
+
     _base_embed = hk.Embed(
         title="💿 Queue",
         description=desc,
-        color=(32, 126, 172),
+        color=color,
     ).set_footer(f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)}")
 
     _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"

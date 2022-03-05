@@ -10,25 +10,32 @@ conns = (
 @conns.with_listener(hk.VoiceStateUpdateEvent)
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
-    client: tj.Client = tj.inject(type=tj.Client),
-    bot: hk.GatewayBot = tj.inject(type=hk.GatewayBot),
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    client: al.Injected[tj.Client],
+    bot: al.Injected[hk.GatewayBot],
+    lvc: al.Injected[lv.Lavalink],
 ):
     def _conn():
         return lvc.get_guild_gateway_connection_info(event.guild_id)
 
     new = event.state
     old = event.old_state
-    if not await lvc.get_guild_node(event.guild_id) or not (conn := _conn()):
+    print(await lvc.get_guild_node(event.guild_id), _conn())
+    conn = _conn()
+    if not await lvc.get_guild_node(event.guild_id):
         return
 
-    assert isinstance(conn, dict)
+    cache = client.cache
+    bot_u = bot.get_me()
+    assert bot_u
+
+    assert isinstance(conn, dict | None) and cache
 
     def _in_voice():
+        assert isinstance(conn, dict)
         return set(
             filter(
                 lambda v: not v.member.is_bot,
-                client.cache.get_voice_states_view_for_channel(  # type: ignore
+                cache.get_voice_states_view_for_channel(
                     event.guild_id, conn['channel_id']
                 ).values(),
             )
@@ -38,6 +45,18 @@ async def on_voice_state_update(
     assert ch
 
     q = d.queue
+
+    if not d._dc_by_cmd and old and old.user_id == bot_u.id:
+        await cleanups__(event.guild_id, client.shards, lvc)
+        await client.rest.create_message(
+            ch, f"🥀📎 ~~<#{old.channel_id}>~~ `(Bot was forcefully disconnected)`"
+        )
+        return
+    
+    d._dc_by_cmd = False
+
+    if not conn:
+        return
 
     async def on_everyone_leaves_vc():
         logger.debug(
@@ -68,8 +87,6 @@ async def on_voice_state_update(
 
     in_voice = _in_voice()
     vc: int = conn['channel_id']
-    bot_u = bot.get_me()
-    assert bot_u
     # if new.channel_id == vc and len(in_voice) == 1 and new.user_id != bot_u.id:
     #     # Someone rejoined
     #     try:
@@ -109,7 +126,7 @@ async def on_voice_state_update(
 async def join(
     ctx: tj.abc.Context,
     channel: hk.GuildVoiceChannel,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Connect the bot to a voice channel."""
     await join_(ctx, channel, lvc=lvc)
@@ -162,7 +179,7 @@ async def join_(
 @tj.as_message_command('leave', 'l', 'lv', 'dc', 'disconnect', 'discon')
 async def leave(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     await leave_(ctx, lvc=lvc)
 

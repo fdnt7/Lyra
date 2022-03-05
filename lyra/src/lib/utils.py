@@ -306,8 +306,8 @@ def disable_components(
     )
 
 
-_TC = t.TypeVar(
-    '_TC',
+_C = t.TypeVar(
+    '_C',
     hk.api.ComponentBuilder,
     hk.api.ButtonBuilder[hk.api.ActionRowBuilder],
     hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder],
@@ -318,9 +318,9 @@ def edit_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    edits: t.Callable[[_TC], _TC],
-    reverts: t.Callable[[_TC], _TC] = lambda _: _,
-    predicates: t.Callable[[_TC], bool] = lambda _: True,
+    edits: t.Callable[[_C], _C],
+    reverts: t.Callable[[_C], _C] = lambda _: _,
+    predicates: t.Callable[[_C], bool] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder]:
     action_rows_ = list(action_rows)
     for a in action_rows_:
@@ -408,19 +408,19 @@ def with_message_command_group_template(func: t.Callable[_P, VoidCoroutine], /):
 P_ = t.ParamSpec('P_')
 
 
-def with_message_menu_template(func: t.Callable[P_, VoidCoroutine], /):
-    async def inner(*args: P_.args, **kwargs: P_.kwargs):
-        ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
-        msg = next((a for a in args if isinstance(a, hk.Message)), None)
-        assert ctx and msg
+# def with_message_menu_template(func: t.Callable[P_, VoidCoroutine], /):
+#     async def inner(*args: P_.args, **kwargs: P_.kwargs):
+#         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
+#         msg = next((a for a in args if isinstance(a, hk.Message)), None)
+#         assert ctx and msg
 
-        if not msg.content:
-            await err_reply(ctx, content="❌ Cannot process an empty message")
-            return
+#         if not msg.content:
+#             await err_reply(ctx, content="❌ Cannot process an empty message")
+#             return
 
-        await func(*args, **kwargs)
+#         await func(*args, **kwargs)
 
-    return inner
+#     return inner
 
 
 @hooks.with_on_parser_error
@@ -442,9 +442,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
 
 
 @hooks.with_pre_execution
-async def pre_execution(
-    ctx: tj.abc.Context, cfg: GuildConfig = tj.inject(type=GuildConfig)
-) -> None:
+async def pre_execution(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]) -> None:
     cfg.setdefault(str(ctx.guild_id), {})
 
 
@@ -510,7 +508,7 @@ def infer_guild(g_inf: GuildOrRESTInferable, /) -> hk.Snowflakeish:
     return g_inf.guild_id
 
 
-def get_pref(ctx: Contextish):
+def get_pref(ctx: Contextish, /):
     if isinstance(ctx, tj.abc.MessageContext):
         return next(iter(ctx.client.prefixes))
     if isinstance(ctx, tj.abc.SlashContext):
@@ -520,7 +518,7 @@ def get_pref(ctx: Contextish):
     return '/'
 
 
-async def fetch_permissions(ctx: Contextish) -> hk.Permissions:
+async def fetch_permissions(ctx: Contextish, /) -> hk.Permissions:
     if isinstance(ctx, tj.abc.Context):
         member = ctx.member
         assert member
@@ -534,7 +532,7 @@ async def fetch_permissions(ctx: Contextish) -> hk.Permissions:
     return auth_perms
 
 
-def get_client(any_: t.Optional[Contextish] = None):
+def get_client(any_: t.Optional[Contextish] = None, /):
     if isinstance(any_, tj.abc.Context):
         return any_.client
     else:
@@ -543,13 +541,13 @@ def get_client(any_: t.Optional[Contextish] = None):
         return client
 
 
-def get_rest(g_r_inf: RESTInferable):
+def get_rest(g_r_inf: RESTInferable, /):
     if isinstance(g_r_inf, tj.abc.Context):
         return g_r_inf.rest
     return g_r_inf.app.rest
 
 
-def get_cmd_n(ctx: tj.abc.Context):
+def get_cmd_n(ctx: tj.abc.Context, /):
     cmd = ctx.command
     if isinstance(cmd, tj.abc.MessageCommand):
         return next(iter(cmd.names))
@@ -574,9 +572,33 @@ def chunk_b(seq: t.Sequence[_E], n: int, /) -> t.Generator[t.Sequence[_E], None,
         start = end
 
 
-def inj_glob(pattern: str):
+def inj_glob(pattern: str, /):
     if os.environ.get('IN_DOCKER', False):
         p = pl.Path('.') / 'shared'
     else:
         p = pl.Path('.') / '..'
     return p.glob(pattern)
+
+
+def get_pallete_from_img(
+    img_url: str, /, *, n: int = 10, resize: tuple[int, int] = (150, 150)
+):
+    import numpy as np
+
+    img_b = io.BytesIO(urllib_rq.urlopen(img_url).read())
+    img = pil_img.open(img_b).resize(resize)  # optional, to reduce time
+    ar = np.asarray(img)
+    shape = ar.shape
+    ar = ar.reshape(np.product(shape[:2]), shape[2]).astype(float)
+
+    kmeans = sklearn.cluster.MiniBatchKMeans(
+        n_clusters=n, init="k-means++", max_iter=20, random_state=1000
+    ).fit(ar)
+    codes = kmeans.cluster_centers_
+
+    vecs, _dist = scipy.cluster.vq.vq(ar, codes)  # assign codes
+    counts, _bins = np.histogram(vecs, len(codes))  # count occurrences
+
+    return tuple(
+        tuple([int(code) for code in codes[i]]) for i in np.argsort(counts)[::-1]
+    )  # returns colors in order of dominance

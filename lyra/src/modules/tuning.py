@@ -8,7 +8,7 @@ tuning = tj.Component(name='Tuning', strict=True).add_check(guild_c).set_hooks(m
 
 @tuning.with_listener(hk.VoiceStateUpdateEvent)
 async def on_voice_state_update(
-    event: hk.VoiceStateUpdateEvent, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
+    event: hk.VoiceStateUpdateEvent, lvc: al.Injected[lv.Lavalink]
 ):
     try:
         async with access_equalizer(event.guild_id, lvc) as eq:
@@ -46,7 +46,7 @@ async def volume_g_m(_: tj.abc.MessageContext):
 async def volume_set_s(
     ctx: tj.abc.SlashContext,
     scale: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await volume_set_(ctx, scale, lvc=lvc)
 
@@ -58,7 +58,7 @@ async def volume_set_s(
 async def volume_set_m(
     ctx: tj.abc.MessageContext,
     scale: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Set the volume of the bot from 0-10
@@ -94,7 +94,7 @@ async def volume_set_(ctx: tj.abc.Context, scale: int, /, *, lvc: lv.Lavalink) -
 async def volume_up_s(
     ctx: tj.abc.SlashContext,
     amount: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await volume_up_(ctx, amount, lvc=lvc)
 
@@ -106,7 +106,7 @@ async def volume_up_s(
 async def volume_up_m(
     ctx: tj.abc.MessageContext,
     amount: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Increase the bot's volume
@@ -148,7 +148,7 @@ async def volume_up_(ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink) -
 async def volume_down_s(
     ctx: tj.abc.SlashContext,
     amount: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await volume_down_(ctx, amount, lvc=lvc)
 
@@ -160,7 +160,7 @@ async def volume_down_s(
 async def volume_down_m(
     ctx: tj.abc.MessageContext,
     amount: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """Decrease the bot's volume"""
     await volume_down_(ctx, amount, lvc=lvc)
@@ -198,17 +198,13 @@ async def volume_down_(
 
 @tuning.with_slash_command
 @tj.as_slash_command('mute', 'Server mutes the bot')
-async def mute_s(
-    ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
-):
+async def mute_s(ctx: tj.abc.SlashContext, lvc: al.Injected[lv.Lavalink]):
     await mute_(ctx, lvc=lvc)
 
 
 @tuning.with_message_command
 @tj.as_message_command('mute', 'm')
-async def mute_m(
-    ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
-):
+async def mute_m(ctx: tj.abc.MessageContext, lvc: al.Injected[lv.Lavalink]):
     """
     Server mutes the bot
     """
@@ -226,17 +222,13 @@ async def mute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 
 @tuning.with_slash_command
 @tj.as_slash_command('unmute', 'Server unmutes the bot')
-async def unmute_s(
-    ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
-):
+async def unmute_s(ctx: tj.abc.SlashContext, lvc: al.Injected[lv.Lavalink]):
     await unmute_(ctx, lvc=lvc)
 
 
 @tuning.with_message_command
 @tj.as_message_command('unmute', 'u', 'um')
-async def unmute_m(
-    ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
-):
+async def unmute_m(ctx: tj.abc.MessageContext, lvc: al.Injected[lv.Lavalink]):
     """
     Server unmutes the bot
     """
@@ -254,17 +246,13 @@ async def unmute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 
 @tuning.with_slash_command
 @tj.as_slash_command('mute-unmute', 'Toggles between server mute and unmuting the bot')
-async def mute_unmute_s(
-    ctx: tj.abc.SlashContext, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
-):
+async def mute_unmute_s(ctx: tj.abc.SlashContext, lvc: al.Injected[lv.Lavalink]):
     await mute_unmute_(ctx, lvc=lvc)
 
 
 @tuning.with_message_command
 @tj.as_message_command('muteunmute', 'mute-unmute', 'mm', 'mu', 'tm', 'togglemute')
-async def mute_unmute_m(
-    ctx: tj.abc.MessageContext, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
-):
+async def mute_unmute_m(ctx: tj.abc.MessageContext, lvc: al.Injected[lv.Lavalink]):
     """
     Toggles between server mute and unmuting the bot
     """
@@ -309,7 +297,7 @@ VALID_PRESETS: dict[str, str] = {j['name']: i for i, j in Bands._load_bands().it
 async def equalizer_preset_s(
     ctx: tj.abc.SlashContext,
     preset: str,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await equalizer_preset_(ctx, preset, lvc=lvc)
 
@@ -321,7 +309,7 @@ async def equalizer_preset_s(
 async def equalizer_preset_m(
     ctx: tj.abc.MessageContext,
     preset: str,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Sets the bot's equalizer to a preset

@@ -31,7 +31,7 @@ async def ping(ctx: tj.abc.Context):
 )
 async def nowplaying(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """
     Displays info on the currently playing song.
@@ -43,6 +43,7 @@ async def nowplaying(
 async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Displays info on the currently playing song."""
     assert not ((ctx.guild_id is None) or (ctx.cache is None) or (ctx.member is None))
+    from src.lib.lavaimpl import get_thumbnail
 
     q = await get_queue(ctx, lvc)
     e = '⏹️' if q.is_stopped else ('▶️' if q.is_paused else '⏸️')
@@ -67,18 +68,22 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
         * (padding + 12 - len(''.join((np_pos, song_len))))
     )
 
+    thumbnail = get_thumbnail(t_info)
+    desc = (
+        f'📀 **{t_info.author}**',
+        f"{e} `{np_pos:─<{padding}}{song_len:─>12}`".replace('─', ' ', 1)[::-1]
+        .replace('─', ' ', 1)[::-1]
+        .replace('─', '▬', progress),
+    )
+
+    color = None if q.is_paused else q.get_palette_from_now_playing()[1]
+
     embed = (
         hk.Embed(
-            title=f"🎶 {t_info.title}",
-            description="%s\n\n%s"
-            % (
-                f'📀 **{t_info.author}**',
-                f"{e} `{np_pos:─<{padding}}{song_len:─>12}`".replace('─', ' ', 1)[::-1]
-                .replace('─', ' ', 1)[::-1]
-                .replace('─', '▬', progress),
-            ),
+            title=f"{'🎶 ' if not q.is_paused else ''}{t_info.title}",
+            description="%s\n\n%s" % desc,
             url=t_info.uri,
-            color=(213, 111, 234),
+            color=color,
             # timestamp=dt.datetime.now().astimezone(),
         )
         .set_author(name="Now playing")
@@ -86,9 +91,7 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
             f"Requested by: {req.display_name}",
             icon=req.avatar_url or ctx.author.default_avatar_url,
         )
-        .set_thumbnail(
-            f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"
-        )
+        .set_thumbnail(thumbnail)
     )
     await reply(ctx, hidden=True, embed=embed)
 
@@ -108,8 +111,8 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 async def search(
     ctx: EitherContext,
     query: str,
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
+    bot: al.Injected[hk.GatewayBot],
+    lvc: al.Injected[lv.Lavalink],
 ):
     await search_(ctx, query, bot=bot, lvc=lvc)
 
@@ -119,8 +122,8 @@ async def search(
 async def search_c(
     ctx: tj.abc.MenuContext,
     msg: hk.Message,
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    bot: al.Injected[hk.GatewayBot],
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     if not msg.content:
         await err_reply(ctx, content="❌ Cannot process an empty message")
@@ -319,8 +322,8 @@ async def search_(
 @tj.as_message_command('queue', 'q', 'all')
 async def queue(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
+    lvc: al.Injected[lv.Lavalink],
+    bot: al.Injected[hk.GatewayBot],
 ):
     await queue_(ctx, lvc=lvc, bot=bot)
 
@@ -434,8 +437,8 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot
 async def lyrics(
     ctx: EitherContext,
     song: t.Optional[str],
-    lvc: lv.Lavalink = tj.injected(type=lv.Lavalink),
-    bot: hk.GatewayBot = tj.injected(type=hk.GatewayBot),
+    lvc: al.Injected[lv.Lavalink],
+    bot: al.Injected[hk.GatewayBot],
 ):
     """
     Attempts to find the lyrics of the current song

@@ -19,7 +19,7 @@ choices = tuple(modules)
 async def reload_module(
     ctx: tj.abc.Context,
     module: str,
-    client: tj.Client = tj.inject(type=tj.Client),
+    client: al.Injected[tj.Client],
 ):
     """Reload a module in tanjun"""
     if ctx.author.id not in c.DEVS:
@@ -42,7 +42,7 @@ async def reload_module(
 async def unload_module(
     ctx: tj.abc.Context,
     module: str,
-    client: tj.Client = tj.inject(type=tj.Client),
+    client: al.Injected[tj.Client],
 ):
     """Unload a module in tanjun"""
     if ctx.author.id not in c.DEVS:
@@ -66,7 +66,7 @@ async def unload_module(
 async def load_module(
     ctx: tj.abc.Context,
     module: str,
-    client: tj.Client = tj.inject(type=tj.Client),
+    client: al.Injected[tj.Client],
 ):
     """Load a module in tanjun"""
     if ctx.author.id not in c.DEVS:
@@ -82,23 +82,13 @@ async def load_module(
     await reply(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
 
 
-# @tj.as_message_menu("test")
 # @with_message_menu_template
+# @tj.as_message_menu("test")
 # async def test(
-#     ctx: tj.abc.MenuContext,
-#     msg: hk.Message,
-#     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+#     ctx: tj.abc.MenuContext, _: hk.Message, lvc: al.Injected[lv.Lavalink]
 # ) -> None:
-#     print(msg.app)
-#     await reply(ctx, content=lvc)
+#     await ctx.respond(lvc)
 
-
-# @tj.as_message_command('test')
-# async def test2(
-#     ctx: tj.abc.MenuContext,
-#     lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
-# ) -> None:
-#     await reply(ctx, content=lvc)
 
 # -
 

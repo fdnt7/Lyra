@@ -17,7 +17,7 @@ playback = (
 @tj.as_message_command('playpause', 'play-pause', 'pp', '>||')
 async def play_pause(
     ctx: tj.abc.MessageContext,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Pauses the current song."""
     await play_pause_impl(ctx, lvc=lvc)
@@ -31,7 +31,7 @@ async def play_pause(
 @tj.as_message_command('pause', '>', 'ps')
 async def pause(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Pauses the current song."""
     await pause_(ctx, lvc=lvc)
@@ -59,7 +59,7 @@ async def pause_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 @tj.as_message_command('resume', 'res', 'rs', '||')
 async def resume(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Resumes the current song."""
     await resume_(ctx, lvc=lvc)
@@ -87,7 +87,7 @@ async def resume_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 @tj.as_message_command('stop', 'st', '[]')
 async def stop(
     ctx: tj.abc.MessageContext,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Stops the currently playing song, skip to play again."""
     await stop_(ctx, lvc=lvc)
@@ -122,7 +122,7 @@ async def stop_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 async def fastforward(
     ctx: tj.abc.MessageContext,
     seconds: float,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await fastforward_(ctx, seconds, lvc=lvc)
 
@@ -171,7 +171,7 @@ async def fastforward_(ctx: tj.abc.Context, seconds: float, /, *, lvc: lv.Lavali
 async def rewind(
     ctx: tj.abc.Context,
     seconds: float,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await rewind_(ctx, seconds, lvc=lvc)
 
@@ -213,8 +213,8 @@ async def rewind_(ctx: tj.abc.Context, seconds: float, /, *, lvc: lv.Lavalink):
 @tj.as_message_command('skip', 's', '>>|')
 async def skip(
     ctx: tj.abc.Context,
-    bot: hk.GatewayBot = tj.inject(type=hk.GatewayBot),
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    bot: al.Injected[hk.GatewayBot],
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Skips the current song."""
     await check(
@@ -235,7 +235,7 @@ async def skip(
 async def play_at(
     ctx: tj.abc.Context,
     position: int,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await play_at_(ctx, position, lvc=lvc)
 
@@ -275,7 +275,7 @@ async def play_at_(ctx: tj.abc.Context, position: int, /, *, lvc: lv.Lavalink):
 @tj.as_message_command('next', 'n')
 async def next(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await next_(ctx, lvc=lvc)
 
@@ -297,8 +297,8 @@ async def next_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 @tj.as_message_command('previous', 'prev', 'pr', 'prv', 'pre', 'b', 'back', '|<<')
 async def previous(
     ctx: tj.abc.Context,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
-    bot: hk.GatewayBot = tj.inject(type=hk.GatewayBot),
+    lvc: al.Injected[lv.Lavalink],
+    bot: al.Injected[hk.GatewayBot],
 ):
     await check(Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CAN_SEEK_QUEUE, vote=True)(
         previous_impl
@@ -311,7 +311,7 @@ async def previous(
 @tj.as_slash_command('restart', "Restarts the current track; Equivalent to /seek 0:00")
 #
 @tj.as_message_command('restart', 're', '<')
-async def restart(ctx: tj.abc.Context, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)):
+async def restart(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await restart_(ctx, lvc=lvc)
 
 
@@ -348,7 +348,7 @@ async def restart_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 async def seek(
     ctx: tj.abc.Context,
     timestamp: str,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await seek_(ctx, timestamp, lvc=lvc)
 

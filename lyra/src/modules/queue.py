@@ -27,7 +27,7 @@ async def play_s(
     song: str,
     source: str,
     shuffle: bool,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     if not URL_REGEX.fullmatch(song):
         song = '%ssearch:%s' % (source, song)
@@ -37,13 +37,16 @@ async def play_s(
 
 @queue.with_menu_command
 @tj.as_message_menu("Enqueue this song")
-@with_message_menu_template
 async def play_c(
     ctx: tj.abc.MenuContext,
     msg: hk.Message,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     assert msg.content
+    if not msg.content:
+        assert msg.guild_id
+        await err_reply(ctx, content="❌ Cannot process an empty message")
+        return
     song = msg.content.strip("<>|")
     if not URL_REGEX.fullmatch(song):
         song = 'ytsearch:%s' % song
@@ -62,7 +65,7 @@ async def play_m(
     song: str,
     source: str,
     shuffle: bool,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Play a song, or add it to the queue."""
 
@@ -136,7 +139,7 @@ async def remove_g_m(_: tj.abc.MessageContext):
 async def remove_one_s(
     ctx: tj.abc.SlashContext,
     track: t.Optional[str],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     await remove_one_(ctx, track, lvc=lvc)
 
@@ -148,7 +151,7 @@ async def remove_one_s(
 async def remove_one_m(
     ctx: tj.abc.MessageContext,
     track: t.Optional[str],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     await remove_one_(ctx, track, lvc=lvc)
 
@@ -195,7 +198,7 @@ async def remove_bulk_s(
     ctx: tj.abc.SlashContext,
     start: int,
     end: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     await remove_bulk_(ctx, start, end, lvc=lvc)
 
@@ -209,7 +212,7 @@ async def remove_bulk_m(
     ctx: tj.abc.MessageContext,
     start: int,
     end: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     await remove_bulk_(ctx, start, end, lvc=lvc)
 
@@ -252,7 +255,7 @@ async def remove_bulk_(
 @tj.as_slash_command('clear', "Clears the queue; Equivalent to /remove bulk start:1")
 #
 @tj.as_message_command('clear', 'destroy', 'clr', 'c')
-async def clear(ctx: tj.abc.Context, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)):
+async def clear(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await clear_(ctx, lvc=lvc)
 
 
@@ -273,7 +276,7 @@ async def clear_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
 #
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
-async def shuffle(ctx: tj.abc.Context, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)):
+async def shuffle(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await shuffle_impl(ctx, lvc=lvc)
 
 
@@ -306,7 +309,7 @@ async def move_g_m(_: tj.abc.MessageContext):
 async def move_last_s(
     ctx: tj.abc.SlashContext,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await move_last_(ctx, track, lvc=lvc)
 
@@ -318,7 +321,7 @@ async def move_last_s(
 async def move_last_m(
     ctx: tj.abc.MessageContext,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Moves the selected track to the end of the queue
@@ -374,7 +377,7 @@ async def move_swap_s(
     ctx: tj.abc.SlashContext,
     first: int,
     second: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await move_swap_(ctx, first, second, lvc=lvc)
 
@@ -388,7 +391,7 @@ async def move_swap_m(
     ctx: tj.abc.MessageContext,
     first: int,
     second: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Swaps positions of two tracks in a queue
@@ -457,7 +460,7 @@ async def move_insert_s(
     ctx: tj.abc.SlashContext,
     position: int,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await move_insert_(ctx, position, track, lvc=lvc)
 
@@ -471,7 +474,7 @@ async def move_insert_m(
     ctx: tj.abc.MessageContext,
     position: int,
     track: t.Optional[int],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Inserts a track in the queue after a new position
@@ -525,7 +528,7 @@ async def move_insert_(
 async def repeat_s(
     ctx: tj.abc.SlashContext,
     mode: t.Optional[str],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     await repeat_impl(ctx, mode, lvc=lvc)
 
@@ -537,7 +540,7 @@ async def repeat_s(
 async def repeat_m(
     ctx: tj.abc.MessageContext,
     mode: t.Optional[str],
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ):
     """
     Select a repeat mode for the queue

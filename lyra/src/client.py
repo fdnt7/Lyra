@@ -9,6 +9,7 @@ import logging
 import pathlib as pl
 import dotenv
 import hikari as hk
+import alluka as al
 import tanjun as tj
 import lavasnek_rs as lv
 
@@ -61,7 +62,7 @@ logger.info("Loaded guild_configs")
 
 @client.with_prefix_getter
 async def prefix_getter(
-    ctx: tj.abc.MessageContext, cfg: GuildConfig = tj.inject(type=GuildConfig)
+    ctx: tj.abc.MessageContext, cfg: al.Injected[GuildConfig]
 ) -> t.Iterable[str]:
     return (
         cfg.setdefault(str(ctx.guild_id), {}).setdefault('prefixes', [])
@@ -70,17 +71,10 @@ async def prefix_getter(
     )
 
 
-# @client.with_listener(hk.StartedEvent)
-# async def on_started(event: hk.StartedEvent, client_: tj.Client = tj.inject(type=tj.Client)) -> None:
-#     from src.lib.utils import get_client
-
-#     get_client = tj.injecting.SelfInjectingCallback(client_, get_client)
-
-
 @client.with_listener(hk.ShardReadyEvent)
 async def on_shard_ready(
     event: hk.ShardReadyEvent,
-    client_: tj.Client = tj.inject(type=tj.Client),
+    client_: al.Injected[tj.Client],
 ) -> None:
     """Event that triggers when the hikari gateway is ready."""
     host = (
@@ -117,7 +111,7 @@ async def on_shard_ready(
 @client.with_listener(hk.VoiceStateUpdateEvent)
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Passes voice state updates to lavalink."""
 
@@ -135,7 +129,7 @@ async def on_voice_state_update(
 @client.with_listener(hk.VoiceServerUpdateEvent)
 async def on_voice_server_update(
     event: hk.VoiceServerUpdateEvent,
-    lvc: lv.Lavalink = tj.inject(type=lv.Lavalink),
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Passes voice server updates to lavalink."""
     if event.endpoint is not None:
@@ -147,8 +141,5 @@ async def on_voice_server_update(
 
 
 @client.with_listener(hk.StoppingEvent)
-async def on_stopping(
-    _: hk.StoppingEvent, cfg: GuildConfig = tj.inject(type=GuildConfig)
-) -> None:
-    cfg_ref.set(dict(cfg))
-    logger.info("Saved to guild_configs")
+async def on_stopping(_: hk.StoppingEvent, cfg: al.Injected[GuildConfig]) -> None:
+    update_cfg(cfg)

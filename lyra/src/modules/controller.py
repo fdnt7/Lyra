@@ -9,7 +9,7 @@ control = (
 
 @control.with_listener(hk.InteractionCreateEvent)
 async def on_interaction_create(
-    event: hk.InteractionCreateEvent, lvc: lv.Lavalink = tj.inject(type=lv.Lavalink)
+    event: hk.InteractionCreateEvent, lvc: al.Injected[lv.Lavalink]
 ):
     if not isinstance(inter := event.interaction, hk.ComponentInteraction):
         return
@@ -44,4 +44,4 @@ async def on_interaction_create(
 # -
 
 
-loader = control.load_from_scope().make_loader()
+loader = control.make_loader()
