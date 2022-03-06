@@ -580,7 +580,7 @@ def inj_glob(pattern: str, /):
     return p.glob(pattern)
 
 
-def get_pallete_from_img(
+def get_img_pallete(
     img_url: str, /, *, n: int = 10, resize: tuple[int, int] = (150, 150)
 ):
     import numpy as np

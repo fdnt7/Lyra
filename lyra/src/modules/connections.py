@@ -19,7 +19,6 @@ async def on_voice_state_update(
 
     new = event.state
     old = event.old_state
-    print(await lvc.get_guild_node(event.guild_id), _conn())
     conn = _conn()
     if not await lvc.get_guild_node(event.guild_id):
         return
@@ -52,7 +51,7 @@ async def on_voice_state_update(
             ch, f"🥀📎 ~~<#{old.channel_id}>~~ `(Bot was forcefully disconnected)`"
         )
         return
-    
+
     d._dc_by_cmd = False
 
     if not conn:

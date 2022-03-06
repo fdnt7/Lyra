@@ -7,7 +7,6 @@ from .lavaimpl import (
     access_queue,
     access_data,
     access_equalizer,
-    get_thumbnail,
     edit_now_playing_components,
     QueueList,
     RepeatMode,
@@ -171,7 +170,6 @@ async def generate_nowplaying_embed__(
 
     curr_t = q.current
     assert curr_t
-    assert q.np_position
 
     t_info = curr_t.track.info
     req = cache.get_member(guild_id, curr_t.requester)
@@ -180,14 +178,13 @@ async def generate_nowplaying_embed__(
     song_len = ms_stamp(t_info.length)
     # np_pos = q.np_position // 1_000
     # now = int(time.time())
-    thumbnail = get_thumbnail(t_info)
 
     embed = (
         hk.Embed(
             title=f"🎧 {t_info.title}",
             description=f'📀 **{t_info.author}** ({song_len})',
             url=t_info.uri,
-            color=q.get_palette_from_now_playing()[0],
+            color=q.curr_t_palette[0],
             timestamp=dt.datetime.now().astimezone(),
         )
         .set_author(name="Currently playing")
@@ -195,7 +192,7 @@ async def generate_nowplaying_embed__(
             f"Requested by: {req.display_name}",
             icon=req.avatar_url or req.default_avatar_url,
         )
-        .set_thumbnail(thumbnail)
+        .set_thumbnail(q.curr_t_thumbnail)
     )
     return embed
 
@@ -397,10 +394,12 @@ async def wait_for_track_finish_event_fire(
 @ctxlib.asynccontextmanager
 async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /):
     await stop_in_ctx__(g_inf, lvc, data)
+    prior_playing = data.queue.current
     try:
         yield
     finally:
-        await wait_for_track_finish_event_fire(g_inf, lvc, data)
+        if prior_playing:
+            await wait_for_track_finish_event_fire(g_inf, lvc, data)
         data.queue.is_stopped = False
 
 
@@ -503,13 +502,14 @@ async def skip__(
         if change_repeat:
             q.reset_repeat()
         await lvc.stop(g := infer_guild(g_inf))
-        if q.is_stopped and (next_t := q.next):
+        if q.is_stopped:
             if advance:
                 q.adv()
-            if change_stop:
-                q.is_stopped = False
-            await lvc.play(g, next_t.track).start()
-            await set_pause__(g_inf, lvc, pause=False)
+            if next_t := q.next:
+                await lvc.play(g, next_t.track).start()
+                await set_pause__(g_inf, lvc, pause=False)
+        if change_stop:
+            q.is_stopped = False
         return skip
 
 
@@ -904,7 +904,7 @@ async def generate_queue_embeds__(
         )
     )
 
-    color = None if q.is_paused else q.get_palette_from_now_playing()[2]
+    color = None if q.is_paused or not q.current else q.curr_t_palette[2]
 
     _base_embed = hk.Embed(
         title="💿 Queue",

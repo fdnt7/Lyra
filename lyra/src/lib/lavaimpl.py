@@ -2,7 +2,7 @@ from ._imports import *
 from .errors import NotConnected, QueueEmpty
 from .utils import (
     GuildOrInferable,
-    get_pallete_from_img,
+    get_img_pallete,
     curr_time_ms,
     infer_guild,
     get_client,
@@ -69,6 +69,7 @@ class QueueList(list[lv.TrackQueue]):
     _curr_t_started: int = a.field(factory=curr_time_ms, init=False)
 
     __cached_np_colors: tuple[tuple[int, ...], ...] = ()
+    __cached_np_thumbnail: t.Optional[str] = None
 
     def __repr__(self) -> str:
         return "[\n\t%s\n]" % '\n\t'.join(
@@ -187,18 +188,40 @@ class QueueList(list[lv.TrackQueue]):
     def update_curr_t_started(self, delta_ms: int = 0):
         self._curr_t_started = curr_time_ms() + delta_ms
 
-    def get_palette_from_now_playing(self):
+    @property
+    def curr_t_palette(self):
         if self.__cached_np_colors:
             return self.__cached_np_colors
-        np = self.current
-        assert np
-        t_info = np.track.info
-        url = get_thumbnail(t_info)
-        self.__cached_np_colors = (c := get_pallete_from_img(url))
+
+        url = self.curr_t_thumbnail
+        self.__cached_np_colors = (c := get_img_pallete(url))
         return c
 
-    def reset_cached_np_colors(self):
+    @property
+    def curr_t_thumbnail(self) -> str:
+        if self.__cached_np_thumbnail:
+            return self.__cached_np_thumbnail
+
+        np = self.current
+        assert np
+        id_ = np.track.info.identifier
+
+        res = ('maxresdefault', 'sddefault', 'mqdefault', 'hqdefault', 'default')
+
+        for x in res:
+            url = f'https://img.youtube.com/vi/{id_}/{x}.jpg'
+            try:
+                if (urllib_rq.urlopen(url)).getcode() == 200:
+                    self.__cached_np_thumbnail = url
+                    return url
+            except urllib_er.HTTPError:
+                continue
+
+        raise NotImplementedError
+
+    def reset_cached_np_info(self):
         self.__cached_np_colors = ()
+        self.__cached_np_thumbnail = None
 
 
 @a.s(frozen=True, auto_attribs=False, auto_detect=True)
@@ -378,7 +401,7 @@ class EventHandler:
             q = d.queue
             l = len(q)
 
-            q.reset_cached_np_colors()
+            q.reset_cached_np_info()
 
             from src.client import client, guild_config
 
@@ -424,7 +447,7 @@ class EventHandler:
         q = await get_queue(event.guild_id, lvc)
         l = len(q)
 
-        q.reset_cached_np_colors()
+        q.reset_cached_np_info()
 
         msg = f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] {{0}}: '{t}'\n\t{event.exception_message}\n\tCaused by: {event.exception_cause}"
 
@@ -529,7 +552,3 @@ def get_repeat_emoji(q: QueueList, /):
         if q.repeat_mode is RepeatMode.NONE
         else (REPEAT_EMOJIS[1] if q.repeat_mode is RepeatMode.ALL else REPEAT_EMOJIS[2])
     )
-
-
-def get_thumbnail(t_info: lv.Info, /):
-    return f"https://img.youtube.com/vi/{t_info.identifier}/maxresdefault.jpg"

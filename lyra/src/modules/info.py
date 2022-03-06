@@ -43,7 +43,6 @@ async def nowplaying(
 async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Displays info on the currently playing song."""
     assert not ((ctx.guild_id is None) or (ctx.cache is None) or (ctx.member is None))
-    from src.lib.lavaimpl import get_thumbnail
 
     q = await get_queue(ctx, lvc)
     e = '⏹️' if q.is_stopped else ('▶️' if q.is_paused else '⏸️')
@@ -68,7 +67,6 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
         * (padding + 12 - len(''.join((np_pos, song_len))))
     )
 
-    thumbnail = get_thumbnail(t_info)
     desc = (
         f'📀 **{t_info.author}**',
         f"{e} `{np_pos:─<{padding}}{song_len:─>12}`".replace('─', ' ', 1)[::-1]
@@ -76,7 +74,7 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
         .replace('─', '▬', progress),
     )
 
-    color = None if q.is_paused else q.get_palette_from_now_playing()[1]
+    color = None if q.is_paused else q.curr_t_palette[1]
 
     embed = (
         hk.Embed(
@@ -91,7 +89,7 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
             f"Requested by: {req.display_name}",
             icon=req.avatar_url or ctx.author.default_avatar_url,
         )
-        .set_thumbnail(thumbnail)
+        .set_thumbnail(q.curr_t_thumbnail)
     )
     await reply(ctx, hidden=True, embed=embed)
 
