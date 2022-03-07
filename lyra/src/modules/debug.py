@@ -82,12 +82,11 @@ async def load_module(
     await reply(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
 
 
-# @with_message_menu_template
 # @tj.as_message_menu("test")
 # async def test(
-#     ctx: tj.abc.MenuContext, _: hk.Message, lvc: al.Injected[lv.Lavalink]
+#     ctx: tj.abc.MenuContext, _: hk.Message, erf: al.Injected[EmojiRefs]
 # ) -> None:
-#     await ctx.respond(lvc)
+#     await ctx.respond(erf['whitecross'])
 
 
 # -

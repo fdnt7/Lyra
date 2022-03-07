@@ -7,7 +7,6 @@ import yaml
 import typing as t
 import logging
 import pathlib as pl
-import dotenv
 import hikari as hk
 import alluka as al
 import tanjun as tj
@@ -54,11 +53,6 @@ cfg_fetched: t.Any = cfg_ref.get()
 guild_config = GuildConfig(cfg_fetched)
 logger.info("Loaded guild_configs")
 
-(
-    client.set_type_dependency(GuildConfig, guild_config)
-    # .set_type_dependency(yuyo.ComponentClient, yuyo_client)
-)
-
 
 @client.with_prefix_getter
 async def prefix_getter(
@@ -71,12 +65,26 @@ async def prefix_getter(
     )
 
 
+@client.with_listener(hk.StartedEvent)
+async def on_started(
+    _: hk.StartedEvent,
+    client_: al.Injected[tj.Client],
+):
+    emojis = await client_.rest.fetch_guild_emojis(939863856010895360)
+    emoji_refs = EmojiRefs({e.name: e for e in emojis})
+
+    client_.set_type_dependency(GuildConfig, guild_config).set_type_dependency(
+        EmojiRefs, emoji_refs
+    )
+
+
 @client.with_listener(hk.ShardReadyEvent)
 async def on_shard_ready(
     event: hk.ShardReadyEvent,
     client_: al.Injected[tj.Client],
 ) -> None:
     """Event that triggers when the hikari gateway is ready."""
+
     host = (
         os.environ['LAVALINK_HOST']
         if os.environ.get('IN_DOCKER', False)
@@ -96,6 +104,7 @@ async def on_shard_ready(
     global lavalink_client
     lavalink_client = lvc
     client_.set_type_dependency(lv.Lavalink, lvc)
+
     # app_id = 0
     # guild_ids = []
     # _L = len(guild_ids)

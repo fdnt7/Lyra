@@ -1,8 +1,8 @@
 alluka==0.1.0
 attrs==21.4.0
 black==22.1.0
-hikari==2.0.0.dev106
-hikari-tanjun==2.4.1a1
+hikari==2.0.0.dev107
+hikari-tanjun==2.4.2a1
 lyricsgenius==3.0.1
 PyYAML==6.0
 requests==2.27.1

@@ -240,7 +240,7 @@ async def play_at(
     await play_at_(ctx, position, lvc=lvc)
 
 
-@check(Checks.QUEUE | Checks.CONN | Checks.ALONE_OR_CAN_SEEK_QUEUE)
+@check(Checks.QUEUE | Checks.CONN | Checks.ALONE_OR_CAN_SEEK_QUEUE, vote=True)
 async def play_at_(ctx: tj.abc.Context, position: int, /, *, lvc: lv.Lavalink):
     assert ctx.guild_id
 

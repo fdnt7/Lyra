@@ -241,6 +241,9 @@ async def search_(
 
                 selected = key
 
+                await inter.create_initial_response(
+                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                )
                 if await on_going_tracks():
                     sel_msg = await reply(
                         inter,
@@ -249,21 +252,16 @@ async def search_(
                     )
                     continue
 
-                # prev_start = PREVIEW_START
-                # prev_time = PREVIEW_TIME
+                await lvc.play(ctx.guild_id, track).start_time_millis(
+                    PREVIEW_START
+                ).finish_time_millis(PREVIEW_START + PREVIEW_TIME).replace(True).start()
 
-                await inter.create_initial_response(
-                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
-                )
                 sel_msg = await reply(
                     ctx,
                     ensure_result=True,
                     content=f"🎧 Playing a preview of **`{key}`** `({track.info.title})`",
                     delete_after=PREVIEW_TIME / 1000,
                 )
-                await lvc.play(ctx.guild_id, track).start_time_millis(
-                    PREVIEW_START
-                ).finish_time_millis(PREVIEW_START + PREVIEW_TIME).replace(True).start()
                 continue
 
             if selected is None:
@@ -271,6 +269,9 @@ async def search_(
                 continue
             selected_t = queried[int(selected) - 1]
             if key == 'enqueue':
+                await inter.create_initial_response(
+                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                )
                 if not await on_going_tracks():
                     await lvc.stop(
                         ctx.guild_id,
@@ -288,9 +289,6 @@ async def search_(
                         respond=False,
                         ignore_stop=True,
                     )
-                await inter.create_initial_response(
-                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
-                )
                 await inter.edit_initial_response(
                     f"**🔎`＋`** Added `{selected_t.info.title}` to the queue",
                     embed=None,

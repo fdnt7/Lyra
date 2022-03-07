@@ -225,7 +225,7 @@ async def post_execution(
 ## Connections
 
 
-loggerA = logging.getLogger(__name__ + '.connections')
+loggerA = logging.getLogger('connections')
 
 
 async def join__(
@@ -310,7 +310,7 @@ async def join__(
     async with access_data(ctx, lvc) as d:
         d.out_channel_id = ctx.channel_id
 
-    loggerA.debug(f"In guild {ctx.guild_id} joined channel {target_channel}")
+    loggerA.debug(f"In guild {ctx.guild_id} joined  channel {target_channel}")
     return target_channel
 
 
@@ -324,16 +324,16 @@ async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
     curr_channel: int = conn['channel_id']
     assert isinstance(curr_channel, int)
 
-    from .checks import check_others_not_in_vc__, DJ_PERMS
+    from .checks import check_others_not_in_vc__
 
     await check_others_not_in_vc__(ctx, hkperms.MOVE_MEMBERS, conn)
 
     async with access_data(ctx, lvc) as d:
-        d._dc_by_cmd = True
+        d._dc_on_purpose = True
 
     await cleanups__(ctx.guild_id, ctx.client.shards, lvc)
 
-    loggerA.debug(f"In guild {ctx.guild_id} left   channel {curr_channel}")
+    loggerA.debug(f"In guild {ctx.guild_id} left    channel {curr_channel} gracefully")
     return curr_channel
 
 
@@ -357,7 +357,7 @@ async def cleanups__(
 ## Playback
 
 
-loggerB = logging.getLogger(__name__ + '.playback')
+loggerB = logging.getLogger('playback')
 
 
 async def stop__(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
@@ -586,7 +586,7 @@ async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
 ## Queue
 
 
-loggerC = logging.getLogger(__name__ + '.queue')
+loggerC = logging.getLogger('queue')
 
 
 VALID_SOURCES = {
@@ -983,7 +983,7 @@ async def generate_queue_embeds__(
 ## Tuning
 
 
-loggerE = logging.getLogger(__name__ + ".tuning")
+loggerE = logging.getLogger('tuning')
 
 
 async def set_mute__(

@@ -7,6 +7,10 @@ conns = (
 )
 
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+
 @conns.with_listener(hk.VoiceStateUpdateEvent)
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
@@ -19,19 +23,19 @@ async def on_voice_state_update(
 
     new = event.state
     old = event.old_state
-    conn = _conn()
     if not await lvc.get_guild_node(event.guild_id):
         return
 
-    cache = client.cache
     bot_u = bot.get_me()
     assert bot_u
 
-    assert isinstance(conn, dict | None) and cache
-
-    def _in_voice():
-        assert isinstance(conn, dict)
-        return set(
+    def _in_voice() -> frozenset[hk.VoiceState]:
+        conn = _conn()
+        cache = client.cache
+        if not conn:
+            return frozenset()
+        assert isinstance(conn, dict) and cache
+        return frozenset(
             filter(
                 lambda v: not v.member.is_bot,
                 cache.get_voice_states_view_for_channel(
@@ -45,36 +49,41 @@ async def on_voice_state_update(
 
     q = d.queue
 
-    if not d._dc_by_cmd and old and old.user_id == bot_u.id:
+    if not d._dc_on_purpose and old and old.user_id == bot_u.id:
         await cleanups__(event.guild_id, client.shards, lvc)
         await client.rest.create_message(
-            ch, f"🥀📎 ~~<#{old.channel_id}>~~ `(Bot was forcefully disconnected)`"
+            ch,
+            f"🥀📎 ~~<#{(_vc := old.channel_id)}>~~ `(Bot was forcefully disconnected)`",
         )
+        logger.warning(f"In guild {event.guild_id} left    channel {_vc} forcefully")
         return
 
-    d._dc_by_cmd = False
+    d._dc_on_purpose = False
 
-    if not conn:
+    if not (conn := _conn()):
         return
+    assert isinstance(conn, dict)
 
     async def on_everyone_leaves_vc():
         logger.debug(
-            f"In guild {event.guild_id} started channel {conn['channel_id']} timeout inactivity"
+            f"In guild {event.guild_id} started channel {conn['channel_id']} inactivity timeout"
         )
         for _ in range(10):
             if len(_in_voice()) >= 1 or not (_conn()):
                 logger.debug(
-                    f"In guild {event.guild_id} stopped channel {conn['channel_id']} timeout inactivity"
+                    f"In guild {event.guild_id} stopped channel {conn['channel_id']} inactivity timeout"
                 )
                 return False
-            await asyncio.sleep(60)
+            await asyncio.sleep(1)
 
         __conn = _conn()
         assert isinstance(__conn, dict)
 
+        async with access_data(event.guild_id, lvc) as d:
+            d._dc_on_purpose = True
         await cleanups__(event.guild_id, client.shards, lvc)
         logger.info(
-            f"In guild {event.guild_id} left   channel {(_vc := __conn['channel_id'])} due to inactivity"
+            f"In guild {event.guild_id} left    channel {(_vc := __conn['channel_id'])} due to inactivity"
         )
         await client.rest.create_message(
             ch, f"🍃📎 ~~<#{_vc}>~~ `(Left due to inactivity)`"

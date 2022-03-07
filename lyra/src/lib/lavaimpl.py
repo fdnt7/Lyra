@@ -3,6 +3,7 @@ from .errors import NotConnected, QueueEmpty
 from .utils import (
     GuildOrInferable,
     get_img_pallete,
+    get_thumbnail,
     curr_time_ms,
     infer_guild,
     get_client,
@@ -30,7 +31,7 @@ BandsishTuple = tuple[
     float,
     float,
 ]
-'''A tuple containing exactly 15 floats, each element being in between [-0.25, +0.25]'''
+"""A tuple containing exactly 15 floats, each element being in between [-0.25, +0.25]"""
 JSONBands = dict[str, dict[str, str | list[float]]]
 
 
@@ -67,9 +68,6 @@ class QueueList(list[lv.TrackQueue]):
     is_stopped: bool = a.field(factory=bool, kw_only=True)
     _paused_np_position: t.Optional[int] = a.field(default=None, init=False)
     _curr_t_started: int = a.field(factory=curr_time_ms, init=False)
-
-    __cached_np_colors: tuple[tuple[int, ...], ...] = ()
-    __cached_np_thumbnail: t.Optional[str] = None
 
     def __repr__(self) -> str:
         return "[\n\t%s\n]" % '\n\t'.join(
@@ -190,38 +188,15 @@ class QueueList(list[lv.TrackQueue]):
 
     @property
     def curr_t_palette(self):
-        if self.__cached_np_colors:
-            return self.__cached_np_colors
-
         url = self.curr_t_thumbnail
-        self.__cached_np_colors = (c := get_img_pallete(url))
+        c = get_img_pallete(url)
         return c
 
     @property
-    def curr_t_thumbnail(self) -> str:
-        if self.__cached_np_thumbnail:
-            return self.__cached_np_thumbnail
-
+    def curr_t_thumbnail(self):
         np = self.current
         assert np
-        id_ = np.track.info.identifier
-
-        res = ('maxresdefault', 'sddefault', 'mqdefault', 'hqdefault', 'default')
-
-        for x in res:
-            url = f'https://img.youtube.com/vi/{id_}/{x}.jpg'
-            try:
-                if (urllib_rq.urlopen(url)).getcode() == 200:
-                    self.__cached_np_thumbnail = url
-                    return url
-            except urllib_er.HTTPError:
-                continue
-
-        raise NotImplementedError
-
-    def reset_cached_np_info(self):
-        self.__cached_np_colors = ()
-        self.__cached_np_thumbnail = None
+        return get_thumbnail(np.track.info)
 
 
 @a.s(frozen=True, auto_attribs=False, auto_detect=True)
@@ -317,7 +292,7 @@ class NodeData:
         default=None, init=False
     )
     _track_stopped_fired: bool = a.field(factory=bool, init=False)
-    _dc_by_cmd: bool = a.field(factory=bool, init=False)
+    _dc_on_purpose: bool = a.field(factory=bool, init=False)
     ...
 
 
@@ -401,8 +376,6 @@ class EventHandler:
             q = d.queue
             l = len(q)
 
-            q.reset_cached_np_info()
-
             from src.client import client, guild_config
 
             cfg = guild_config.copy()
@@ -446,8 +419,6 @@ class EventHandler:
         t = (await lvc.decode_track(event.track)).title
         q = await get_queue(event.guild_id, lvc)
         l = len(q)
-
-        q.reset_cached_np_info()
 
         msg = f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] {{0}}: '{t}'\n\t{event.exception_message}\n\tCaused by: {event.exception_cause}"
 

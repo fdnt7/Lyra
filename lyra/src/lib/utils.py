@@ -67,11 +67,14 @@ guild_c = tj.checks.GuildCheck(
     error_message="🙅 Commands can only be used in guild channels"
 )
 ytmusic = YTMusic()
-genius = lg.Genius(os.environ['GENIUS_ACCESS_TOKEN'])
+genius = lg.Genius(
+    os.environ['GENIUS_ACCESS_TOKEN'], remove_section_headers=True, retries=3, timeout=8
+)
 genius.verbose = False
 loop = asyncio.get_event_loop()
 
 
+EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
 GuildConfig = t.NewType('GuildConfig', dict[str, dict[str, t.Any]])
 
 
@@ -120,37 +123,34 @@ async def get_lyrics_yt(song: str, /) -> t.Optional[LyricsData]:
     )
 
 
-async def get_lyrics_ge_2(song: str, /) -> t.Optional[LyricsData]:
-    for _ in range(RETRIES):
-        try:
-            song_0 = genius.search_song(song, get_full_info=False)  # type: ignore
-            if not song_0:
-                return
+async def get_lyrics_ge(song: str, /) -> t.Optional[LyricsData]:
+    song_0 = genius.search_song(song, get_full_info=False)  # type: ignore
+    if not song_0:
+        return
 
-            lyrics = genius.lyrics(song_url=song_0.url, remove_section_headers=True)  # type: ignore
+    lyrics = genius.lyrics(song_url=song_0.url)  # type: ignore
 
-            if not lyrics:
-                return
+    if not lyrics:
+        return
 
-            lyrics = GENIUS_REGEX_2.sub('', GENIUS_REGEX.sub('', lyrics))
+    lyrics = GENIUS_REGEX_2.sub('', GENIUS_REGEX.sub('', lyrics))
 
-            artist = song_0.primary_artist
-            return LyricsData(
-                title=song_0.title,  # type: ignore
-                url=song_0.url,  # type: ignore
-                artist=song_0.artist,  # type: ignore
-                lyrics=lyrics,
-                thumbnail=song_0.song_art_image_url,  # type: ignore
-                source="Genius",
-                artist_icon=artist.image_url,  # type: ignore
-                artist_url=artist.url,  # type: ignore
-            )
-        except rq.exceptions.Timeout:
-            continue
+    artist = song_0.primary_artist
+    return LyricsData(
+        title=song_0.title,  # type: ignore
+        url=song_0.url,  # type: ignore
+        artist=song_0.artist,  # type: ignore
+        lyrics=lyrics,
+        thumbnail=song_0.song_art_image_url,  # type: ignore
+        source="Genius",
+        artist_icon=artist.image_url,  # type: ignore
+        artist_url=artist.url,  # type: ignore
+    )
 
 
 async def get_lyrics(song: str, /) -> dict[str, LyricsData]:
-    tests = (get_lyrics_ge_2(song), get_lyrics_yt(song))
+    # tests = (get_lyrics_ge(song), get_lyrics_yt(song))
+    tests = (get_lyrics_yt(song),)
     if not any(lyrics := await asyncio.gather(*tests)):
         raise LyricsNotFound
     return {l.source: l for l in lyrics if l}
@@ -580,6 +580,7 @@ def inj_glob(pattern: str, /):
     return p.glob(pattern)
 
 
+@ft.cache
 def get_img_pallete(
     img_url: str, /, *, n: int = 10, resize: tuple[int, int] = (150, 150)
 ):
@@ -602,3 +603,21 @@ def get_img_pallete(
     return tuple(
         tuple([int(code) for code in codes[i]]) for i in np.argsort(counts)[::-1]
     )  # returns colors in order of dominance
+
+
+@ft.cache
+def get_thumbnail(t_info: lv.Info) -> str | t.NoReturn:
+    id_ = t_info.identifier
+
+    # TODO: Make this support not just Youtube
+    res = ('maxresdefault', 'sddefault', 'mqdefault', 'hqdefault', 'default')
+
+    for x in res:
+        url = f'https://img.youtube.com/vi/{id_}/{x}.jpg'
+        try:
+            if (urllib_rq.urlopen(url)).getcode() == 200:
+                return url
+        except urllib_er.HTTPError:
+            continue
+
+    raise NotImplementedError

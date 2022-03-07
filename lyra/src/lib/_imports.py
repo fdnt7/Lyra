@@ -14,7 +14,8 @@ import difflib as dfflib
 import datetime as dt
 import requests as rq
 import traceback as tb
-# import functools as ft
+
+import functools as ft
 import contextlib as ctxlib
 import urllib.error as urllib_er
 import urllib.request as urllib_rq
