@@ -74,7 +74,7 @@ async def on_voice_state_update(
                     f"In guild {event.guild_id} stopped channel {conn['channel_id']} inactivity timeout"
                 )
                 return False
-            await asyncio.sleep(1)
+            await asyncio.sleep(60)
 
         __conn = _conn()
         assert isinstance(__conn, dict)
