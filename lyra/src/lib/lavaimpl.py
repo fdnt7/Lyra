@@ -5,7 +5,7 @@ import logging
 import contextlib as ctxlib
 
 import yaml
-import attrs as a
+import attr as a
 import hikari as hk
 import lavasnek_rs as lv
 

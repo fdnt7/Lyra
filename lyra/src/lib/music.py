@@ -25,14 +25,13 @@ from .lavaimpl import (
     RepeatMode,
 )
 
-from src.modules.connections import join__, leave__, cleanups__
-from src.modules.playback import skip__
-
 
 STOP_REFRESH = 0.15
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+music_h = tj.AnyHooks()
 
 
 _P = t.ParamSpec('_P')
@@ -252,7 +251,8 @@ async def generate_nowplaying_embed__(
     return embed
 
 
-music_h = tj.AnyHooks()
+from src.modules.connections import join__, cleanups__
+from src.modules.playback import skip__
 
 
 @music_h.with_on_error
@@ -275,9 +275,6 @@ async def post_execution(
             d.out_channel_id = ctx.channel_id
     except NotConnected:
         pass
-
-
-## Info
 
 
 async def generate_queue_embeds__(

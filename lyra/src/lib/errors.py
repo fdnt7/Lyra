@@ -1,7 +1,7 @@
 import abc
 import typing as t
 
-import attrs as a
+import attr as a
 import hikari as hk
 import lavasnek_rs as lv
 

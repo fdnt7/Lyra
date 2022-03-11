@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-from .playback import skip_abs, previous_abs, play_pause_impl
-from .queue import repeat_abs, shuffle_impl
+from src.modules.queue import repeat_abs, shuffle_impl
+from src.modules.playback import skip_abs, previous_abs, play_pause_impl
 
 
 skip_impl = check(

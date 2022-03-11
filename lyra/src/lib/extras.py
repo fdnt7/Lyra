@@ -12,7 +12,7 @@ import urllib.request as urllib_rq
 
 import scipy.cluster
 import sklearn.cluster
-import attrs as a
+import attr as a
 import lyricsgenius as lg
 import lavasnek_rs as lv
 
