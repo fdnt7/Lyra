@@ -1,6 +1,18 @@
-from src.lib.utils import *
+import hikari as hk
+import tanjun as tj
+import alluka as al
+
+
+from hikari.permissions import Permissions as hkperms
 from src.lib.music import music_h
 from src.lib.checks import Checks, check
+from src.lib.utils import (
+    GuildConfig,
+    guild_c,
+    with_message_command_group_template,
+    reply,
+    err_reply,
+)
 
 
 config = tj.Component(name='Config', strict=True).add_check(guild_c).set_hooks(music_h)

@@ -1,10 +1,40 @@
-from src.lib.music import *
-from src.lib.checks import check, Checks
+import logging
 
+import hikari as hk
+import tanjun as tj
+import alluka as al
+import lavasnek_rs as lv
+
+
+from src.lib.music import music_h
+from src.lib.utils import guild_c
+from src.lib.checks import Checks, check
+from src.lib.errors import NotConnected
+from src.lib.lavaimpl import get_data
 
 control = (
     tj.Component(name='control', strict=True).add_check(guild_c).set_hooks(music_h)
 )
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+
+from .playback import skip_abs, previous_abs, play_pause_impl
+from .queue import repeat_abs, shuffle_impl
+
+
+skip_impl = check(
+    Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__NP_YOURS,
+)(skip_abs)
+repeat_impl = check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)(repeat_abs)
+previous_impl = check(Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__CAN_SEEK_ANY)(
+    previous_abs
+)
+
+
+# ~
 
 
 @control.with_listener(hk.InteractionCreateEvent)
@@ -24,13 +54,9 @@ async def on_interaction_create(
 
     btt = inter.custom_id
     if btt == 'lyra_skip':
-        await check(
-            Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CURR_T_YOURS,
-        )(skip_impl)(inter, lvc=lvc)
+        await skip_impl(inter, lvc=lvc)
     elif btt == 'lyra_previous':
-        await check(Checks.CONN | Checks.QUEUE | Checks.ALONE_OR_CAN_SEEK_QUEUE)(
-            previous_impl
-        )(inter, lvc=lvc)
+        await previous_impl(inter, lvc=lvc)
     elif btt == 'lyra_playpause':
         await play_pause_impl(inter, lvc=lvc)
     elif btt == 'lyra_shuffle':

@@ -1,10 +1,35 @@
-import src.lib.consts as c
+import typing as t
+import logging
 
-from src.lib.music import *
+import hikari as hk
+import tanjun as tj
+import alluka as al
+import lavasnek_rs as lv
+
+
+from src.lib.music import music_h, auto_connect_vc, generate_queue_embeds__
+from src.lib.utils import (
+    Q_DIV,
+    EitherContext,
+    EmojiRefs,
+    EditableComponentsType,
+    guild_c,
+    reply,
+    err_reply,
+    trigger_thinking,
+    disable_components,
+)
+from src.lib.errors import QueryEmpty, LyricsNotFound
+from src.lib.extras import TIMEOUT, ms_stamp, wr, get_lyrics
 from src.lib.checks import Checks, check
+from src.lib.lavaimpl import get_queue, access_queue
 
 
 info = tj.Component(name='Info', strict=True).add_check(guild_c).set_hooks(music_h)
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 # Ping
@@ -109,10 +134,9 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 async def search(
     ctx: EitherContext,
     query: str,
-    bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
 ):
-    await search_(ctx, query, bot=bot, lvc=lvc)
+    await search_(ctx, query, lvc=lvc)
 
 
 @info.with_menu_command
@@ -120,26 +144,31 @@ async def search(
 async def search_c(
     ctx: tj.abc.MenuContext,
     msg: hk.Message,
-    bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
     if not msg.content:
         await err_reply(ctx, content="❌ Cannot process an empty message")
         return
-    await search_(ctx, msg.content, bot=bot, lvc=lvc)
+    await search_(ctx, msg.content, lvc=lvc)
 
 
-@attempt_to_connect
-@check(Checks.CONN)
-async def search_(
-    ctx: EitherContext, query: str, /, *, bot: hk.GatewayBot, lvc: lv.Lavalink
-) -> None:
-    assert ctx.guild_id
+@auto_connect_vc
+@check(Checks.CONN | Checks.SPEAK)
+async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> None:
+    from .queue import play__, enqueue_track__
+    from .playback import stop__, continue__
+
+    erf = ctx.client.get_type_dependency(EmojiRefs)
+    assert ctx.guild_id and erf
+
     query = query.strip("<>|")
 
     QUERIED_N = 10
     PREVIEW_START = 50_000
     PREVIEW_TIME = 30_000
+
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    assert bot
 
     async with trigger_thinking(ctx):
         _queried = await lvc.auto_search_tracks(query)
@@ -167,26 +196,30 @@ async def search_(
     components: list[hk.api.ActionRowBuilder] = []
 
     for i in (pre_row_1_ := map(str, range(1, 1 + len(queried[:5])))):
-        pre_row_1.add_button(bttstyle.SECONDARY, i).set_label(i).add_to_container()
+        pre_row_1.add_button(hk.ButtonStyle.SECONDARY, i).set_label(
+            i
+        ).add_to_container()
     if pre_row_1_:
         components.append(pre_row_1)
 
         pre_row_2 = ctx.rest.build_action_row()
         for j in (pre_row_2_ := map(str, range(6, 6 + len(queried[5:10])))):
-            pre_row_2.add_button(bttstyle.SECONDARY, j).set_label(j).add_to_container()
+            pre_row_2.add_button(hk.ButtonStyle.SECONDARY, j).set_label(
+                j
+            ).add_to_container()
         if pre_row_2_:
             components.append(pre_row_2)
 
     ops_row = ctx.rest.build_action_row()
-    ops_row.add_button(bttstyle.SUCCESS, 'enqueue').set_label(
+    ops_row.add_button(hk.ButtonStyle.SUCCESS, 'enqueue').set_label(
         "＋ Enqueue"
     ).add_to_container()
 
-    ops_row.add_button(bttstyle.PRIMARY, 'link').set_label(
+    ops_row.add_button(hk.ButtonStyle.PRIMARY, 'link').set_label(
         "Get Link"
     ).add_to_container()
-    ops_row.add_button(bttstyle.DANGER, 'cancel').set_emoji(
-        c.WHITE_CROSS
+    ops_row.add_button(hk.ButtonStyle.DANGER, 'cancel').set_emoji(
+        erf['exit_b']
     ).add_to_container()
     components.append(ops_row)
 
@@ -227,9 +260,9 @@ async def search_(
                     await lvc.stop(
                         ctx.guild_id,
                     )
-                await ctx.delete_initial_response()
                 if sel_msg:
                     await ch.delete_messages(sel_msg)
+                await ctx.delete_initial_response()
                 if not prior_stop:
                     await continue__(ctx, lvc)
                 return
@@ -242,7 +275,7 @@ async def search_(
                 selected = key
 
                 await inter.create_initial_response(
-                    hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
+                    hk.ResponseType.DEFERRED_MESSAGE_CREATE,
                 )
                 if await on_going_tracks():
                     sel_msg = await reply(
@@ -257,7 +290,7 @@ async def search_(
                 ).finish_time_millis(PREVIEW_START + PREVIEW_TIME).replace(True).start()
 
                 sel_msg = await reply(
-                    ctx,
+                    inter,
                     ensure_result=True,
                     content=f"🎧 Playing a preview of **`{key}`** `({track.info.title})`",
                     delete_after=PREVIEW_TIME / 1000,
@@ -319,33 +352,46 @@ async def search_(
 async def queue(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    bot: al.Injected[hk.GatewayBot],
 ):
-    await queue_(ctx, lvc=lvc, bot=bot)
+    await queue_(ctx, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN)
-async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink, bot: hk.GatewayBot):
+async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     q = await get_queue(ctx, lvc)
     pages = await generate_queue_embeds__(ctx, lvc)
     pages_n = len(pages)
 
+    erf = ctx.client.get_type_dependency(EmojiRefs)
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    assert bot and erf
+
     def _page_row(*, cancel_b: bool = False):
         row = ctx.rest.build_action_row()
 
-        row.add_button(bttstyle.SECONDARY, 'start').set_emoji('⏪').add_to_container()
+        row.add_button(hk.ButtonStyle.SECONDARY, 'start').set_emoji(
+            '⏪'
+        ).add_to_container()
 
-        row.add_button(bttstyle.SECONDARY, 'prev').set_emoji('◀️').add_to_container()
+        row.add_button(hk.ButtonStyle.SECONDARY, 'prev').set_emoji(
+            '◀️'
+        ).add_to_container()
 
         if cancel_b:
-            _3rd_b = row.add_button(bttstyle.DANGER, 'delete').set_emoji(c.WHITE_CROSS)
+            _3rd_b = row.add_button(hk.ButtonStyle.DANGER, 'delete').set_emoji(
+                erf['exit_b']
+            )
         else:
-            _3rd_b = row.add_button(bttstyle.PRIMARY, 'main').set_emoji('⏺️')
+            _3rd_b = row.add_button(hk.ButtonStyle.PRIMARY, 'main').set_emoji('⏺️')
         _3rd_b.add_to_container()
 
-        row.add_button(bttstyle.SECONDARY, 'next').set_emoji('▶️').add_to_container()
+        row.add_button(hk.ButtonStyle.SECONDARY, 'next').set_emoji(
+            '▶️'
+        ).add_to_container()
 
-        row.add_button(bttstyle.SECONDARY, 'end').set_emoji('⏩').add_to_container()
+        row.add_button(hk.ButtonStyle.SECONDARY, 'end').set_emoji(
+            '⏩'
+        ).add_to_container()
 
         return row
 
@@ -434,12 +480,11 @@ async def lyrics(
     ctx: EitherContext,
     song: t.Optional[str],
     lvc: al.Injected[lv.Lavalink],
-    bot: al.Injected[hk.GatewayBot],
 ):
     """
     Attempts to find the lyrics of the current song
     """
-    await lyrics_(ctx, song, lvc=lvc, bot=bot)
+    await lyrics_(ctx, song, lvc=lvc)
 
 
 @check(Checks.CATCH_ALL)
@@ -449,10 +494,12 @@ async def lyrics_(
     /,
     *,
     lvc: lv.Lavalink,
-    bot: hk.GatewayBot,
 ) -> None:
     """Attempts to find the lyrics of the current song"""
-    assert not (ctx.guild_id is None)
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    erf = ctx.client.get_type_dependency(EmojiRefs)
+    assert bot and erf
+
     if song is None:
         if not ((q := await get_queue(ctx, lvc)) and (np := q.current)):
             await err_reply(
@@ -470,7 +517,9 @@ async def lyrics_(
     act_row = ctx.rest.build_action_row()
 
     ly_sel = sel_row.add_select_menu('ly_sel')
-    cancel_b = act_row.add_button(bttstyle.DANGER, 'delete').set_emoji(c.WHITE_CROSS)
+    cancel_b = act_row.add_button(hk.ButtonStyle.DANGER, 'delete').set_emoji(
+        erf['exit_b']
+    )
 
     try:
         async with trigger_thinking(ctx):
@@ -482,12 +531,12 @@ async def lyrics_(
     for source in lyrics:
         (
             ly_sel.add_option(source, source)
-            .set_emoji(eval(f"c.{source.upper()}_EMOJI"))
+            .set_emoji(erf[source.casefold()])
             .set_description(f"The lyrics fetched from {source}")
             .add_to_menu()
         )
 
-    icons: tuple[str] = tuple(eval(f'c.{source.upper()}_ICON') for source in lyrics)
+    icons: tuple[str] = tuple(erf[source.casefold()].url for source in lyrics)
 
     # (
     #     ly_sel.add_option('Cancel', 'cancel')

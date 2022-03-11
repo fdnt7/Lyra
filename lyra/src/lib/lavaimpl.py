@@ -1,18 +1,22 @@
-from ._imports import *
+import enum as e
+import random as rd
+import typing as t
+import logging
+import contextlib as ctxlib
+
+import yaml
+import attrs as a
+import hikari as hk
+import lavasnek_rs as lv
+
+
 from .errors import NotConnected, QueueEmpty
-from .utils import (
-    GuildOrInferable,
-    get_img_pallete,
-    get_thumbnail,
-    curr_time_ms,
-    infer_guild,
-    get_client,
-    inj_glob,
-)
+from .utils import EmojiRefs, GuildConfig, GuildOrInferable, infer_guild, get_client
+from .extras import get_img_pallete, get_thumbnail, curr_time_ms, inj_glob
 
 
 REPEAT_MODES_ALL = 'off|0|one|o|1|all|a|q'.split('|')
-REPEAT_EMOJIS = ('➡️', '🔁', '🔂')
+REPEAT_EMOJIS: t.Final[list[hk.KnownCustomEmoji]] = []
 
 BandsishTuple = tuple[
     float,
@@ -321,11 +325,14 @@ class EventHandler:
                 f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] started: '{t}'"
             )
 
-            from src.client import guild_config
-            from .music import generate_nowplaying_embed__
-
-            cfg = guild_config.copy()
             client = get_client()
+
+            cfg = client.get_type_dependency(GuildConfig)
+            erf = client.get_type_dependency(EmojiRefs)
+
+            assert cfg and erf
+
+            from .music import generate_nowplaying_embed__
 
             if cfg[str(event.guild_id)].setdefault('send_nowplaying_msg', False):
                 ch = d.out_channel_id
@@ -335,27 +342,27 @@ class EventHandler:
                 )
                 controls = client.rest.build_action_row()
                 (
-                    controls.add_button(bttstyle.SECONDARY, 'lyra_shuffle')
-                    .set_emoji('🔀')
+                    controls.add_button(hk.ButtonStyle.SECONDARY, 'lyra_shuffle')
+                    .set_emoji(erf['shuffle_b'])
                     .add_to_container()
                 )
                 (
-                    controls.add_button(bttstyle.SECONDARY, 'lyra_previous')
-                    .set_emoji('⏮️')
+                    controls.add_button(hk.ButtonStyle.SECONDARY, 'lyra_previous')
+                    .set_emoji(erf['previous_b'])
                     .add_to_container()
                 )
                 (
-                    controls.add_button(bttstyle.PRIMARY, 'lyra_playpause')
-                    .set_emoji('⏸️')
+                    controls.add_button(hk.ButtonStyle.PRIMARY, 'lyra_playpause')
+                    .set_emoji(erf['resume_b'])
                     .add_to_container()
                 )
                 (
-                    controls.add_button(bttstyle.SECONDARY, 'lyra_skip')
-                    .set_emoji('⏭️')
+                    controls.add_button(hk.ButtonStyle.SECONDARY, 'lyra_skip')
+                    .set_emoji(erf['skip_b'])
                     .add_to_container()
                 )
                 (
-                    controls.add_button(bttstyle.SUCCESS, 'lyra_repeat')
+                    controls.add_button(hk.ButtonStyle.SUCCESS, 'lyra_repeat')
                     .set_emoji(get_repeat_emoji(q))
                     .add_to_container()
                 )
@@ -376,9 +383,10 @@ class EventHandler:
             q = d.queue
             l = len(q)
 
-            from src.client import client, guild_config
+            client = get_client()
 
-            cfg = guild_config.copy()
+            cfg = client.get_type_dependency(GuildConfig)
+            assert cfg
 
             if cfg[str(event.guild_id)].get('send_nowplaying_msg', False) and (
                 msg := d._nowplaying_msg
@@ -440,7 +448,7 @@ class EventHandler:
             advance=not q.is_stopped,
         )
 
-        from src.client import client
+        client = get_client()
 
         if not await lvc.get_guild_node(event.guild_id):
             return

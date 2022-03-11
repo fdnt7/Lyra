@@ -1,9 +1,68 @@
-from src.lib.music import *
+import typing as t
+import logging
+import difflib as dfflib
+
+import hikari as hk
+import tanjun as tj
+import alluka as al
+import lavasnek_rs as lv
+
+
+from hikari.messages import MessageFlag as msgflag
+from src.lib.music import music_h
+from src.lib.utils import (
+    guild_c,
+    reply,
+    err_reply,
+    with_message_command_group_template,
+)
+from src.lib.errors import NotConnected
 from src.lib.checks import DJ_PERMS, Checks, check
-from src.lib.lavaimpl import Bands
+from src.lib.lavaimpl import Bands, access_equalizer
 
 
 tuning = tj.Component(name='Tuning', strict=True).add_check(guild_c).set_hooks(music_h)
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+
+async def set_mute__(
+    ctx: tj.abc.Context,
+    lvc: lv.Lavalink,
+    /,
+    *,
+    mute: t.Optional[bool],
+    respond: bool = False,
+) -> None:
+    assert not (ctx.cache is None or ctx.guild_id is None)
+    me = ctx.cache.get_me()
+    assert me is not None
+
+    async with access_equalizer(ctx, lvc) as eq:
+        if mute is None:
+            mute = not eq.is_muted
+        if mute and eq.is_muted:
+            await err_reply(ctx, content="❗ Already muted")
+            return
+        if not (mute or eq.is_muted):
+            await err_reply(ctx, content="❗ Already unmuted")
+            return
+
+        if mute:
+            await ctx.rest.edit_member(ctx.guild_id, me, mute=True)
+            msg = "🔇 Muted"
+        else:
+            await ctx.rest.edit_member(ctx.guild_id, me, mute=False)
+            msg = "🔊 Unmuted"
+
+        eq.is_muted = mute
+        if respond:
+            await reply(ctx, content=msg)
+
+
+# ~
 
 
 @tuning.with_listener(hk.VoiceStateUpdateEvent)
@@ -72,7 +131,7 @@ async def volume_set_m(
     await volume_set_(ctx, scale, lvc=lvc)
 
 
-@check(Checks.CONN, perms=DJ_PERMS)
+@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def volume_set_(ctx: tj.abc.Context, scale: int, /, *, lvc: lv.Lavalink) -> None:
     """Set the volume of the bot from 0-10"""
     assert ctx.guild_id
@@ -114,7 +173,7 @@ async def volume_up_m(
     await volume_up_(ctx, amount, lvc=lvc)
 
 
-@check(Checks.CONN, perms=DJ_PERMS)
+@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def volume_up_(ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink) -> None:
     """Increase the bot's volume"""
     assert ctx.guild_id
@@ -166,7 +225,7 @@ async def volume_down_m(
     await volume_down_(ctx, amount, lvc=lvc)
 
 
-@check(Checks.CONN, perms=DJ_PERMS)
+@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def volume_down_(
     ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink
 ) -> None:
@@ -324,7 +383,7 @@ async def equalizer_preset_m(
     await equalizer_preset_(ctx, preset, lvc=lvc)
 
 
-@check(Checks.CONN, perms=DJ_PERMS)
+@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def equalizer_preset_(
     ctx: tj.abc.Context, preset: str, /, *, lvc: lv.Lavalink
 ) -> None:

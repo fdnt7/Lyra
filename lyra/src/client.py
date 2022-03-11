@@ -12,7 +12,16 @@ import alluka as al
 import tanjun as tj
 import lavasnek_rs as lv
 
-from .lib import *
+from .lib import (
+    REPEAT_EMOJIS,
+    EventHandler,
+    EmojiRefs,
+    GuildConfig,
+    cfg_ref,
+    hooks,
+    update_cfg,
+    inj_glob,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +56,7 @@ activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
 
 
 lavalink_client: lv.Lavalink
-
+emoji_refs = EmojiRefs({})
 
 cfg_fetched: t.Any = cfg_ref.get()
 guild_config = GuildConfig(cfg_fetched)
@@ -65,17 +74,23 @@ async def prefix_getter(
     )
 
 
+EMOJIS_ACCESS = 777069316247126036
+
+
 @client.with_listener(hk.StartedEvent)
 async def on_started(
     _: hk.StartedEvent,
     client_: al.Injected[tj.Client],
 ):
-    emojis = await client_.rest.fetch_guild_emojis(939863856010895360)
-    emoji_refs = EmojiRefs({e.name: e for e in emojis})
+    emojis = await client_.rest.fetch_guild_emojis(EMOJIS_ACCESS)
+
+    emoji_refs.update({e.name: e for e in emojis})
 
     client_.set_type_dependency(GuildConfig, guild_config).set_type_dependency(
         EmojiRefs, emoji_refs
     )
+
+    REPEAT_EMOJIS.extend(emoji_refs[f'repeat{n}_b'] for n in range(3))
 
 
 @client.with_listener(hk.ShardReadyEvent)

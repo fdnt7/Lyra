@@ -1,4 +1,8 @@
-from src.lib.utils import *
+import hikari as hk
+import tanjun as tj
+import alluka as al
+
+from src.lib.utils import GuildConfig, guild_c
 
 data = tj.Component(name='database', strict=True).add_check(guild_c)
 

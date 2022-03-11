@@ -1,4 +1,12 @@
-from ._imports import *
+import abc
+import typing as t
+
+import attrs as a
+import hikari as hk
+import lavasnek_rs as lv
+
+
+from hikari.permissions import Permissions as hkperms
 
 
 T = t.TypeVar('T')
@@ -11,7 +19,7 @@ class Argument(t.Generic[T]):
 
 
 @a.define(init=False)
-class BaseMusicCommandException(Exception):
+class BaseMusicCommandException(abc.ABC, Exception):
     pass
 
 
@@ -47,9 +55,19 @@ class Forbidden(BaseMusicCommandException):
 
 
 @a.define
-class ChannelChange(ConnectionSignal):
+class Unautherized(Forbidden):
+    pass
+
+
+@a.define
+class ChannelMoved(ConnectionSignal):
     old_channel: hk.Snowflakeish
     new_channel: hk.Snowflakeish
+
+
+@a.define
+class RequestedToSpeak(ConnectionSignal):
+    channel: hk.Snowflakeish
 
 
 @a.define(init=False)
@@ -64,6 +82,11 @@ class ConnectionException(PlaybackException):
 
 @a.define(init=False)
 class NotConnected(PlaybackException):
+    pass
+
+
+@a.define
+class NotYetSpeaker(ConnectionException):
     pass
 
 

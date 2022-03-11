@@ -1,18 +1,32 @@
-from .utils import *
-from .checks import check, Checks
+import typing as t
+import asyncio
+import logging
+import datetime as dt
+
+import hikari as hk
+import tanjun as tj
+import alluka as al
+import lavasnek_rs as lv
+
+from .utils import (
+    Q_DIV,
+    get_pref,
+    get_cmd_n,
+    reply,
+    err_reply,
+    delete_after,
+    disable_components,
+)
+from .errors import NotConnected, NotInVoice, Forbidden, RequestedToSpeak, VotingTimeout
+from .extras import VoidCoroutine, NULL, TIMEOUT, ms_stamp, wr, chunk, chunk_b
 from .lavaimpl import (
     get_queue,
-    get_data,
-    set_data,
-    access_queue,
     access_data,
-    access_equalizer,
-    edit_now_playing_components,
-    QueueList,
     RepeatMode,
-    NodeData,
-    REPEAT_EMOJIS,
 )
+
+from src.modules.connections import join__, leave__, cleanups__
+from src.modules.playback import skip__
 
 
 STOP_REFRESH = 0.15
@@ -24,10 +38,10 @@ logger.setLevel(logging.DEBUG)
 _P = t.ParamSpec('_P')
 
 
-def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
+def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
     async def inner(*args: _P.args, **kwargs: _P.kwargs):
-        ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
-        lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), None)
+        ctx = next((a for a in args if isinstance(a, tj.abc.Context)), NULL)
+        lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), NULL)
 
         assert ctx and lvc
         p = get_pref(ctx)
@@ -36,6 +50,7 @@ def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
 
         async def __join():
+            assert ctx
             if not conn:
                 # Join the users voice channel if we are not already connected
                 try:
@@ -52,6 +67,46 @@ def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
                         content="⌛ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
                     )
                     return
+                except Forbidden as exc:
+                    await err_reply(
+                        ctx,
+                        content=f"⛔ Not sufficient permissions to join channel <#{exc.channel}",
+                    )
+                    return
+                except RequestedToSpeak as sig:
+                    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+                    assert bot
+
+                    if isinstance(ctx, tj.abc.AppCommandContext):
+                        await ctx.defer()
+
+                    wait_msg = await ctx.client.rest.create_message(
+                        ctx.channel_id,
+                        f"⏳🎭📎 <#{sig.channel}> `(Sent a request to speak. Waiting to become a speaker...)`",
+                    )
+
+                    bot_u = bot.get_me()
+                    assert bot_u
+
+                    try:
+                        await bot.wait_for(
+                            hk.VoiceStateUpdateEvent,
+                            timeout=TIMEOUT // 2,
+                            predicate=lambda e: e.state.user_id == bot_u.id
+                            and bool(e.state.channel_id)
+                            and not e.state.is_suppressed
+                            and bool(ctx.client.cache)
+                            and isinstance(
+                                ctx.client.cache.get_guild_channel(sig.channel),
+                                hk.GuildStageChannel,
+                            ),
+                        )
+                    except asyncio.TimeoutError:
+                        await wait_msg.edit(
+                            "⌛ Waiting timed out. Invite the bot to speak and invoke the command again",
+                        )
+                        asyncio.create_task(delete_after(ctx, wait_msg, time=5.0))
+                        return
             return True
 
         ch = ctx.get_channel()
@@ -69,16 +124,16 @@ def attempt_to_connect(func: t.Callable[_P, VoidCoroutine]):
     return inner
 
 
-async def init_listeners_voting(
-    ctx: tj.abc.Context, bot: hk.GatewayBot, lvc: lv.Lavalink
-):
+async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
     cmd_n = ''.join((get_pref(ctx), get_cmd_n(ctx)))
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    assert bot
 
     row = (
         ctx.rest.build_action_row()
-        .add_button(bttstyle.SUCCESS, 'vote')
+        .add_button(hk.ButtonStyle.SUCCESS, 'vote')
         .set_emoji('🗳️')
         .add_to_container()
     )
@@ -114,7 +169,7 @@ async def init_listeners_voting(
             title=f"🎫 Voting for command `{cmd_n}`",
             description=f"{m.mention} wanted to use the command `{cmd_n}`\n\n`{vote_b}` **{vote_n}/{threshold}**{' 🎉' if vote_n==threshold else ''}",
             color=0xC2CED5,
-        )
+        ).set_footer("Press the green button below to cast a vote!")
 
     msg = await reply(
         ctx,
@@ -220,654 +275,6 @@ async def post_execution(
             d.out_channel_id = ctx.channel_id
     except NotConnected:
         pass
-
-
-## Connections
-
-
-loggerA = logging.getLogger('connections')
-
-
-async def join__(
-    ctx: tj.abc.Context,
-    channel: t.Optional[hk.GuildVoiceChannel],
-    lvc: lv.Lavalink,
-    /,
-) -> hk.Snowflake:
-    """Joins your voice channel."""
-    assert ctx.guild_id
-
-    if not (ctx.client.cache and ctx.client.shards):
-        raise InternalError
-
-    if channel is None:
-        # If user is connected to a voice channel
-        if (
-            voice_state := ctx.client.cache.get_voice_state(ctx.guild_id, ctx.author)
-        ) is not None:
-            # Join the current voice channel
-            target_channel = voice_state.channel_id
-        else:
-            raise NotInVoice(None)
-    else:
-        target_channel = channel.id
-        # Join the specified voice channel
-
-    old_conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
-    assert isinstance(old_conn, dict) or old_conn is None
-    assert target_channel is not None
-
-    # Check if the bot is already connected and the user tries to change
-    if old_conn:
-
-        old_channel: t.Optional[int] = old_conn['channel_id']
-        # If it's the same channel
-        assert old_channel
-        if old_channel == target_channel:
-            raise AlreadyConnected(old_channel)
-
-        from .checks import check_others_not_in_vc__
-
-        await check_others_not_in_vc__(ctx, hkperms.MOVE_MEMBERS, old_conn)
-    else:
-        old_channel = None
-
-    # Connect to the channel
-    await ctx.client.shards.update_voice_state(
-        ctx.guild_id, target_channel, self_deaf=True
-    )
-
-    # Lavasnek waits for the data on the event
-    try:
-        sess_conn = await lvc.wait_for_full_connection_info_insert(ctx.guild_id)
-    except TimeoutError:
-        raise
-    # Lavasnek tells lavalink to connect
-    await lvc.create_session(sess_conn)
-
-    """
-    TODO Make the bot raise `AccessDenied` if nothing happens after joining a new channel
-    """
-
-    # bot = ctx.client.cache.get_me()
-    # new_voice_states = ctx.client.cache.get_voice_states_view_for_guild(ctx.guild_id)
-    # bot_voice_state = filter(lambda v: v.user_id == bot.id, new_voice_states.values())
-    # new_channel = getattr(next(bot_voice_state, None), 'channel_id', None)
-
-    # if new_channel != target_channel:
-    #     raise AccessDenied(target_channel)
-
-    # if conn:
-    #     voice_states_after = ctx.client.cache.get_voice_states_view_for_channel(
-    #         ctx.guild_id, old_channel
-    #     )
-    #     bot_voice_state = tuple(filter(lambda v: v.user_id == bot.id, voice_states_after.values()))
-    #     if bot_voice_state:
-    #         raise AccessDenied(target_channel)
-    if old_conn and old_channel:
-        raise ChannelChange(old_channel, target_channel)
-
-    async with access_data(ctx, lvc) as d:
-        d.out_channel_id = ctx.channel_id
-
-    loggerA.debug(f"In guild {ctx.guild_id} joined  channel {target_channel}")
-    return target_channel
-
-
-async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
-    assert ctx.guild_id
-
-    if not (conn := lvc.get_guild_gateway_connection_info(ctx.guild_id)):
-        raise NotConnected
-
-    assert isinstance(conn, dict)
-    curr_channel: int = conn['channel_id']
-    assert isinstance(curr_channel, int)
-
-    from .checks import check_others_not_in_vc__
-
-    await check_others_not_in_vc__(ctx, hkperms.MOVE_MEMBERS, conn)
-
-    async with access_data(ctx, lvc) as d:
-        d._dc_on_purpose = True
-
-    await cleanups__(ctx.guild_id, ctx.client.shards, lvc)
-
-    loggerA.debug(f"In guild {ctx.guild_id} left    channel {curr_channel} gracefully")
-    return curr_channel
-
-
-async def cleanups__(
-    guild: hk.Snowflakeish,
-    shards: t.Optional[hk.ShardAware],
-    lvc: lv.Lavalink,
-    /,
-    *,
-    also_disconns: bool = True,
-) -> None:
-    await lvc.destroy(guild)
-    if shards:
-        if also_disconns:
-            await shards.update_voice_state(guild, None)
-        await lvc.wait_for_connection_info_remove(guild)
-    await lvc.remove_guild_node(guild)
-    await lvc.remove_guild_from_loops(guild)
-
-
-## Playback
-
-
-loggerB = logging.getLogger('playback')
-
-
-async def stop__(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
-    async with access_queue(g_inf, lvc) as q:
-        q.is_stopped = True
-
-    await lvc.stop(infer_guild(g_inf))
-
-
-async def stop_in_ctx__(
-    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
-) -> None:
-    g = infer_guild(g_inf)
-
-    data.queue.is_stopped = True
-    await set_data(g, lvc, data)
-    await lvc.stop(g)
-
-
-async def continue__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
-    assert ctx.guild_id
-    async with access_queue(ctx, lvc) as q:
-        q.is_stopped = False
-
-
-async def wait_for_track_finish_event_fire(
-    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
-):
-    while not (await get_data(infer_guild(g_inf), lvc))._track_stopped_fired:
-        await asyncio.sleep(STOP_REFRESH)
-    data._track_stopped_fired = False
-
-
-@ctxlib.asynccontextmanager
-async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /):
-    await stop_in_ctx__(g_inf, lvc, data)
-    prior_playing = data.queue.current
-    try:
-        yield
-    finally:
-        if prior_playing:
-            await wait_for_track_finish_event_fire(g_inf, lvc, data)
-        data.queue.is_stopped = False
-
-
-async def set_pause__(
-    g_r_inf: GuildOrRESTInferable,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    pause: t.Optional[bool],
-    respond: bool = False,
-    strict: bool = False,
-    update_controller: bool = False,
-) -> None:
-    g = infer_guild(g_r_inf)
-
-    try:
-        d = await get_data(g, lvc)
-        q = d.queue
-        if q.is_stopped:
-            if strict:
-                raise TrackStopped
-            return
-        if pause is None:
-            pause = not q.is_paused
-        if respond:
-            if pause and q.is_paused:
-                await err_reply(g_r_inf, content="❗ Already paused")
-                return
-            if not (pause or q.is_paused):
-                await err_reply(g_r_inf, content="❗ Already resumed")
-                return
-
-        np_pos = q.np_position
-        if np_pos is None:
-            raise NotPlaying
-
-        q.is_paused = pause
-        if pause:
-            q._paused_np_position = np_pos
-            await lvc.pause(g)
-            e = '▶️'
-            msg = "Paused"
-        else:
-            q.update_curr_t_started(-np_pos)
-            await lvc.resume(g)
-            e = '⏸️'
-            msg = "Resumed"
-
-        await set_data(g, lvc, d)
-        if respond:
-            if isinstance(g_r_inf, Contextish):
-                await reply(g_r_inf, content=f"{e} {msg}")
-            else:
-                g_r_inf
-
-        if update_controller and d._nowplaying_msg:
-            if not isinstance(g_r_inf, RESTInferable):
-                raise ValueError(
-                    "`g_r_inf` was not type `RESTInferable` but `update_controller` was passed `True`"
-                )
-            rest = get_rest(g_r_inf)
-
-            assert d._nowplaying_components
-            components = edit_components(
-                rest,
-                *d._nowplaying_components,
-                edits=lambda x: x.set_emoji(e),
-                predicates=lambda x: x.emoji in {'▶️', '⏸️'},
-            )
-
-            await edit_now_playing_components(rest, d, components)
-    except (QueueEmpty, NotPlaying):
-        if strict:
-            raise
-        pass
-
-
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE_OR_CURR_T_YOURS
-)
-async def play_pause_impl(ctx: Contextish, /, *, lvc: lv.Lavalink):
-    await set_pause__(ctx, lvc, pause=None, respond=True, update_controller=True)
-
-
-async def skip__(
-    g_inf: GuildOrInferable,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    advance: bool = True,
-    change_repeat: bool = False,
-    change_stop: bool = True,
-) -> t.Optional[lv.TrackQueue]:
-    async with access_queue(g_inf, lvc) as q:
-        skip = q.current
-        if change_repeat:
-            q.reset_repeat()
-        await lvc.stop(g := infer_guild(g_inf))
-        if q.is_stopped:
-            if advance:
-                q.adv()
-            if next_t := q.next:
-                await lvc.play(g, next_t.track).start()
-                await set_pause__(g_inf, lvc, pause=False)
-        if change_stop:
-            q.is_stopped = False
-        return skip
-
-
-async def skip_impl(
-    ctx_: Contextish, /, *, lvc: lv.Lavalink, bot: t.Optional[hk.GatewayBot] = None
-):
-    skip = await skip__(ctx_, lvc, change_repeat=True)
-
-    assert skip is not None
-    await reply(ctx_, content=f"⏭️ ~~`{skip.track.info.title}`~~")
-
-
-async def back__(
-    ctx_: Contextish,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    advance: bool = True,
-    change_repeat: bool = False,
-) -> lv.TrackQueue:
-    async with access_data(ctx_, lvc) as d:
-        q = d.queue
-        i = q.pos
-        if change_repeat:
-            q.reset_repeat()
-
-        async with while_stop(ctx_, lvc, d):
-            rep = q.repeat_mode
-            if rep is RepeatMode.ALL:
-                i -= 1
-                i %= len(q)
-                prev = q[i]
-            elif rep is RepeatMode.ONE:
-                prev = q.current
-                assert prev is not None
-            else:
-                prev = q.history[-1]
-                i -= 1
-
-            if advance:
-                q.pos = i
-
-        await lvc.play(infer_guild(ctx_), prev.track).start()
-    await set_pause__(ctx_, lvc, pause=False)
-    return prev
-
-
-async def previous_impl(
-    ctx_: Contextish, /, *, lvc: lv.Lavalink, bot: t.Optional[hk.GatewayBot] = None
-):
-    if (
-        q := await get_queue(ctx_, lvc)
-    ).repeat_mode is RepeatMode.NONE and not q.history:
-        await err_reply(ctx_, content="❗ This is the start of the queue")
-        return
-
-    prev = await back__(ctx_, lvc)
-    await reply(ctx_, content=f"⏮️ **`{prev.track.info.title}`**")
-
-
-async def seek__(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
-    assert ctx.guild_id
-    if total_ms < 0:
-        raise IllegalArgument(Argument(total_ms, 0))
-    async with access_queue(ctx, lvc) as q:
-        assert q.current is not None
-        if total_ms >= (song_len := q.current.track.info.length):
-            raise IllegalArgument(Argument(total_ms, song_len))
-        q.update_curr_t_started(-total_ms)
-        await lvc.seek_millis(ctx.guild_id, total_ms)
-        return total_ms
-
-
-## Queue
-
-
-loggerC = logging.getLogger('queue')
-
-
-VALID_SOURCES = {
-    "Youtube": 'yt',
-    "Youtube Music": 'ytm',
-    "Soundcloud": 'sc',
-}
-
-
-async def play__(
-    ctx: tj.abc.Context,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    tracks: lv.Tracks,
-    respond: bool = False,
-    shuffle: bool = False,
-) -> None:
-    assert ctx.guild_id
-    async with access_queue(ctx, lvc) as q:
-        if tracks.load_type == 'PLAYLIST_LOADED':
-            await enqueue_tracks__(
-                ctx, lvc, tracks=tracks, queue=q, respond=respond, shuffle=shuffle
-            )
-        else:
-            await enqueue_track__(
-                ctx,
-                lvc,
-                track=tracks.tracks[0],
-                queue=q,
-                respond=respond,
-                shuffle=shuffle,
-            )
-
-
-async def enqueue_track__(
-    ctx: tj.abc.Context,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    track: lv.Track,
-    queue: QueueList,
-    respond: bool = False,
-    shuffle: bool = False,
-    ignore_stop: bool = False,
-) -> None:
-    assert ctx.guild_id
-    player = lvc.play(ctx.guild_id, track).requester(ctx.author.id).replace(False)
-    queue.ext(player.to_track_queue())
-    if respond:
-        if shuffle:
-            await reply(
-                ctx,
-                content=f"🔀**`＋`** Added `{track.info.title}` and shuffled the queue",
-            )
-        else:
-            await reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
-
-    if not queue.is_stopped or ignore_stop:
-        await player.start()
-    if shuffle:
-        queue.shuffle()
-
-
-async def enqueue_tracks__(
-    ctx: tj.abc.Context,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    tracks: lv.Tracks,
-    queue: QueueList,
-    respond: bool = False,
-    shuffle: bool = False,
-) -> None:
-    assert ctx.guild_id
-    players = tuple(
-        lvc.play(ctx.guild_id, t).requester(ctx.author.id).replace(False)
-        for t in tracks.tracks
-    )
-    queue.ext(*map(lambda p: p.to_track_queue(), players))
-    if respond:
-        if shuffle:
-            await reply(
-                ctx,
-                content=f"🔀**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` and shuffled the queue",
-            )
-        else:
-            await reply(
-                ctx,
-                content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
-            )
-
-    player = next(iter(players))
-    if not queue.is_stopped:
-        await player.start()
-    if shuffle:
-        queue.shuffle()
-
-
-async def remove_track__(
-    ctx: tj.abc.Context, track: t.Optional[str], lvc: lv.Lavalink, /
-) -> lv.TrackQueue:
-    assert ctx.guild_id
-
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    np = q.current
-    if track is None:
-        if not np:
-            raise InvalidArgument(Argument(track, None))
-        rm = np
-        i = q.pos
-    elif track.isdigit():
-        t = int(track)
-        if not (1 <= t <= len(q)):
-            raise IllegalArgument(Argument(t, (1, len(q))))
-        i = t - 1
-        rm = q[i]
-    else:
-        rm = max(
-            q,
-            key=lambda t: dfflib.SequenceMatcher(
-                None, t.track.info.title, track
-            ).ratio(),
-        )
-        i = q.index(rm)
-
-    try:
-        from .checks import check_others_not_in_vc
-
-        await check_others_not_in_vc(ctx, lvc)
-    except OthersInVoice:
-        if rm.requester != ctx.author.id:
-            raise PlaybackChangeRefused
-
-        # q.is_stopped = False
-
-    if rm == np:
-        async with while_stop(ctx, lvc, d):
-            await skip__(ctx, lvc, advance=False, change_repeat=True)
-
-    if i < q.pos:
-        q.pos = max(0, q.pos - 1)
-    q.sub(rm)
-
-    loggerC.info(
-        f"In guild {ctx.guild_id} track [{i: >3}+1/{len(q)}] removed: '{rm.track.info.title}'"
-    )
-
-    await set_data(ctx.guild_id, lvc, d)
-    return rm
-
-
-async def remove_tracks__(
-    ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
-) -> list[lv.TrackQueue]:
-    assert ctx.guild_id
-
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    if not (1 <= start <= end <= len(q)):
-        raise IllegalArgument(Argument((start, end), (1, len(q))))
-
-    i_s = start - 1
-    i_e = end - 1
-    # t_n = end - i_s
-    rm = q[i_s:end]
-    if q.current in rm:
-        q.reset_repeat()
-        async with while_stop(ctx, lvc, d):
-            if next_t := None if len(q) <= end else q[end]:
-                await set_pause__(ctx, lvc, pause=False)
-                await lvc.play(ctx.guild_id, next_t.track).start()
-    if i_s < q.pos:
-        q.pos = max(0, i_s + (q.pos - i_e - 1))
-    q.sub(*rm)
-
-    loggerC.info(
-        f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}/{len(q)}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
-    )
-
-    await set_data(ctx.guild_id, lvc, d)
-    return rm
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def shuffle_impl(ctx_: Contextish, /, *, lvc: lv.Lavalink):
-    async with access_queue(ctx_, lvc) as q:
-        if not q.upcoming:
-            await err_reply(ctx_, content=f"❗ This is the end of the queue")
-            return
-        q.shuffle()
-
-        await reply(
-            ctx_,
-            content=f"🔀 Shuffled the upcoming tracks. `(Track #{q.pos+2}-{len(q)}; {len(q) - q.pos - 1} tracks)`",
-        )
-
-
-async def insert_track__(
-    ctx: tj.abc.Context, insert: int, track: t.Optional[int], lvc: lv.Lavalink, /
-) -> lv.TrackQueue:
-    assert ctx.guild_id
-
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    np = q.current
-    p_ = q.pos
-    if track is None:
-        if not np:
-            raise InvalidArgument(Argument(np, track))
-        t_ = p_
-        ins = np
-    else:
-        t_ = track - 1
-        ins = q[t_]
-
-    i_ = insert - 1
-    if t_ in {i_, insert}:
-        raise ValueError
-    if not ((0 <= t_ < len(q)) and (0 <= i_ < len(q))):
-        raise IllegalArgument(Argument((track, insert), (1, len(q))))
-
-    if t_ < p_ <= i_:
-        q.decr()
-    elif i_ < p_ < t_:
-        q.adv()
-
-    elif i_ < p_ == t_:
-        await back__(ctx, lvc, advance=False, change_repeat=True)
-
-    elif p_ == t_ < i_:
-        async with while_stop(ctx, lvc, d):
-            await skip__(ctx, lvc, advance=False, change_repeat=True, change_stop=False)
-
-    q[t_] = NullType  # type: ignore
-    q.insert(insert, ins)
-    q.remove(NullType)  # type: ignore
-
-    await set_data(ctx.guild_id, lvc, d)
-    return ins
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def repeat_impl(
-    ctx_: Contextish, mode: t.Optional[str], /, *, lvc: lv.Lavalink
-) -> None:
-    """Select a repeat mode for the queue"""
-    async with access_data(ctx_, lvc) as d:
-        q = d.queue
-        if mode is None:
-            modes = tuple(m.value for m in RepeatMode)
-            mode = modes[(modes.index(q.repeat_mode.value) + 1) % 3]
-            assert mode is not None
-        m = q.set_repeat(mode)
-
-    if m is RepeatMode.NONE:
-        msg = "Disabled repeat"
-    elif m is RepeatMode.ALL:
-        msg = "Repeating the entire queue"
-    elif m is RepeatMode.ONE:
-        msg = "Repeating only this current track"
-    else:
-        raise NotImplementedError
-
-    from .lavaimpl import get_repeat_emoji
-
-    e = get_repeat_emoji(q)
-    await reply(ctx_, content=f"{e} {msg}")
-    if d._nowplaying_msg:
-        rest = get_rest(ctx_)
-
-        assert d._nowplaying_components
-        components = edit_components(
-            rest,
-            *d._nowplaying_components,
-            edits=lambda x: x.set_emoji(e),
-            predicates=lambda x: x.emoji in REPEAT_EMOJIS,
-        )
-
-        await edit_now_playing_components(rest, d, components)
 
 
 ## Info
@@ -978,43 +385,3 @@ async def generate_queue_embeds__(
     ]
 
     return tuple(prev_embeds + [np_embed] + next_embeds)
-
-
-## Tuning
-
-
-loggerE = logging.getLogger('tuning')
-
-
-async def set_mute__(
-    ctx: tj.abc.Context,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    mute: t.Optional[bool],
-    respond: bool = False,
-) -> None:
-    assert not (ctx.cache is None or ctx.guild_id is None)
-    me = ctx.cache.get_me()
-    assert me is not None
-
-    async with access_equalizer(ctx, lvc) as eq:
-        if mute is None:
-            mute = not eq.is_muted
-        if mute and eq.is_muted:
-            await err_reply(ctx, content="❗ Already muted")
-            return
-        if not (mute or eq.is_muted):
-            await err_reply(ctx, content="❗ Already unmuted")
-            return
-
-        if mute:
-            await ctx.rest.edit_member(ctx.guild_id, me, mute=True)
-            msg = "🔇 Muted"
-        else:
-            await ctx.rest.edit_member(ctx.guild_id, me, mute=False)
-            msg = "🔊 Unmuted"
-
-        eq.is_muted = mute
-        if respond:
-            await reply(ctx, content=msg)

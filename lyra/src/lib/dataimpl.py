@@ -6,7 +6,8 @@ import firebase_admin as fb
 
 from firebase_admin import db
 from firebase_admin import credentials
-from .utils import inj_glob, GuildConfig
+from .utils import GuildConfig
+from .extras import inj_glob
 
 logger = logging.getLogger(__name__)
 
