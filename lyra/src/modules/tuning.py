@@ -24,7 +24,7 @@ from src.lib.lavaimpl import Bands, access_equalizer
 tuning = tj.Component(name='Tuning', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('tuning     ')
 logger.setLevel(logging.DEBUG)
 
 

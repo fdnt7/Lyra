@@ -50,7 +50,7 @@ playback = (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('playback   ')
 logger.setLevel(logging.DEBUG)
 
 

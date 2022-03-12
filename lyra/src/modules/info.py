@@ -28,7 +28,7 @@ from src.lib.lavaimpl import get_queue, access_queue
 info = tj.Component(name='Info', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('info       ')
 logger.setLevel(logging.DEBUG)
 
 

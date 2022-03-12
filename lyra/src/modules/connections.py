@@ -29,7 +29,7 @@ conns = (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('connections')
 logger.setLevel(logging.DEBUG)
 
 
@@ -100,16 +100,22 @@ async def join__(
     async with access_data(ctx, lvc) as d:
         d.out_channel_id = ctx.channel_id
 
-    if isinstance(ctx.cache.get_guild_channel(new_ch), hk.GuildStageChannel):
+    is_stage = isinstance(ctx.cache.get_guild_channel(new_ch), hk.GuildStageChannel)
+    ch_type = 'stage' if is_stage else 'channel'
+    if is_stage:
         await ctx.rest.edit_my_voice_state(ctx.guild_id, new_ch, request_to_speak=True)
-        logger.info(f"In guild {ctx.guild_id} stage   channel {new_ch}")
-        raise RequestedToSpeak(new_ch)
 
     if old_conn and old_ch:
-        logger.info(f"In guild {ctx.guild_id} moved  from    {old_ch} > {new_ch}")
-        raise ChannelMoved(old_ch, new_ch)
+        logger.info(
+            f"In guild {ctx.guild_id} moved   from    {old_ch} > {ch_type: <7} {new_ch}"
+        )
+        raise ChannelMoved(old_ch, new_ch, to_stage=is_stage)
 
-    logger.info(f"In guild {ctx.guild_id} joined  channel {new_ch}")
+    elif is_stage:
+        logger.info(f"In guild {ctx.guild_id} joined  {ch_type: <7} {new_ch}")
+        raise RequestedToSpeak(new_ch)
+
+    logger.info(f"In guild {ctx.guild_id} joined  {ch_type: <7} {new_ch}")
     return new_ch
 
 
@@ -168,6 +174,7 @@ async def on_voice_state_update(
 
     new = event.state
     old = event.old_state
+
     if not await lvc.get_guild_node(event.guild_id):
         return
 
@@ -212,22 +219,40 @@ async def on_voice_state_update(
 
     from .playback import set_pause__
 
+    old_is_stage = (
+        None
+        if not (old and old.channel_id)
+        else isinstance(
+            bot.cache.get_guild_channel(old.channel_id), hk.GuildStageChannel
+        )
+    )
+
     if (
         new_vc_id
-        and isinstance(bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel)
+        and (
+            new_is_stage := isinstance(
+                bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel
+            )
+        )
         and new.user_id == bot_u.id
     ):
         old_suppressed = getattr(old, 'is_suppressed', True)
-        if new.is_suppressed and not old_suppressed:
+        old_requested = getattr(old, 'requested_to_speak_at', None)
+
+        if not old_suppressed and new.is_suppressed and old_is_stage:
             await set_pause__(event, lvc, pause=True, update_controller=True)
             await client.rest.create_message(
                 out_ch,
                 f"👥▶️ Paused as the bot was moved to audience",
             )
-        elif not (new.is_suppressed or not old_suppressed):
+        elif old_suppressed and not new.is_suppressed:
             await client.rest.create_message(
                 out_ch,
                 f"🎭🗣️ Became a speaker",
+            )
+        elif not new.requested_to_speak_at and old_requested:
+            await client.rest.create_message(
+                out_ch, f"❕🎭 Bot's request to speak was dismissed"
             )
 
     async def on_everyone_leaves_vc():
@@ -318,9 +343,13 @@ async def join_(
         vc = await join__(ctx, channel, lvc)
         await reply(ctx, content=f"🖇️ <#{vc}>")
     except ChannelMoved as sig:
-        await reply(
-            ctx, content=f"📎🖇️ ~~<#{sig.old_channel}>~~ ➜ __<#{sig.new_channel}>__"
+        txt = f"📎🖇️ ~~<#{sig.old_channel}>~~ ➜ __<#{sig.new_channel}>__"
+        msg = (
+            txt
+            if not sig.to_stage
+            else f"🎭{txt} `(Sent a request to speak. Waiting to become a speaker...)`"
         )
+        await reply(ctx, content=msg)
     except RequestedToSpeak as sig:
         await reply(
             ctx,

@@ -63,7 +63,8 @@ class Unautherized(Forbidden):
 class ChannelMoved(ConnectionSignal):
     old_channel: hk.Snowflakeish
     new_channel: hk.Snowflakeish
-
+    to_stage: bool = a.field(factory=bool, kw_only=True)
+    
 
 @a.define
 class RequestedToSpeak(ConnectionSignal):

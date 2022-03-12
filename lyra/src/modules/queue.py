@@ -47,7 +47,7 @@ from src.lib.errors import (
 queue = tj.Component(name='Queue', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('queue      ')
 logger.setLevel(logging.DEBUG)
 
 

@@ -49,7 +49,7 @@ client = (
     )
     .add_prefix(PREFIX)
     .set_hooks(hooks)
-    .load_modules(*(p for p in pl.Path('.').glob('./src/modules/*.py')))
+    .load_modules(*('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py')))
 )
 
 activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
