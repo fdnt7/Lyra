@@ -7,18 +7,19 @@ import typing as t
 import asyncio
 import pathlib as pl
 import functools as ft
+import itertools as it
 import urllib.error as urllib_er
 import urllib.request as urllib_rq
 
-import scipy.cluster
-import sklearn.cluster
+import scipy.cluster  # type: ignore
+import sklearn.cluster  # type: ignore
 import attr as a
-import lyricsgenius as lg
+import lyricsgenius as lg  # type: ignore
 import lavasnek_rs as lv
 
 
 from PIL import Image as pil_img
-from ytmusicapi import YTMusic
+from ytmusicapi import YTMusic  # type: ignore
 
 
 _T_co = t.TypeVar('_T_co', covariant=True)
@@ -26,16 +27,16 @@ Required = t.Union[_T_co, None]
 VoidCoroutine = t.Coroutine[t.Any, t.Any, None]
 
 
-TIME_REGEX = re.compile(
+time_regex: t.Final = re.compile(
     r"^((\d+):)?([0-5][0-9]|[0-9]):([0-5][0-9]|[0-9])(.([0-9]{1,3}))?$"
 )
-TIME_REGEX_2 = re.compile(
+time_regex_2: t.Final = re.compile(
     r"^(?!\s*$)((\d+)h)?(([0-9]|[0-5][0-9])m)?(([0-9]|[0-5][0-9])s)?(([0-9]|[0-9][0-9]|[0-9][0-9][0-9])ms)?$"
 )
-YOUTUBE_REGEX = re.compile(
+youtube_regex: t.Final = re.compile(
     r"^(?:https?:)?(?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch|v|embed)(?:\.php)?(?:\?.*v=|\/))([a-zA-Z0-9\_-]{7,15})(?:[\?&][a-zA-Z0-9\_-]+=[a-zA-Z0-9\_-]+)*(?:[&\/\#].*)?$"
 )
-URL_REGEX = re.compile(
+url_regex: t.Final = re.compile(
     r'^(?:http|ftp)s?://'  # http:// or https://
     r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
     r'localhost|'  # localhost...
@@ -44,15 +45,15 @@ URL_REGEX = re.compile(
     r'(?:/?|[/?]\S+)$',
     re.I,
 )
-GENIUS_REGEX = re.compile(r'\d*Embed')
-GENIUS_REGEX_2 = re.compile(r'^.+ Lyrics\n')
+genius_regex: t.Final = re.compile(r'\d*Embed')
+genius_regex_2: t.Final = re.compile(r'^.+ Lyrics\n')
 # LYRICS_URL = 'https://some-random-api.ml/lyrics?title='
 
 TIMEOUT = 60
 RETRIES = 3
 
-ytmusic = YTMusic()
-genius = lg.Genius(
+ytmusic: t.Final = YTMusic()
+genius: t.Final = lg.Genius(
     os.environ['GENIUS_ACCESS_TOKEN'], remove_section_headers=True, retries=3, timeout=8
 )
 genius.verbose = False
@@ -87,20 +88,20 @@ async def get_lyrics_yt(song: str, /) -> t.Optional[LyricsData]:
         return
     track_data_0 = queried[0]['videoId']  # type: ignore
     watches = ytmusic.get_watch_playlist(track_data_0)  # type: ignore
-    track_data = watches['tracks'][0]  # type: ignore
+    track_data: dict[str, t.Any] = watches['tracks'][0]
     if watches['lyrics'] is None:
         return
 
     lyrics_id = watches['lyrics']  # type: ignore
     assert isinstance(lyrics_id, str)
     lyrics: dict[str, str] = ytmusic.get_lyrics(lyrics_id)  # type: ignore
-    source: str = lyrics['source'].replace("Source: ", '')  # type: ignore
+    source: str = lyrics['source'].replace("Source: ", '')
 
     return LyricsData(
-        title=track_data['title'],  # type: ignore
+        title=track_data['title'],
         lyrics=lyrics['lyrics'],
-        thumbnail=track_data['thumbnail'][-1]['url'],  # type: ignore
-        artist=" & ".join((a['name'] for a in track_data['artists'])),  # type: ignore
+        thumbnail=track_data['thumbnail'][-1]['url'],
+        artist=" & ".join((a['name'] for a in track_data['artists'])),
         source=source,
     )
 
@@ -115,9 +116,9 @@ async def get_lyrics_ge(song: str, /) -> t.Optional[LyricsData]:
     if not lyrics:
         return
 
-    lyrics = GENIUS_REGEX_2.sub('', GENIUS_REGEX.sub('', lyrics))
+    lyrics = genius_regex_2.sub('', genius_regex.sub('', lyrics))  # type: ignore
 
-    artist = song_0.primary_artist
+    artist = song_0.primary_artist  # type: ignore
     return LyricsData(
         title=song_0.title,  # type: ignore
         url=song_0.url,  # type: ignore
@@ -160,14 +161,14 @@ def stamp_ms(str_: str, /) -> int:
 
     VALID_FORMAT = "00:00.204, 1:57, 2:00:09 | 400ms, 7m51s, 5h2s99ms"
     singl_z = ['0']
-    if match := TIME_REGEX.fullmatch(str_):
-        match_ = singl_z + list(match.groups('0'))
+    if match := time_regex.fullmatch(str_):
+        match_ = singl_z + [*match.groups('0')]
         match_ += singl_z * (7 - len(match.groups()))
         ms = int(match_[6])
         s = int(match_[4])
         m = int(match_[3])
         h = int(match_[2])
-    elif match := TIME_REGEX_2.fullmatch(str_):
+    elif match := time_regex_2.fullmatch(str_):
         match_ = singl_z + list(match.groups('0'))
         match_ += singl_z * (9 - len(match.groups()))
         ms = int(match_[8])
@@ -230,20 +231,22 @@ def get_img_pallete(
 
     img_b = io.BytesIO(urllib_rq.urlopen(img_url).read())
     img = pil_img.open(img_b).resize(resize)  # optional, to reduce time
-    ar = np.asarray(img)
+    ar = np.asarray(img)  # type: ignore
     shape = ar.shape
-    ar = ar.reshape(np.product(shape[:2]), shape[2]).astype(float)
+    ar = ar.reshape(np.product(shape[:2]), shape[2]).astype(float)  # type: ignore
 
-    kmeans = sklearn.cluster.MiniBatchKMeans(
+    kmeans = sklearn.cluster.MiniBatchKMeans(  # type: ignore
         n_clusters=n, init="k-means++", max_iter=20, random_state=1000
     ).fit(ar)
-    codes = kmeans.cluster_centers_
+    codes = kmeans.cluster_centers_  # type: ignore
 
-    vecs, _dist = scipy.cluster.vq.vq(ar, codes)  # assign codes
-    counts, _bins = np.histogram(vecs, len(codes))  # count occurrences
+    # assign codes
+    vecs, _dist = scipy.cluster.vq.vq(ar, codes)  # type: ignore
+    # count occurrences
+    counts, _bins = np.histogram(vecs, len(codes))  # type: ignore
 
-    return tuple(
-        tuple([int(code) for code in codes[i]]) for i in np.argsort(counts)[::-1]
+    return (
+        *((*(int(code) for code in codes[i]),) for i in np.argsort(counts)[::-1]),  # type: ignore
     )  # returns colors in order of dominance
 
 
@@ -263,3 +266,10 @@ def get_thumbnail(t_info: lv.Info) -> str | t.NoReturn:
             continue
 
     raise NotImplementedError
+
+
+_CE = t.TypeVar('_CE')
+
+
+def uniquify(seq: t.Iterable[_CE]) -> t.Iterable[_CE]:
+    return (*(k for k, _ in it.groupby(seq)),)

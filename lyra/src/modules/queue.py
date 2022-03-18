@@ -11,6 +11,7 @@ import lavasnek_rs as lv
 from hikari.messages import MessageFlag as msgflag
 from src.lib.music import auto_connect_vc, music_h
 from src.lib.utils import (
+    ButtonBuilderType,
     Contextish,
     EitherContext,
     guild_c,
@@ -22,9 +23,9 @@ from src.lib.utils import (
     with_message_command_group_template,
 )
 from src.lib.checks import Checks, check, check_others_not_in_vc
-from src.lib.extras import URL_REGEX
+from src.lib.extras import NULL, url_regex
 from src.lib.lavaimpl import (
-    REPEAT_EMOJIS,
+    repeat_emojis,
     QueueList,
     RepeatMode,
     get_data,
@@ -32,7 +33,6 @@ from src.lib.lavaimpl import (
     access_data,
     get_queue,
     access_queue,
-    edit_now_playing_components,
 )
 from src.lib.errors import (
     IllegalArgument,
@@ -42,12 +42,13 @@ from src.lib.errors import (
     PlaybackChangeRefused,
     QueryEmpty,
 )
+from src.lib.consts import LOG_PAD
 
 
 queue = tj.Component(name='Queue', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
-logger = logging.getLogger('queue      ')
+logger = logging.getLogger(f"{'queue':<{LOG_PAD}}")
 logger.setLevel(logging.DEBUG)
 
 
@@ -58,7 +59,7 @@ VALID_SOURCES = {
 }
 
 
-async def play__(
+async def play(
     ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
@@ -70,11 +71,11 @@ async def play__(
     assert ctx.guild_id
     async with access_queue(ctx, lvc) as q:
         if tracks.load_type == 'PLAYLIST_LOADED':
-            await enqueue_tracks__(
+            await enqueue_tracks(
                 ctx, lvc, tracks=tracks, queue=q, respond=respond, shuffle=shuffle
             )
         else:
-            await enqueue_track__(
+            await enqueue_track(
                 ctx,
                 lvc,
                 track=tracks.tracks[0],
@@ -84,7 +85,7 @@ async def play__(
             )
 
 
-async def enqueue_track__(
+async def enqueue_track(
     ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
@@ -113,7 +114,7 @@ async def enqueue_track__(
         queue.shuffle()
 
 
-async def enqueue_tracks__(
+async def enqueue_tracks(
     ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
@@ -148,10 +149,10 @@ async def enqueue_tracks__(
         queue.shuffle()
 
 
-async def remove_track__(
+async def remove_track(
     ctx: tj.abc.Context, track: t.Optional[str], lvc: lv.Lavalink, /
 ) -> lv.TrackQueue:
-    from .playback import while_stop, skip__
+    from .playback import while_stop, skip
 
     assert ctx.guild_id
 
@@ -188,7 +189,7 @@ async def remove_track__(
 
     if rm == np:
         async with while_stop(ctx, lvc, d):
-            await skip__(ctx, lvc, advance=False, change_repeat=True)
+            await skip(ctx, lvc, advance=False, change_repeat=True)
 
     if i < q.pos:
         q.pos = max(0, q.pos - 1)
@@ -202,10 +203,10 @@ async def remove_track__(
     return rm
 
 
-async def remove_tracks__(
+async def remove_tracks(
     ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
 ) -> list[lv.TrackQueue]:
-    from .playback import while_stop, set_pause__
+    from .playback import while_stop, set_pause
 
     assert ctx.guild_id
 
@@ -222,7 +223,7 @@ async def remove_tracks__(
         q.reset_repeat()
         async with while_stop(ctx, lvc, d):
             if next_t := None if len(q) <= end else q[end]:
-                await set_pause__(ctx, lvc, pause=False)
+                await set_pause(ctx, lvc, pause=False)
                 await lvc.play(ctx.guild_id, next_t.track).start()
     if i_s < q.pos:
         q.pos = max(0, i_s + (q.pos - i_e - 1))
@@ -251,10 +252,10 @@ async def shuffle_impl(ctx_: Contextish, /, *, lvc: lv.Lavalink):
         )
 
 
-async def insert_track__(
+async def insert_track(
     ctx: tj.abc.Context, insert: int, track: t.Optional[int], lvc: lv.Lavalink, /
 ) -> lv.TrackQueue:
-    from .playback import back__, skip__, while_stop
+    from .playback import back, skip, while_stop
 
     assert ctx.guild_id
 
@@ -283,13 +284,13 @@ async def insert_track__(
         q.adv()
 
     elif i_ < p_ == t_:
-        await back__(ctx, lvc, advance=False, change_repeat=True)
+        await back(ctx, lvc, advance=False, change_repeat=True)
 
     elif p_ == t_ < i_:
         async with while_stop(ctx, lvc, d):
-            await skip__(ctx, lvc, advance=False, change_repeat=True, change_stop=False)
+            await skip(ctx, lvc, advance=False, change_repeat=True, change_stop=False)
 
-    q[t_] = NullType  # type: ignore
+    q[t_] = NULL  # type: ignore
     q.insert(insert, ins)
     q.remove(NullType)  # type: ignore
 
@@ -308,7 +309,7 @@ async def repeat_abs(
     async with access_data(ctx_, lvc) as d:
         q = d.queue
         if mode is None:
-            modes = tuple(m.value for m in RepeatMode)
+            modes = (*(m.value for m in RepeatMode),)
             mode = modes[(modes.index(q.repeat_mode.value) + 1) % 3]
             assert mode is not None
         m = q.set_repeat(mode)
@@ -328,18 +329,25 @@ async def repeat_abs(
     from src.lib.lavaimpl import get_repeat_emoji
 
     await reply(ctx_, show_author=True, content=f"{e} {msg}")
-    if d._nowplaying_msg:
+    if d.nowplaying_msg:
         rest = get_rest(ctx_)
 
-        assert d._nowplaying_components
-        components = edit_components(
-            rest,
-            *d._nowplaying_components,
-            edits=lambda x: x.set_emoji(get_repeat_emoji(q)),
-            predicates=lambda x: x.emoji in REPEAT_EMOJIS,
+        edits: t.Callable[
+            [ButtonBuilderType], ButtonBuilderType
+        ] = lambda x: x.set_emoji(get_repeat_emoji(q))
+        predicates: t.Callable[[ButtonBuilderType], bool] = (
+            lambda x: x.emoji in repeat_emojis
         )
 
-        await edit_now_playing_components(rest, d, components)
+        assert d.nowplaying_components
+        components = edit_components(
+            rest,
+            *d.nowplaying_components,
+            edits=edits,
+            predicates=predicates,
+        )
+
+        await d.edit_now_playing_components(rest, components)
 
 
 # ~
@@ -369,10 +377,10 @@ async def play_s(
     shuffle: bool,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    if not URL_REGEX.fullmatch(song):
+    if not url_regex.fullmatch(song):
         song = '%ssearch:%s' % (source, song)
 
-    await play_(ctx, song, shuffle, lvc=lvc)
+    await _play(ctx, song, shuffle, lvc=lvc)
 
 
 @queue.with_menu_command
@@ -388,10 +396,10 @@ async def play_c(
         await err_reply(ctx, content="❌ Cannot process an empty message")
         return
     song = msg.content.strip("<>|")
-    if not URL_REGEX.fullmatch(song):
+    if not url_regex.fullmatch(song):
         song = 'ytsearch:%s' % song
 
-    await play_(ctx, song, False, lvc=lvc)
+    await _play(ctx, song, False, lvc=lvc)
 
 
 @queue.with_message_command
@@ -418,15 +426,15 @@ async def play_m(
         )
         return
 
-    if not URL_REGEX.fullmatch(song):
+    if not url_regex.fullmatch(song):
         song = '%ssearch:%s' % (source, song)
 
-    await play_(ctx, song, shuffle, lvc=lvc)
+    await _play(ctx, song, shuffle, lvc=lvc)
 
 
 @auto_connect_vc
 @check(Checks.IN_VC | Checks.SPEAK)
-async def play_(
+async def _play(
     ctx: EitherContext, song: str, shuffle: bool, /, *, lvc: lv.Lavalink
 ) -> None:
     """Attempts to play the song from youtube."""
@@ -438,7 +446,7 @@ async def play_(
         raise QueryEmpty
 
     try:
-        await play__(ctx, lvc, tracks=query, respond=True, shuffle=shuffle)
+        await play(ctx, lvc, tracks=query, respond=True, shuffle=shuffle)
     except lv.NoSessionPresent:
         # Occurs if lavalink crashes
         await err_reply(
@@ -481,7 +489,7 @@ async def remove_one_s(
     track: t.Optional[str],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await remove_one_(ctx, track, lvc=lvc)
+    await _remove_one(ctx, track, lvc=lvc)
 
 
 @remove_g_m.with_command
@@ -493,23 +501,23 @@ async def remove_one_m(
     track: t.Optional[str],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await remove_one_(ctx, track, lvc=lvc)
+    await _remove_one(ctx, track, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.SPEAK)
-async def remove_one_(
+async def _remove_one(
     ctx: tj.abc.Context, track: t.Optional[str], /, *, lvc: lv.Lavalink
 ):
     assert ctx.guild_id
 
     try:
-        rm = await remove_track__(ctx, track, lvc)
+        rm = await remove_track(ctx, track, lvc)
     except InvalidArgument:
         await err_reply(
             ctx,
             content=f"❌ Please specify a track to remove or have a track playing first",
         )
-    except IllegalArgument as xe:
+    except IllegalArgument[tuple[int, ...]] as xe:
         arg_exp = xe.arg.expected
         await err_reply(
             ctx,
@@ -540,7 +548,7 @@ async def remove_bulk_s(
     end: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await remove_bulk_(ctx, start, end, lvc=lvc)
+    await _remove_bulk(ctx, start, end, lvc=lvc)
 
 
 @remove_g_m.with_command
@@ -554,11 +562,11 @@ async def remove_bulk_m(
     end: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await remove_bulk_(ctx, start, end, lvc=lvc)
+    await _remove_bulk(ctx, start, end, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
-async def remove_bulk_(
+async def _remove_bulk(
     ctx: tj.abc.Context, start: int, end: t.Optional[int], /, *, lvc: lv.Lavalink
 ):
     assert ctx.guild_id
@@ -569,7 +577,7 @@ async def remove_bulk_(
     t_n = end - i_s
 
     try:
-        await remove_tracks__(ctx, start, end, lvc)
+        await remove_tracks(ctx, start, end, lvc)
     except IllegalArgument:
         await err_reply(
             ctx,
@@ -596,11 +604,11 @@ async def remove_bulk_(
 #
 @tj.as_message_command('clear', 'destroy', 'clr', 'c')
 async def clear(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
-    await clear_(ctx, lvc=lvc)
+    await _clear(ctx, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def clear_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
+async def _clear(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     from .playback import while_stop
 
     async with access_data(ctx, lvc) as d:
@@ -618,7 +626,7 @@ async def clear_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
 #
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
-async def shuffle(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
+async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await shuffle_impl(ctx, lvc=lvc)
 
 
@@ -653,7 +661,7 @@ async def move_last_s(
     track: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ):
-    await move_last_(ctx, track, lvc=lvc)
+    await _move_last(ctx, track, lvc=lvc)
 
 
 @move_g_m.with_command
@@ -668,17 +676,17 @@ async def move_last_m(
     """
     Moves the selected track to the end of the queue
     """
-    await move_last_(ctx, track, lvc=lvc)
+    await _move_last(ctx, track, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.SPEAK)
-async def move_last_(
+async def _move_last(
     ctx: tj.abc.Context, track: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
     """Moves the selected track to the end of the queue"""
     q = await get_queue(ctx, lvc)
     try:
-        mv = await insert_track__(ctx, len(q), track, lvc)
+        mv = await insert_track(ctx, len(q), track, lvc)
     except InvalidArgument:
         await err_reply(
             ctx,
@@ -686,7 +694,7 @@ async def move_last_(
         )
         return
 
-    except IllegalArgument as xe:
+    except IllegalArgument:
         await err_reply(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `1` and `{len(q)}`**",
@@ -721,7 +729,7 @@ async def move_swap_s(
     second: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ):
-    await move_swap_(ctx, first, second, lvc=lvc)
+    await _move_swap(ctx, first, second, lvc=lvc)
 
 
 @move_g_m.with_command
@@ -738,15 +746,15 @@ async def move_swap_m(
     """
     Swaps positions of two tracks in a queue
     """
-    await move_swap_(ctx, first, second, lvc=lvc)
+    await _move_swap(ctx, first, second, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
-async def move_swap_(
+async def _move_swap(
     ctx: tj.abc.Context, first: int, second: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
     """Swaps positions of two tracks in a queue"""
-    from .playback import while_stop, set_pause__
+    from .playback import while_stop, set_pause
 
     assert ctx.guild_id
 
@@ -780,7 +788,7 @@ async def move_swap_(
     if q.pos in {i_1st, i_2nd}:
         async with while_stop(ctx, lvc, d):
             swapped = q[i_1st] if q.pos == i_1st else q[i_2nd]
-            await set_pause__(ctx, lvc, pause=False)
+            await set_pause(ctx, lvc, pause=False)
             await lvc.play(ctx.guild_id, swapped.track).start()
 
     await set_data(ctx.guild_id, lvc, d)
@@ -806,7 +814,7 @@ async def move_insert_s(
     track: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ):
-    await move_insert_(ctx, position, track, lvc=lvc)
+    await _move_insert(ctx, position, track, lvc=lvc)
 
 
 @move_g_m.with_command
@@ -823,18 +831,18 @@ async def move_insert_m(
     """
     Inserts a track in the queue after a new position
     """
-    await move_insert_(ctx, position, track, lvc=lvc)
+    await _move_insert(ctx, position, track, lvc=lvc)
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
-async def move_insert_(
+async def _move_insert(
     ctx: tj.abc.Context, position: int, track: t.Optional[int], /, *, lvc: lv.Lavalink
 ) -> None:
     """Inserts a track in the queue after a new position"""
     assert ctx.guild_id
 
     try:
-        mv = await insert_track__(ctx, position, track, lvc)
+        mv = await insert_track(ctx, position, track, lvc)
     except ValueError:
         await err_reply(ctx, content=f"❗ Cannot insert a track after its own position")
         return
@@ -844,7 +852,7 @@ async def move_insert_(
             content=f"❌ Please specify a track to insert or have a track playing first",
         )
         return
-    except IllegalArgument as xe:
+    except IllegalArgument[tuple[int, ...]] as xe:
         expected = xe.arg.expected
         await err_reply(
             ctx,
@@ -896,12 +904,12 @@ async def repeat_m(
     """
     if mode:
         mode = mode.lower()
-        from src.lib.lavaimpl import REPEAT_MODES_ALL
+        from src.lib.lavaimpl import all_repeat_modes
 
-        if mode not in REPEAT_MODES_ALL:
+        if mode not in all_repeat_modes:
             await err_reply(
                 ctx,
-                content=f"❗ Unrecognized repeat mode; Must be one of the following: `[{', '.join(REPEAT_MODES_ALL)}]` `(got: {mode})`",
+                content=f"❗ Unrecognized repeat mode; Must be one of the following: `[{', '.join(all_repeat_modes)}]` `(got: {mode})`",
             )
             return
 

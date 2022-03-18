@@ -11,13 +11,15 @@ from src.lib.utils import guild_c
 from src.lib.checks import Checks, check
 from src.lib.errors import NotConnected
 from src.lib.lavaimpl import get_data
+from src.lib.consts import LOG_PAD
+
 
 control = (
     tj.Component(name='control', strict=True).add_check(guild_c).set_hooks(music_h)
 )
 
 
-logger = logging.getLogger('control    ')
+logger = logging.getLogger(f"{'control':<{LOG_PAD}}")
 logger.setLevel(logging.DEBUG)
 
 

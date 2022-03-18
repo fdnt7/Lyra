@@ -1,6 +1,5 @@
 import typing as t
 import logging
-import difflib as dfflib
 
 import hikari as hk
 import tanjun as tj
@@ -8,7 +7,6 @@ import alluka as al
 import lavasnek_rs as lv
 
 
-from hikari.messages import MessageFlag as msgflag
 from src.lib.music import music_h
 from src.lib.utils import (
     guild_c,
@@ -19,16 +17,17 @@ from src.lib.utils import (
 from src.lib.errors import NotConnected
 from src.lib.checks import DJ_PERMS, Checks, check
 from src.lib.lavaimpl import Bands, access_equalizer
+from src.lib.consts import LOG_PAD
 
 
 tuning = tj.Component(name='Tuning', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
-logger = logging.getLogger('tuning     ')
+logger = logging.getLogger(f"{'tuning':<{LOG_PAD}}")
 logger.setLevel(logging.DEBUG)
 
 
-async def set_mute__(
+async def set_mute(
     ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
@@ -107,7 +106,7 @@ async def volume_set_s(
     scale: int,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await volume_set_(ctx, scale, lvc=lvc)
+    await _volume_set(ctx, scale, lvc=lvc)
 
 
 @volume_g_m.with_command
@@ -128,11 +127,11 @@ async def volume_set_m(
             content=f'❌ Volume percentage must be between `0` and `10` `(got: {scale})`',
         )
         return
-    await volume_set_(ctx, scale, lvc=lvc)
+    await _volume_set(ctx, scale, lvc=lvc)
 
 
 @check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
-async def volume_set_(ctx: tj.abc.Context, scale: int, /, *, lvc: lv.Lavalink) -> None:
+async def _volume_set(ctx: tj.abc.Context, scale: int, /, *, lvc: lv.Lavalink) -> None:
     """Set the volume of the bot from 0-10"""
     assert ctx.guild_id
 
@@ -155,7 +154,7 @@ async def volume_up_s(
     amount: int,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await volume_up_(ctx, amount, lvc=lvc)
+    await _volume_up(ctx, amount, lvc=lvc)
 
 
 @volume_g_m.with_command
@@ -170,11 +169,11 @@ async def volume_up_m(
     """
     Increase the bot's volume
     """
-    await volume_up_(ctx, amount, lvc=lvc)
+    await _volume_up(ctx, amount, lvc=lvc)
 
 
 @check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
-async def volume_up_(ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink) -> None:
+async def _volume_up(ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink) -> None:
     """Increase the bot's volume"""
     assert ctx.guild_id
 
@@ -209,7 +208,7 @@ async def volume_down_s(
     amount: int,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await volume_down_(ctx, amount, lvc=lvc)
+    await _volume_down(ctx, amount, lvc=lvc)
 
 
 @volume_g_m.with_command
@@ -222,11 +221,11 @@ async def volume_down_m(
     lvc: al.Injected[lv.Lavalink],
 ):
     """Decrease the bot's volume"""
-    await volume_down_(ctx, amount, lvc=lvc)
+    await _volume_down(ctx, amount, lvc=lvc)
 
 
 @check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
-async def volume_down_(
+async def _volume_down(
     ctx: tj.abc.Context, amount: int, /, *, lvc: lv.Lavalink
 ) -> None:
     """
@@ -258,7 +257,7 @@ async def volume_down_(
 @tuning.with_slash_command
 @tj.as_slash_command('mute', 'Server mutes the bot')
 async def mute_s(ctx: tj.abc.SlashContext, lvc: al.Injected[lv.Lavalink]):
-    await mute_(ctx, lvc=lvc)
+    await _mute(ctx, lvc=lvc)
 
 
 @tuning.with_message_command
@@ -267,13 +266,13 @@ async def mute_m(ctx: tj.abc.MessageContext, lvc: al.Injected[lv.Lavalink]):
     """
     Server mutes the bot
     """
-    await mute_(ctx, lvc=lvc)
+    await _mute(ctx, lvc=lvc)
 
 
 @check(Checks.CONN, perms=DJ_PERMS)
-async def mute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
+async def _mute(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Server mutes the bot"""
-    await set_mute__(ctx, lvc, mute=True, respond=True)
+    await set_mute(ctx, lvc, mute=True, respond=True)
 
 
 # Unmute
@@ -297,7 +296,7 @@ async def unmute_m(ctx: tj.abc.MessageContext, lvc: al.Injected[lv.Lavalink]):
 @check(Checks.CONN, perms=DJ_PERMS)
 async def unmute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Server unmutes the bot"""
-    await set_mute__(ctx, lvc, mute=False, respond=True)
+    await set_mute(ctx, lvc, mute=False, respond=True)
 
 
 # Mute-Unmute
@@ -306,7 +305,7 @@ async def unmute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
 @tuning.with_slash_command
 @tj.as_slash_command('mute-unmute', 'Toggles between server mute and unmuting the bot')
 async def mute_unmute_s(ctx: tj.abc.SlashContext, lvc: al.Injected[lv.Lavalink]):
-    await mute_unmute_(ctx, lvc=lvc)
+    await _mute_unmute(ctx, lvc=lvc)
 
 
 @tuning.with_message_command
@@ -315,13 +314,13 @@ async def mute_unmute_m(ctx: tj.abc.MessageContext, lvc: al.Injected[lv.Lavalink
     """
     Toggles between server mute and unmuting the bot
     """
-    await mute_unmute_(ctx, lvc=lvc)
+    await _mute_unmute(ctx, lvc=lvc)
 
 
 @check(Checks.CONN, perms=DJ_PERMS)
-async def mute_unmute_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
+async def _mute_unmute(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Toggles between server mute and unmuting the bot"""
-    await set_mute__(ctx, lvc, mute=None, respond=True)
+    await set_mute(ctx, lvc, mute=None, respond=True)
 
 
 # Equalizer
@@ -358,7 +357,7 @@ async def equalizer_preset_s(
     preset: str,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await equalizer_preset_(ctx, preset, lvc=lvc)
+    await _equalizer_preset(ctx, preset, lvc=lvc)
 
 
 @equalizer_g_m.with_command
@@ -380,11 +379,11 @@ async def equalizer_preset_m(
             content=f"❗ Invalid preset given. Must be one of the following:\n> {', '.join(('`%s (%s)`' % (j, i) for i,j in VALID_PRESETS.items()))}",
         )
         return
-    await equalizer_preset_(ctx, preset, lvc=lvc)
+    await _equalizer_preset(ctx, preset, lvc=lvc)
 
 
 @check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
-async def equalizer_preset_(
+async def _equalizer_preset(
     ctx: tj.abc.Context, preset: str, /, *, lvc: lv.Lavalink
 ) -> None:
     """Sets the bot's equalizer to a preset"""
@@ -392,7 +391,7 @@ async def equalizer_preset_(
 
     async with access_equalizer(ctx, lvc) as eq:
         bands = Bands.load(preset)
-        await lvc.equalize_all(ctx.guild_id, list(bands))
+        await lvc.equalize_all(ctx.guild_id, [*bands])
         eq.bands = bands
     await reply(ctx, content=f"🎛️ Equalizer set to preset: `{preset.capitalize()}`")
 

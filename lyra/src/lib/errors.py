@@ -9,13 +9,13 @@ import lavasnek_rs as lv
 from hikari.permissions import Permissions as hkperms
 
 
-T = t.TypeVar('T')
+_A = t.TypeVar('_A')
 
 
 @a.define
-class Argument(t.Generic[T]):
-    got: T
-    expected: T
+class Argument(t.Generic[_A]):
+    got: _A
+    expected: _A
 
 
 @a.define(init=False)
@@ -23,18 +23,27 @@ class BaseMusicCommandException(abc.ABC, Exception):
     pass
 
 
+_A_b = t.TypeVar('_A_b')
+
+
 @a.define
-class BadArgument(BaseMusicCommandException):
-    arg: Argument
+class BadArgument(BaseMusicCommandException, t.Generic[_A_b]):
+    arg: Argument[_A_b]
+
+
+_A_i = t.TypeVar('_A_i')
 
 
 @a.define(init=False)
-class InvalidArgument(BadArgument):
+class InvalidArgument(BadArgument[_A_i]):
     pass
 
 
+_A_x = t.TypeVar('_A_x')
+
+
 @a.define(init=False)
-class IllegalArgument(BadArgument):
+class IllegalArgument(BadArgument[_A_x]):
     pass
 
 
@@ -107,8 +116,8 @@ class OthersListening(OthersInVoice):
 
 
 @a.define
-class NotInVoice(ConnectionException):
-    channel: t.Optional[hk.Snowflakeish]
+class NotInVoice(BaseMusicCommandException):
+    pass
 
 
 @a.define(init=False)

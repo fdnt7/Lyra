@@ -38,15 +38,14 @@ GuildOrRESTInferable = GuildOrInferable | RESTInferable
 * `GuildOrInferable`
 * `RESTInferable`"""
 
-EditableComponentsType = (
-    hk.api.ButtonBuilder[hk.api.ActionRowBuilder]
-    | hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
-)
+ButtonBuilderType = hk.api.ButtonBuilder[hk.api.ActionRowBuilder]
+SelectMenuBuilderType = hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
+EditableComponentsType = ButtonBuilderType | SelectMenuBuilderType
 
 EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
 GuildConfig = t.NewType('GuildConfig', dict[str, dict[str, t.Any]])
 
-hooks = tj.AnyHooks()
+base_h = tj.AnyHooks()
 guild_c = tj.checks.GuildCheck(
     error_message="🙅 Commands can only be used in guild channels"
 )
@@ -227,26 +226,34 @@ async def reply(
         return msg
 
 
+_C_d = t.TypeVar(
+    '_C_d',
+    bound=EditableComponentsType,
+)
+
+
 def disable_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    predicates: t.Callable[[EditableComponentsType], bool] = lambda _: True,
+    predicates: t.Callable[[_C_d], bool] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder, ...]:
+    edits: t.Callable[[_C_d], _C_d] = lambda x: x.set_is_disabled(True)
+    reverts: t.Callable[[_C_d], _C_d] = lambda x: x.set_is_disabled(False)
+
     return edit_components(
         rest,
         *action_rows,
-        edits=lambda x: x.set_is_disabled(True),
-        reverts=lambda x: x.set_is_disabled(False),
+        edits=edits,
+        reverts=reverts,
         predicates=predicates,
     )
 
 
 _C = t.TypeVar(
     '_C',
-    hk.api.ComponentBuilder,
-    hk.api.ButtonBuilder[hk.api.ActionRowBuilder],
-    hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder],
+    bound=hk.api.ComponentBuilder,
+    contravariant=True,
 )
 
 
@@ -258,7 +265,7 @@ def edit_components(
     reverts: t.Callable[[_C], _C] = lambda _: _,
     predicates: t.Callable[[_C], bool] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder]:
-    action_rows_ = list(action_rows)
+    action_rows_ = [*action_rows]
     for a in action_rows_:
         components = a.components
         a = rest.build_action_row()
@@ -267,7 +274,7 @@ def edit_components(
             components,
         ):
             a.add_component(c)
-    return tuple(action_rows_)
+    return (*action_rows_,)
 
 
 @t.overload
@@ -359,12 +366,27 @@ P_ = t.ParamSpec('P_')
 #     return inner
 
 
-@hooks.with_on_parser_error
+async def restricts_c(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
+    assert ctx.guild_id and ctx.member
+
+    g_cfg = cfg[str(ctx.guild_id)]
+    if g_cfg.setdefault('whitelisted', False):
+        return bool(
+            ctx.channel_id in g_cfg['whitelist']['channels']
+            and {*ctx.member.role_ids} & {*g_cfg['whitelist']['roles']}
+            and ctx.author.id in g_cfg['whitelist']['users']
+        )
+    else:
+        if ctx.channel_id in g_cfg['blacklist']['channels'] or {*ctx.member.role_ids} & {*g_cfg['blacklist']['roles']}
+
+
+
+@base_h.with_on_parser_error
 async def on_parser_error(ctx: tj.abc.Context, error: tj.errors.ParserError) -> None:
     await err_reply(ctx, content=f"❌ You've given an invalid input: `{error}`")
 
 
-@hooks.with_on_error
+@base_h.with_on_error
 async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
     if isinstance(error, hk.ForbiddenError):
         await ctx.respond("⛔ Lacked enough permissions to execute the command.")
@@ -377,7 +399,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
     return False
 
 
-@hooks.with_pre_execution
+@base_h.with_pre_execution
 async def pre_execution(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]) -> None:
     cfg.setdefault(str(ctx.guild_id), {})
 

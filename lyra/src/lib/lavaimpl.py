@@ -15,8 +15,8 @@ from .utils import EmojiRefs, GuildConfig, GuildOrInferable, infer_guild, get_cl
 from .extras import get_img_pallete, get_thumbnail, curr_time_ms, inj_glob
 
 
-REPEAT_MODES_ALL = 'off|0|one|o|1|all|a|q'.split('|')
-REPEAT_EMOJIS: t.Final[list[hk.KnownCustomEmoji]] = []
+all_repeat_modes: t.Final = 'off|0|one|o|1|all|a|q'.split('|')
+repeat_emojis: t.Final[list[hk.KnownCustomEmoji]] = []
 
 BandsishTuple = tuple[
     float,
@@ -190,6 +190,9 @@ class QueueList(list[lv.TrackQueue]):
     def update_curr_t_started(self, delta_ms: int = 0):
         self._curr_t_started = curr_time_ms() + delta_ms
 
+    def update_paused_np_position(self, value: int = 0):
+        self._paused_np_position = value
+
     @property
     def curr_t_palette(self):
         url = self.curr_t_thumbnail
@@ -291,13 +294,23 @@ class NodeData:
     equalizer: Equalizer = a.field(factory=Equalizer, init=False)
     out_channel_id: t.Optional[hk.Snowflakeish] = a.field(default=None, init=False)
 
-    _nowplaying_msg: t.Optional[hk.Message] = a.field(default=None, init=False)
-    _nowplaying_components: t.Optional[t.Sequence[hk.api.ActionRowBuilder]] = a.field(
+    nowplaying_msg: t.Optional[hk.Message] = a.field(default=None, init=False)
+    nowplaying_components: t.Optional[t.Sequence[hk.api.ActionRowBuilder]] = a.field(
         default=None, init=False
     )
-    _track_stopped_fired: bool = a.field(factory=bool, init=False)
-    _dc_on_purpose: bool = a.field(factory=bool, init=False)
+    track_stopped_fired: bool = a.field(factory=bool, init=False)
+    dc_on_purpose: bool = a.field(factory=bool, init=False)
     ...
+
+    async def edit_now_playing_components(
+        self,
+        rest: hk.api.RESTClient,
+        components: tuple[hk.api.ComponentBuilder],
+        /,
+    ):
+        if _np_msg := self.nowplaying_msg:
+            assert _np_msg and components and self.out_channel_id
+            await rest.edit_message(self.out_channel_id, _np_msg, components=components)
 
 
 loggerX = logging.getLogger(__name__)
@@ -367,8 +380,8 @@ class EventHandler:
                     .add_to_container()
                 )
 
-                d._nowplaying_components = components = (controls,)
-                d._nowplaying_msg = await client.rest.create_message(
+                d.nowplaying_components = components = (controls,)
+                d.nowplaying_msg = await client.rest.create_message(
                     ch, embed=embed, components=components
                 )
 
@@ -389,20 +402,20 @@ class EventHandler:
             assert cfg
 
             if cfg[str(event.guild_id)].get('send_nowplaying_msg', False) and (
-                msg := d._nowplaying_msg
+                msg := d.nowplaying_msg
             ):
                 ch = d.out_channel_id
                 assert ch
                 try:
                     await client.rest.delete_messages(ch, msg)
                 finally:
-                    d._nowplaying_msg = d._nowplaying_components = None
+                    d.nowplaying_msg = d.nowplaying_components = None
 
             if q.is_stopped:
                 loggerX.info(
                     f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] stopped: '{t}'"
                 )
-                d._track_stopped_fired = True
+                d.track_stopped_fired = True
                 return
             try:
                 if next_t := q.next:
@@ -440,9 +453,9 @@ class EventHandler:
         else:
             raise NotImplementedError
 
-        from .music import skip__
+        from .music import skip
 
-        await skip__(
+        await skip(
             event.guild_id,
             lvc,
             advance=not q.is_stopped,
@@ -454,12 +467,12 @@ class EventHandler:
             return
         async with access_data(event.guild_id, lvc) as d:
             ch = d.out_channel_id
-            msg = d._nowplaying_msg
+            msg = d.nowplaying_msg
             assert ch and msg
             try:
                 await client.rest.delete_messages(ch, msg)
             finally:
-                d._nowplaying_msg = d._nowplaying_components = None
+                d.nowplaying_msg = d.nowplaying_components = None
             ch = d.out_channel_id
             assert ch
             await client.rest.create_message(
@@ -514,20 +527,9 @@ async def get_queue(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> QueueList:
     return (await get_data(infer_guild(g_inf), lvc)).queue
 
 
-async def edit_now_playing_components(
-    rest: hk.api.RESTClient,
-    data: NodeData,
-    components: tuple[hk.api.ComponentBuilder],
-    /,
-):
-    if _np_msg := data._nowplaying_msg:
-        assert _np_msg and components and data.out_channel_id
-        await rest.edit_message(data.out_channel_id, _np_msg, components=components)
-
-
 def get_repeat_emoji(q: QueueList, /):
     return (
-        REPEAT_EMOJIS[0]
+        repeat_emojis[0]
         if q.repeat_mode is RepeatMode.NONE
-        else (REPEAT_EMOJIS[1] if q.repeat_mode is RepeatMode.ALL else REPEAT_EMOJIS[2])
+        else (repeat_emojis[1] if q.repeat_mode is RepeatMode.ALL else repeat_emojis[2])
     )

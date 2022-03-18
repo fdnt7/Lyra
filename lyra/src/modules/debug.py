@@ -7,7 +7,7 @@ import src.lib.consts as c
 
 from src.lib.utils import reply, err_reply
 
-debug = tj.Component(name='debug', strict=True)
+debug = tj.Component(name='Debug', strict=True)
 
 
 modules = {p.stem: p for p in pl.Path('.').glob('./src/modules/*.py')}
@@ -25,7 +25,7 @@ async def reload_module(
     client: al.Injected[tj.Client],
 ):
     """Reload a module in tanjun"""
-    if ctx.author.id not in c.DEVS:
+    if ctx.author.id not in c.developers:
         await err_reply(ctx, content="🚫⚙️ Reserved for bot's developers only")
         return
     mod = modules[module]
@@ -48,7 +48,7 @@ async def unload_module(
     client: al.Injected[tj.Client],
 ):
     """Unload a module in tanjun"""
-    if ctx.author.id not in c.DEVS:
+    if ctx.author.id not in c.developers:
         await err_reply(ctx, content="🚫⚙️ Reserved for bot's developers only")
         return
     mod = modules[module]
@@ -72,7 +72,7 @@ async def load_module(
     client: al.Injected[tj.Client],
 ):
     """Load a module in tanjun"""
-    if ctx.author.id not in c.DEVS:
+    if ctx.author.id not in c.developers:
         await err_reply(ctx, content="🚫⚙️ Reserved for bot's developers only")
         return
     mod = modules[module]
@@ -83,13 +83,6 @@ async def load_module(
         return
 
     await reply(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
-
-
-# @tj.as_message_menu("test")
-# async def test(
-#     ctx: tj.abc.MenuContext, _: hk.Message, erf: al.Injected[EmojiRefs]
-# ) -> None:
-#     await ctx.respond(erf['whitecross'])
 
 
 # -

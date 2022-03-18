@@ -53,7 +53,7 @@ def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
             if not conn:
                 # Join the users voice channel if we are not already connected
                 try:
-                    await join__(ctx, None, lvc)
+                    await join(ctx, None, lvc)
                 except NotInVoice:
                     await err_reply(
                         ctx,
@@ -144,11 +144,11 @@ async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
         ctx.guild_id, channel
     )
-    listeners = tuple(
-        filter(
+    listeners = (
+        *filter(
             lambda v: not v.member.is_bot,
             voice_states.values(),
-        )
+        ),
     )
 
     voted = {ctx.author.id}
@@ -251,8 +251,8 @@ async def generate_nowplaying_embed__(
     return embed
 
 
-from src.modules.connections import join__, cleanups__
-from src.modules.playback import skip__
+from src.modules.connections import join, cleanup  # type: ignore
+from src.modules.playback import skip  # type: ignore
 
 
 @music_h.with_on_error
@@ -310,11 +310,9 @@ async def generate_queue_embeds__(
 
     color = None if q.is_paused or not q.current else q.curr_t_palette[2]
 
-    _base_embed = hk.Embed(
-        title="💿 Queue",
-        description=desc,
-        color=color,
-    ).set_footer(f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)}")
+    _base_embed = hk.Embed(title="💿 Queue", description=desc, color=color,).set_footer(
+        f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)} ({ms_stamp(queue_eta)})"
+    )
 
     _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
     _format_prev = (
@@ -381,4 +379,4 @@ async def generate_queue_embeds__(
         if next_slice
     ]
 
-    return tuple(prev_embeds + [np_embed] + next_embeds)
+    return (*prev_embeds, np_embed, *next_embeds)

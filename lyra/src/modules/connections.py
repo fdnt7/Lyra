@@ -22,6 +22,7 @@ from src.lib.errors import (
     ChannelMoved,
     NotConnected,
 )
+from src.lib.consts import LOG_PAD
 
 
 conns = (
@@ -29,11 +30,11 @@ conns = (
 )
 
 
-logger = logging.getLogger('connections')
+logger = logging.getLogger(f"{'connections':<{LOG_PAD}}")
 logger.setLevel(logging.DEBUG)
 
 
-async def join__(
+async def join(
     ctx: tj.abc.Context,
     channel: t.Optional[hk.GuildVoiceChannel | hk.GuildStageChannel],
     lvc: lv.Lavalink,
@@ -53,7 +54,7 @@ async def join__(
             # Join the current voice channel
             new_ch = voice_state.channel_id
         else:
-            raise NotInVoice(None)
+            raise NotInVoice
     else:
         new_ch = channel.id
         # Join the specified voice channel
@@ -119,7 +120,7 @@ async def join__(
     return new_ch
 
 
-async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
+async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
     assert ctx.guild_id
 
     if not (conn := lvc.get_guild_gateway_connection_info(ctx.guild_id)):
@@ -132,15 +133,15 @@ async def leave__(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
     await check_others_not_in_vc__(ctx, conn)
 
     async with access_data(ctx, lvc) as d:
-        d._dc_on_purpose = True
+        d.dc_on_purpose = True
 
-    await cleanups__(ctx.guild_id, ctx.client.shards, lvc)
+    await cleanup(ctx.guild_id, ctx.client.shards, lvc)
 
     logger.info(f"In guild {ctx.guild_id} left    channel {curr_channel} gracefully")
     return curr_channel
 
 
-async def cleanups__(
+async def cleanup(
     guild: hk.Snowflakeish,
     shards: t.Optional[hk.ShardAware],
     lvc: lv.Lavalink,
@@ -187,11 +188,12 @@ async def on_voice_state_update(
         if not conn:
             return frozenset()
         assert isinstance(conn, dict) and cache
+        ch_id: int = conn['channel_id']
         return frozenset(
             filter(
                 lambda v: not v.member.is_bot,
                 cache.get_voice_states_view_for_channel(
-                    event.guild_id, conn['channel_id']
+                    event.guild_id, ch_id 
                 ).values(),
             )
         )
@@ -200,10 +202,8 @@ async def on_voice_state_update(
     out_ch = (d := await get_data(event.guild_id, lvc)).out_channel_id
     assert out_ch
 
-    q = d.queue
-
-    if not d._dc_on_purpose and old and old.user_id == bot_u.id and not new.channel_id:
-        await cleanups__(event.guild_id, client.shards, lvc, also_disconns=False)
+    if not d.dc_on_purpose and old and old.user_id == bot_u.id and not new.channel_id:
+        await cleanup(event.guild_id, client.shards, lvc, also_disconns=False)
         await client.rest.create_message(
             out_ch,
             f"🥀📎 ~~<#{(_vc := old.channel_id)}>~~ `(Bot was forcefully disconnected)`",
@@ -211,13 +211,13 @@ async def on_voice_state_update(
         logger.warning(f"In guild {event.guild_id} left    channel {_vc} forcefully")
         return
 
-    d._dc_on_purpose = False
+    d.dc_on_purpose = False
 
     if not (conn := _conn()):
         return
     assert isinstance(conn, dict)
 
-    from .playback import set_pause__
+    from .playback import set_pause
 
     old_is_stage = (
         None
@@ -229,18 +229,14 @@ async def on_voice_state_update(
 
     if (
         new_vc_id
-        and (
-            new_is_stage := isinstance(
-                bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel
-            )
-        )
+        and isinstance(bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel)
         and new.user_id == bot_u.id
     ):
         old_suppressed = getattr(old, 'is_suppressed', True)
         old_requested = getattr(old, 'requested_to_speak_at', None)
 
         if not old_suppressed and new.is_suppressed and old_is_stage:
-            await set_pause__(event, lvc, pause=True, update_controller=True)
+            await set_pause(event, lvc, pause=True, update_controller=True)
             await client.rest.create_message(
                 out_ch,
                 f"👥▶️ Paused as the bot was moved to audience",
@@ -271,10 +267,11 @@ async def on_voice_state_update(
         assert isinstance(__conn, dict)
 
         async with access_data(event.guild_id, lvc) as d:
-            d._dc_on_purpose = True
-        await cleanups__(event.guild_id, client.shards, lvc)
+            d.dc_on_purpose = True
+        await cleanup(event.guild_id, client.shards, lvc)
+        _vc: int = __conn['channel_id']
         logger.info(
-            f"In guild {event.guild_id} left    channel {(_vc := __conn['channel_id'])} due to inactivity"
+            f"In guild {event.guild_id} left    channel {_vc} due to inactivity"
         )
         await client.rest.create_message(
             out_ch, f"🍃📎 ~~<#{_vc}>~~ `(Left due to inactivity)`"
@@ -297,7 +294,7 @@ async def on_voice_state_update(
             # Everyone left
 
             # TODO: Should be in `playback.py`
-            await set_pause__(event, lvc, pause=True, update_controller=True)
+            await set_pause(event, lvc, pause=True, update_controller=True)
             await client.rest.create_message(
                 out_ch, f"🕊️▶️ Paused as no one is listening"
             )
@@ -322,17 +319,17 @@ async def on_voice_state_update(
 @tj.with_argument('channel', converters=tj.to_channel, default=None)
 @tj.with_parser
 @tj.as_message_command('join', 'j', 'connect', 'co', 'con')
-async def join(
+async def join_(
     ctx: tj.abc.Context,
     channel: t.Optional[hk.GuildVoiceChannel | hk.GuildStageChannel],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Connect the bot to a voice channel."""
-    await join_(ctx, channel, lvc=lvc)
+    await _join(ctx, channel, lvc=lvc)
 
 
 @check(Checks.CATCH_ALL)
-async def join_(
+async def _join(
     ctx: tj.abc.Context,
     channel: t.Optional[hk.GuildVoiceChannel | hk.GuildStageChannel],
     /,
@@ -340,7 +337,7 @@ async def join_(
     lvc: lv.Lavalink,
 ):
     try:
-        vc = await join__(ctx, channel, lvc)
+        vc = await join(ctx, channel, lvc)
         await reply(ctx, content=f"🖇️ <#{vc}>")
     except ChannelMoved as sig:
         txt = f"📎🖇️ ~~<#{sig.old_channel}>~~ ➜ __<#{sig.new_channel}>__"
@@ -386,20 +383,20 @@ async def join_(
 @tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")
 #
 @tj.as_message_command('leave', 'l', 'lv', 'dc', 'disconnect', 'discon')
-async def leave(
+async def leave_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await leave_(ctx, lvc=lvc)
+    await _leave(ctx, lvc=lvc)
 
 
 @check(Checks.CATCH_ALL)
-async def leave_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
+async def _leave(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     """Stops playback of the current song."""
     assert ctx.guild_id
 
     try:
-        vc = await leave__(ctx, lvc)
+        vc = await leave(ctx, lvc)
     except NotConnected:
         await err_reply(ctx, content="❗ Not currently connected yet")
     else:

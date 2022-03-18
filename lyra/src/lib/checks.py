@@ -14,12 +14,12 @@ from .utils import (
     err_reply,
 )
 from .errors import (
+    AlreadyConnected,
     NotYetSpeaker,
     OthersInVoice,
     PlaybackChangeRefused,
     TrackStopped,
     NotConnected,
-    NotInVoice,
     Unautherized,
     NotPlaying,
     QueueEmpty,
@@ -32,9 +32,8 @@ from .extras import NULL, format_flags
 from hikari.permissions import Permissions as hkperms
 
 
-DJ_PERMS = hkperms.DEAFEN_MEMBERS | hkperms.MUTE_MEMBERS
-MOVER_PERMS = hkperms.MOVE_MEMBERS | DJ_PERMS
-
+DJ_PERMS: t.Final = hkperms.DEAFEN_MEMBERS | hkperms.MUTE_MEMBERS
+MOVER_PERMS: t.Final = hkperms.MOVE_MEMBERS | DJ_PERMS
 
 ConnectionInfo = dict[str, t.Any]
 
@@ -159,7 +158,7 @@ def check(
         assert client.cache
         auth_perms = await fetch_permissions(ctx_)
 
-        channel = conn['channel_id']
+        channel: int = conn['channel_id']
         voice_states = client.cache.get_voice_states_view_for_channel(
             ctx_.guild_id, channel
         )
@@ -171,7 +170,7 @@ def check(
         )
 
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
-            raise NotInVoice(channel)
+            raise AlreadyConnected(channel)
 
     async def check_in_vc(ctx_: Contextish, lvc: lv.Lavalink):
         assert ctx_.guild_id
@@ -300,7 +299,7 @@ def check(
                     ctx_,
                     content=f"🚫 Someone else is already in <#{exc.channel}>.\n **You bypass this by having the {mover_perms_fmt} permissions**",
                 )
-            except NotInVoice as exc:
+            except AlreadyConnected as exc:
                 await err_reply(
                     ctx_,
                     content=f"🚫 Join <#{exc.channel}> first. **You bypass this by having the {dj_perms_fmt} permissions**",
