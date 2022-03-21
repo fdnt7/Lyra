@@ -145,7 +145,7 @@ def curr_time_ms() -> int:
     return time.time_ns() // 1_000_000
 
 
-def ms_stamp(ms: int, /) -> str:
+def to_stamp(ms: int, /) -> str:
     s, ms = divmod(ms, 1000)
     m, s = divmod(s, 60)
     h, m = divmod(m, 60)
@@ -156,10 +156,8 @@ def ms_stamp(ms: int, /) -> str:
     )
 
 
-def stamp_ms(str_: str, /) -> int:
-    from .errors import InvalidArgument, Argument
-
-    VALID_FORMAT = "00:00.204, 1:57, 2:00:09 | 400ms, 7m51s, 5h2s99ms"
+def to_ms(str_: str, /) -> int:
+    VALID_FORMAT = "00:00.204 1:57 2:00:09 400ms 7m51s 5h2s99ms".split()
     singl_z = ['0']
     if match := time_regex.fullmatch(str_):
         match_ = singl_z + [*match.groups('0')]
@@ -176,7 +174,9 @@ def stamp_ms(str_: str, /) -> int:
         m = int(match_[4])
         h = int(match_[2])
     else:
-        raise InvalidArgument(Argument(str_, VALID_FORMAT))
+        raise ValueError(
+            f"Invalid timestamp format given. Must be in the following format:\n> {fmt_str(VALID_FORMAT)}"
+        )
     return (((h * 60 + m) * 60 + s)) * 1000 + ms
 
 
@@ -251,7 +251,7 @@ def get_img_pallete(
 
 
 @ft.cache
-def get_thumbnail(t_info: lv.Info) -> str | t.NoReturn:
+def get_thumbnail(t_info: lv.Info, /) -> str | t.NoReturn:
     id_ = t_info.identifier
 
     # TODO: Make this support not just Youtube
@@ -271,5 +271,27 @@ def get_thumbnail(t_info: lv.Info) -> str | t.NoReturn:
 _CE = t.TypeVar('_CE')
 
 
-def uniquify(seq: t.Iterable[_CE]) -> t.Iterable[_CE]:
-    return (*(k for k, _ in it.groupby(seq)),)
+def uniquify(iter_: t.Iterable[_CE], /) -> t.Iterable[_CE]:
+    return (*(k for k, _ in it.groupby(iter_)),)
+
+
+def join_and(
+    str_iter: t.Iterable[str], /, *, sep: str = ', ', and_: str = ' and '
+) -> str:
+    l = (*filter(lambda e: e, str_iter),)
+    return sep.join((*l[:-2], *[and_.join(l[-2:])]))
+
+
+_FE = t.TypeVar('_FE')
+
+
+def flatten(iter_iters: t.Iterable[t.Iterable[_FE]], /) -> t.Iterable[_FE]:
+    return (*(val for sublist in iter_iters for val in sublist),)
+
+
+def split_preset(str_: str, /, *, sep_1: str = ',', sep_2: str = '|'):
+    return tuple(frozenset(v.split(sep_2)) for v in str_.split(sep_1))
+
+
+def fmt_str(iter_strs: t.Iterable[str], /, *, sep: str = ', ') -> str:
+    return sep.join('\"%s\"' % s for s in iter_strs)

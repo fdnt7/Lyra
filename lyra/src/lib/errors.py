@@ -9,58 +9,52 @@ import lavasnek_rs as lv
 from hikari.permissions import Permissions as hkperms
 
 
-_A = t.TypeVar('_A')
-
-
 @a.define
-class Argument(t.Generic[_A]):
-    got: _A
-    expected: _A
+class Argument:
+    got: t.Any
+    expected: t.Any
 
 
 @a.define(init=False)
-class BaseMusicCommandException(abc.ABC, Exception):
-    pass
-
-
-_A_b = t.TypeVar('_A_b')
-
-
-@a.define
-class BadArgument(BaseMusicCommandException, t.Generic[_A_b]):
-    arg: Argument[_A_b]
-
-
-_A_i = t.TypeVar('_A_i')
-
-
-@a.define(init=False)
-class InvalidArgument(BadArgument[_A_i]):
-    pass
-
-
-_A_x = t.TypeVar('_A_x')
-
-
-@a.define(init=False)
-class IllegalArgument(BadArgument[_A_x]):
-    pass
-
-
-@a.define(init=False)
-class ConnectionSignal(BaseMusicCommandException):
-    pass
-
-
-@a.define(init=False)
-class InvalidTimestampFormat(BaseMusicCommandException):
+class BaseCommandException(abc.ABC, Exception):
     pass
 
 
 @a.define
-class Forbidden(BaseMusicCommandException):
+class BadArgument(BaseCommandException):
+    arg: Argument
+
+
+@a.define(init=False)
+class InvalidArgument(BadArgument):
+    pass
+
+
+@a.define(init=False)
+class IllegalArgument(BadArgument):
+    pass
+
+
+@a.define(init=False)
+class ConnectionSignal(BaseCommandException):
+    pass
+
+
+@a.define(init=False)
+class InvalidTimestampFormat(BaseCommandException):
+    pass
+
+
+@a.define
+class Forbidden(BaseCommandException):
     perms: hkperms
     channel: t.Optional[hk.Snowflakeish] = a.field(default=None, kw_only=True)
+
+
+@a.define
+class Restricted(BaseCommandException):
+    mode: t.Literal[1, -1]
+    obj: t.Any
 
 
 @a.define
@@ -73,7 +67,7 @@ class ChannelMoved(ConnectionSignal):
     old_channel: hk.Snowflakeish
     new_channel: hk.Snowflakeish
     to_stage: bool = a.field(factory=bool, kw_only=True)
-    
+
 
 @a.define
 class RequestedToSpeak(ConnectionSignal):
@@ -81,7 +75,7 @@ class RequestedToSpeak(ConnectionSignal):
 
 
 @a.define(init=False)
-class PlaybackException(BaseMusicCommandException):
+class PlaybackException(BaseCommandException):
     pass
 
 
@@ -116,7 +110,7 @@ class OthersListening(OthersInVoice):
 
 
 @a.define
-class NotInVoice(BaseMusicCommandException):
+class NotInVoice(BaseCommandException):
     pass
 
 
@@ -151,15 +145,15 @@ class TrackStopped(PlaybackException):
 
 
 @a.define(init=False)
-class QueryEmpty(BaseMusicCommandException):
+class QueryEmpty(BaseCommandException):
     pass
 
 
 @a.define(init=False)
-class LyricsNotFound(BaseMusicCommandException):
+class LyricsNotFound(BaseCommandException):
     pass
 
 
 @a.define(init=False)
-class VotingTimeout(TimeoutError, BaseMusicCommandException):
+class VotingTimeout(TimeoutError, BaseCommandException):
     pass

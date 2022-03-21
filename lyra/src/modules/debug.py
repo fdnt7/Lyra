@@ -5,7 +5,7 @@ import alluka as al
 import src.lib.consts as c
 
 
-from src.lib.utils import reply, err_reply
+from src.lib.utils import say, err_say
 
 debug = tj.Component(name='Debug', strict=True)
 
@@ -26,7 +26,7 @@ async def reload_module(
 ):
     """Reload a module in tanjun"""
     if ctx.author.id not in c.developers:
-        await err_reply(ctx, content="🚫⚙️ Reserved for bot's developers only")
+        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
         return
     mod = modules[module]
     try:
@@ -34,7 +34,7 @@ async def reload_module(
     except ValueError:
         client.load_modules(mod)
 
-    await reply(ctx, content=f"⚙️♻️ Reloaded `{mod.stem}`")
+    await say(ctx, content=f"⚙️♻️ Reloaded `{mod.stem}`")
 
 
 @tj.with_str_slash_option("module", "The module to target.", choices=choices)
@@ -49,16 +49,16 @@ async def unload_module(
 ):
     """Unload a module in tanjun"""
     if ctx.author.id not in c.developers:
-        await err_reply(ctx, content="🚫⚙️ Reserved for bot's developers only")
+        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
         return
     mod = modules[module]
     try:
         client.unload_modules(mod)
     except ValueError:
-        await err_reply(ctx, content=f"❗ Couldn't unload `{mod.stem}`")
+        await err_say(ctx, content=f"❗ Couldn't unload `{mod.stem}`")
         return
 
-    await reply(ctx, content=f"⚙️📤 Unloaded `{mod.stem}`")
+    await say(ctx, content=f"⚙️📤 Unloaded `{mod.stem}`")
 
 
 @tj.with_str_slash_option("module", "The module to reload.", choices=choices)
@@ -73,16 +73,23 @@ async def load_module(
 ):
     """Load a module in tanjun"""
     if ctx.author.id not in c.developers:
-        await err_reply(ctx, content="🚫⚙️ Reserved for bot's developers only")
+        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
         return
     mod = modules[module]
     try:
         client.load_modules(mod)
     except ValueError:
-        await err_reply(ctx, content=f"❗ Couldn't load `{mod.stem}`")
+        await err_say(ctx, content=f"❗ Couldn't load `{mod.stem}`")
         return
 
-    await reply(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
+    await say(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
+
+
+# @tj.with_argument('n', converters=int)
+# @tj.with_parser
+# @tj.as_message_command('test')
+# async def test(ctx: tj.abc.Context, n: int):
+#     await ctx.respond(n)
 
 
 # -

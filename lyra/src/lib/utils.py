@@ -1,14 +1,16 @@
 import typing as t
 import asyncio
+import functools as ft
 import contextlib as ctxlib
 
 import hikari as hk
 import tanjun as tj
 import alluka as al
 
-
+from hikari.permissions import Permissions as hkperms
 from hikari.messages import MessageFlag as msgflag
-from .extras import VoidCoroutine
+
+from .extras import NULL, TIMEOUT, VoidCoroutine, join_and
 
 
 EitherContext = tj.abc.MessageContext | tj.abc.AppCommandContext
@@ -41,6 +43,7 @@ GuildOrRESTInferable = GuildOrInferable | RESTInferable
 ButtonBuilderType = hk.api.ButtonBuilder[hk.api.ActionRowBuilder]
 SelectMenuBuilderType = hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
 EditableComponentsType = ButtonBuilderType | SelectMenuBuilderType
+MentionableType = hk.GuildChannel | hk.Role | hk.Member
 
 EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
 GuildConfig = t.NewType('GuildConfig', dict[str, dict[str, t.Any]])
@@ -63,7 +66,7 @@ async def delete_after(
 
 
 @t.overload
-async def err_reply(
+async def err_say(
     event: GuildInferableEvents | hk.Snowflakeish,
     /,
     *,
@@ -75,7 +78,7 @@ async def err_reply(
 
 
 @t.overload
-async def err_reply(
+async def err_say(
     ctx_: Contextish,
     /,
     *,
@@ -87,7 +90,7 @@ async def err_reply(
 
 
 @t.overload
-async def err_reply(
+async def err_say(
     ctx_: Contextish,
     /,
     *,
@@ -98,7 +101,7 @@ async def err_reply(
     ...
 
 
-async def err_reply(
+async def err_say(
     g_r_inf: GuildOrRESTInferable,
     /,
     *,
@@ -107,11 +110,42 @@ async def err_reply(
     channel: t.Optional[hk.GuildTextChannel] = None,
     **kwargs: t.Any,
 ) -> t.Optional[hk.Message]:
-    return await reply(g_r_inf, hidden=True, ensure_result=ensure_result, channel=channel, delete_after=del_after, **kwargs)  # type: ignore
+    return await say(g_r_inf, hidden=True, ensure_result=ensure_result, channel=channel, delete_after=del_after, **kwargs)  # type: ignore
 
 
 @t.overload
-async def reply(
+async def ephim_say(
+    g_: GuildInferableEvents | hk.Snowflakeish,
+    /,
+    *,
+    channel: hk.GuildTextChannel = ...,
+    **kwargs: t.Any,
+) -> hk.Message:
+    ...
+
+
+@t.overload
+async def ephim_say(
+    ctx_: Contextish,
+    /,
+    **kwargs: t.Any,
+) -> hk.Message:
+    ...
+
+
+async def ephim_say(
+    g_r_inf: GuildOrRESTInferable,
+    /,
+    *,
+    channel: t.Optional[hk.GuildTextChannel] = None,
+    **kwargs: t.Any,
+) -> t.Optional[hk.Message]:
+    if isinstance(g_r_inf, hk.ComponentInteraction | tj.abc.AppCommandContext):
+        return await say(g_r_inf, hidden=True, channel=channel, **kwargs)
+
+
+@t.overload
+async def say(
     g_: GuildInferableEvents | hk.Snowflakeish,
     /,
     *,
@@ -123,11 +157,12 @@ async def reply(
 
 
 @t.overload
-async def reply(
+async def say(
     ctx: tj.abc.Context,
     /,
     *,
     hidden: bool = False,
+    follow_up: bool = False,
     ensure_result: t.Literal[False] = False,
     **kwargs: t.Any,
 ) -> t.Optional[hk.Message]:
@@ -135,11 +170,12 @@ async def reply(
 
 
 @t.overload
-async def reply(
+async def say(
     ctx: tj.abc.Context,
     /,
     *,
     hidden: bool = False,
+    follow_up: bool = False,
     ensure_result: t.Literal[True] = True,
     **kwargs: t.Any,
 ) -> hk.Message:
@@ -147,7 +183,7 @@ async def reply(
 
 
 @t.overload
-async def reply(
+async def say(
     inter: hk.ComponentInteraction,
     /,
     *,
@@ -160,7 +196,7 @@ async def reply(
 
 
 @t.overload
-async def reply(
+async def say(
     inter: hk.ComponentInteraction,
     /,
     *,
@@ -172,17 +208,23 @@ async def reply(
     ...
 
 
-async def reply(
+async def say(
     g_r_inf: GuildOrRESTInferable,
     /,
     *,
     hidden: bool = False,
+    follow_up: bool = False,
     ensure_result: bool = False,
     show_author: bool = False,
     channel: t.Optional[hk.GuildTextChannel] = None,
     **kwargs: t.Any,
 ):
     msg: t.Optional[hk.Message] = None
+    if kwargs.get('embed', hk.UNDEFINED) is hk.UNDEFINED:
+        kwargs['embed'] = None
+    if kwargs.get('components', hk.UNDEFINED) is hk.UNDEFINED:
+        kwargs['components'] = ()
+
     try:
         if isinstance(g_r_inf, hk.ComponentInteraction | GuildInferableEvents):
             kwargs.pop('delete_after', None)
@@ -190,19 +232,25 @@ async def reply(
         flags = msgflag.EPHEMERAL if hidden else hk.UNDEFINED
         if isinstance(g_r_inf, GuildInferableEvents):
             if not channel:
-                raise ValueError(
+                raise RuntimeError(
                     '`g_r_inf` was type `GuildInferableEvents` but `channel` was not passed'
                 )
             msg = await g_r_inf.app.rest.create_message(channel, **kwargs)
         elif isinstance(g_r_inf, tj.abc.MessageContext):
-            msg = await g_r_inf.respond(**kwargs, reply=True)
+            if g_r_inf.has_responded and not follow_up:
+                msg = await g_r_inf.edit_last_response(**kwargs)
+            else:
+                msg = await g_r_inf.respond(**kwargs, reply=True)
         else:
             assert isinstance(
                 g_r_inf, hk.ComponentInteraction | tj.abc.AppCommandContext
             )
             if isinstance(g_r_inf, tj.abc.AppCommandContext):
                 if g_r_inf.has_responded:
-                    msg = await g_r_inf.create_followup(**kwargs, flags=flags)
+                    if follow_up:
+                        msg = await g_r_inf.create_followup(**kwargs, flags=flags)
+                    else:
+                        msg = await g_r_inf.edit_last_response(**kwargs)
                 else:
                     msg = await g_r_inf.create_initial_response(**kwargs, flags=flags)
             else:
@@ -250,8 +298,8 @@ def disable_components(
     )
 
 
-_C = t.TypeVar(
-    '_C',
+_C_contra = t.TypeVar(
+    '_C_contra',
     bound=hk.api.ComponentBuilder,
     contravariant=True,
 )
@@ -261,9 +309,9 @@ def edit_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    edits: t.Callable[[_C], _C],
-    reverts: t.Callable[[_C], _C] = lambda _: _,
-    predicates: t.Callable[[_C], bool] = lambda _: True,
+    edits: t.Callable[[_C_contra], _C_contra],
+    reverts: t.Callable[[_C_contra], _C_contra] = lambda _: _,
+    predicates: t.Callable[[_C_contra], bool] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder]:
     action_rows_ = [*action_rows]
     for a in action_rows_:
@@ -322,11 +370,86 @@ def trigger_thinking(
     return _defer()
 
 
-_P = t.ParamSpec('_P')
+def extract_content(msg: hk.Message):
+    return msg.content
 
 
-def with_message_command_group_template(func: t.Callable[_P, VoidCoroutine], /):
-    async def inner(*args: _P.args, **kwargs: _P.kwargs):
+async def init_confirmation_prompt(ctx: tj.abc.Context):
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    assert bot
+
+    cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_n(ctx)))
+    callback = getattr(ctx.command, 'callback', None)
+    if callback:
+        docs = callback.__doc__
+    else:
+        docs = None
+
+    row = (
+        ctx.rest.build_action_row()
+        .add_button(hk.ButtonStyle.SUCCESS, 'prompt_y')
+        .set_emoji('✔️')
+        .add_to_container()
+        .add_button(hk.ButtonStyle.DANGER, 'prompt_n')
+        .set_emoji('✖️')
+        .add_to_container()
+    )
+    embed = hk.Embed(
+        title=f'⚠️ Confirmation prompt for command `{cmd_n}`',
+        description="This will: __**%s**__\n\n" % docs if docs else None,
+        color=0xDBDBDB,
+    ).set_footer('Click the ✅ button below to proceed, or ❌ to cancel')
+
+    msg = await say(ctx, ensure_result=True, embed=embed, components=(row,))
+    event = await bot.wait_for(
+        hk.InteractionCreateEvent,
+        timeout=TIMEOUT // 5,
+        predicate=lambda e: isinstance(e.interaction, hk.ComponentInteraction)
+        and e.interaction.custom_id in {'prompt_y', 'prompt_n'}
+        and e.interaction.message.id == msg.id
+        and e.interaction.user.id == ctx.author.id,
+    )
+
+    inter = event.interaction
+    assert isinstance(inter, hk.ComponentInteraction)
+    await inter.create_initial_response(hk.ResponseType.DEFERRED_MESSAGE_UPDATE)
+    return inter.custom_id == 'prompt_y'
+
+
+_P_e = t.ParamSpec('_P_e')
+
+
+def suppress_embeds(func: t.Callable[_P_e, VoidCoroutine]):
+    @ft.wraps(func)
+    async def inner(*args: _P_e.args, **kwargs: _P_e.kwargs):
+        ctx = next((a for a in args if isinstance(a, tj.abc.MessageContext)), NULL)
+        assert ctx
+        assert ctx.guild_id and ctx.cache
+
+        bot_u = ctx.cache.get_me()
+        assert bot_u
+
+        bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
+        assert bot_m
+
+        bot_perms = await tj.utilities.fetch_permissions(
+            ctx.client, bot_m, channel=ctx.channel_id
+        )
+        if bot_perms & hkperms.MANAGE_MESSAGES:
+            await ctx.message.edit(flags=msgflag.SUPPRESS_EMBEDS)
+
+        inj_func = tj.as_self_injecting(ctx.client)(func)
+        await inj_func(*args, **kwargs)
+
+    return inner
+
+
+_P_mgT = t.ParamSpec('_P_mgT')
+
+
+def with_message_command_group_template(func: t.Callable[_P_mgT, VoidCoroutine], /):
+    @ft.wraps(func)
+    async def inner(*args: _P_mgT.args, **kwargs: _P_mgT.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
         assert ctx
 
@@ -336,9 +459,9 @@ def with_message_command_group_template(func: t.Callable[_P, VoidCoroutine], /):
         cmd_n = next(iter(cmd.names))
         sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
         valid_cmds = ', '.join(
-            f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n
+            f"`{p}~ {cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n
         )
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ This is a command group. Use the following instead:\n{valid_cmds}",
         )
@@ -348,42 +471,81 @@ def with_message_command_group_template(func: t.Callable[_P, VoidCoroutine], /):
     return inner
 
 
-P_ = t.ParamSpec('P_')
+async def restricts_c(ctx: tj.abc.Context, /, *, cfg: al.Injected[GuildConfig]) -> bool:
+    from src.modules.config import RESTRICTOR
 
-
-# def with_message_menu_template(func: t.Callable[P_, VoidCoroutine], /):
-#     async def inner(*args: P_.args, **kwargs: P_.kwargs):
-#         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
-#         msg = next((a for a in args if isinstance(a, hk.Message)), None)
-#         assert ctx and msg
-
-#         if not msg.content:
-#             await err_reply(ctx, content="❌ Cannot process an empty message")
-#             return
-
-#         await func(*args, **kwargs)
-
-#     return inner
-
-
-async def restricts_c(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
     assert ctx.guild_id and ctx.member
 
     g_cfg = cfg[str(ctx.guild_id)]
-    if g_cfg.setdefault('whitelisted', False):
-        return bool(
-            ctx.channel_id in g_cfg['whitelist']['channels']
-            and {*ctx.member.role_ids} & {*g_cfg['whitelist']['roles']}
-            and ctx.author.id in g_cfg['whitelist']['users']
-        )
-    else:
-        if ctx.channel_id in g_cfg['blacklist']['channels'] or {*ctx.member.role_ids} & {*g_cfg['blacklist']['roles']}
 
+    res_ch: dict[str, t.Any] = g_cfg.get('restricted_ch', {})
+    res_r: dict[str, t.Any] = g_cfg.get('restricted_r', {})
+    res_u: dict[str, t.Any] = g_cfg.get('restricted_u', {})
+
+    ch_wl = res_ch.get('wl_mode', 0)
+    r_wl = res_r.get('wl_mode', 0)
+    u_wl = res_u.get('wl_mode', 0)
+
+    res_ch_all: list[int] = res_ch.setdefault('all', [])
+    res_r_all: list[int] = res_r.setdefault('all', [])
+    res_u_all: list[int] = res_u.setdefault('all', [])
+
+    author_perms = await tj.utilities.fetch_permissions(
+        ctx.client, ctx.member, channel=ctx.channel_id
+    )
+
+    if author_perms & (hkperms.ADMINISTRATOR | RESTRICTOR):
+        return True
+
+    if u_wl == 1:
+        if not (cond := ctx.author.id in res_u_all):
+            await ephim_say(ctx, content="🚷 You aren't user whitelisted to use the bot")
+        return cond
+
+    if u_wl == -1 and ctx.author.id in res_u_all:
+        await ephim_say(ctx, content="🚷 You are user blacklisted from using the bot")
+        return False
+
+    if r_wl == 1:
+        if not (cond := bool({*ctx.member.role_ids} & {*res_r_all})):
+            await ephim_say(ctx, content="🚷 You aren't role whitelisted to use the bot")
+        return cond
+
+    if r_wl == -1 and {*ctx.member.role_ids} & {*res_r_all}:
+        await ephim_say(ctx, content="🚷 You are role blacklisted from using the bot")
+        return False
+
+    if ch_wl == 1:
+        if not (cond := ctx.channel_id in res_ch_all):
+            await ephim_say(
+                ctx,
+                content=f"🚷 This channel isn't whitelisted to use the bot. Consider using the bot in {join_and(('<#%i>' % ch for ch in res_ch_all), and_='or')}",
+            )
+        return False
+
+    if ch_wl == -1 and ctx.channel_id in res_ch_all:
+        await ephim_say(
+            ctx,
+            content=f"🚷 This channel is blacklisted from using the bot. Refrain from using the bot in {join_and(('<#%i>' % ch for ch in res_ch_all), and_='or')}",
+        )
+        return False
+
+    return True
 
 
 @base_h.with_on_parser_error
 async def on_parser_error(ctx: tj.abc.Context, error: tj.errors.ParserError) -> None:
-    await err_reply(ctx, content=f"❌ You've given an invalid input: `{error}`")
+    msg = f"❌ You've given an invalid input: `{error}` "
+    if related_errs := getattr(error, 'errors', None):
+        err_msg = '\n'.join(
+            f'Cause-{i}: {next(iter(e.args))}' for i, e in enumerate(related_errs, 1)
+        )
+        msg += f"```arm\n{err_msg}```"
+    await err_say(
+        ctx,
+        content=msg,
+        del_after=3.5 if not related_errs else 6.5,
+    )
 
 
 @base_h.with_on_error
@@ -417,7 +579,7 @@ def get_pref(ctx: Contextish, /):
     if isinstance(ctx, tj.abc.SlashContext):
         return '/'
     if isinstance(ctx, tj.abc.AppCommandContext):
-        return '.>'
+        return '/'
     return '/'
 
 
@@ -452,7 +614,18 @@ def get_rest(g_r_inf: RESTInferable, /):
 
 def get_cmd_n(ctx: tj.abc.Context, /):
     cmd = ctx.command
-    if isinstance(cmd, tj.abc.MessageCommand):
-        return next(iter(cmd.names))
-    assert isinstance(cmd, tj.abc.SlashCommand | tj.abc.MenuCommand)
-    return cmd.name
+
+    def _recurse(
+        _cmd: tj.abc.ExecutableCommand[tj.abc.Context], _names: list[str]
+    ) -> list[str]:
+        if isinstance(_cmd, tj.abc.MessageCommand):
+            _names.append(next(iter(_cmd.names)))
+        elif isinstance(_cmd, tj.abc.SlashCommand | tj.abc.MenuCommand):
+            _names.append(_cmd.name)
+
+        if not (parent_cmd := getattr(_cmd, 'parent', None)):  # type: ignore
+            return _names
+        return _recurse(parent_cmd, _names)
+
+    assert cmd
+    return ''.join(_recurse(cmd, []))

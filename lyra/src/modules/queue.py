@@ -7,23 +7,23 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-
-from hikari.messages import MessageFlag as msgflag
-from src.lib.music import auto_connect_vc, music_h
+from src.lib.music import connect_vc, music_h
 from src.lib.utils import (
     ButtonBuilderType,
     Contextish,
     EitherContext,
     guild_c,
+    extract_content,
     get_rest,
-    reply,
-    err_reply,
+    say,
+    err_say,
     edit_components,
     trigger_thinking,
+    suppress_embeds,
     with_message_command_group_template,
 )
 from src.lib.checks import Checks, check, check_others_not_in_vc
-from src.lib.extras import NULL, url_regex
+from src.lib.extras import NULL, flatten, fmt_str, url_regex
 from src.lib.lavaimpl import (
     repeat_emojis,
     QueueList,
@@ -52,11 +52,36 @@ logger = logging.getLogger(f"{'queue':<{LOG_PAD}}")
 logger.setLevel(logging.DEBUG)
 
 
-VALID_SOURCES = {
+valid_sources: t.Final = {
     "Youtube": 'yt',
     "Youtube Music": 'ytm',
     "Soundcloud": 'sc',
 }
+
+
+def to_source(value: str, /):
+    if value.casefold() not in valid_sources.values():
+        valid_sources_fmt = ', '.join(
+            ('\"%s\" (%s)' % (j, i) for i, j in valid_sources.items())
+        )
+        raise ValueError(
+            f"Invalid source given. Must be one of the following:\n> {valid_sources_fmt}"
+        )
+    return value
+
+
+def to_repeat_mode(value: str, /):
+    from src.lib.lavaimpl import all_repeat_modes
+
+    if value in all_repeat_modes[0]:
+        return RepeatMode.NONE
+    elif value in all_repeat_modes[1]:
+        return RepeatMode.ONE
+    elif value in all_repeat_modes[2]:
+        return RepeatMode.ALL
+    raise ValueError(
+        f"Unrecognized repeat mode. Must be one of the following:\n> {fmt_str(flatten(all_repeat_modes))} (got: {value})"
+    )
 
 
 async def play(
@@ -101,12 +126,12 @@ async def enqueue_track(
     queue.ext(player.to_track_queue())
     if respond:
         if shuffle:
-            await reply(
+            await say(
                 ctx,
                 content=f"🔀**`＋`** Added `{track.info.title}` and shuffled the queue",
             )
         else:
-            await reply(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
+            await say(ctx, content=f"**`＋`** Added `{track.info.title}` to the queue")
 
     if not queue.is_stopped or ignore_stop:
         await player.start()
@@ -132,12 +157,12 @@ async def enqueue_tracks(
     queue.ext(*map(lambda p: p.to_track_queue(), players))
     if respond:
         if shuffle:
-            await reply(
+            await say(
                 ctx,
                 content=f"🔀**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` and shuffled the queue",
             )
         else:
-            await reply(
+            await say(
                 ctx,
                 content=f"**`≡+`** Added `{len(tracks.tracks)} songs` from playlist `{tracks.playlist_info.name}` to the queue",
             )
@@ -185,11 +210,9 @@ async def remove_track(
         if rm.requester != ctx.author.id:
             raise PlaybackChangeRefused
 
-        # q.is_stopped = False
-
     if rm == np:
         async with while_stop(ctx, lvc, d):
-            await skip(ctx, lvc, advance=False, change_repeat=True)
+            await skip(ctx, lvc, advance=False, change_repeat=True, change_stop=False)
 
     if i < q.pos:
         q.pos = max(0, q.pos - 1)
@@ -238,14 +261,14 @@ async def remove_tracks(
 
 
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def shuffle_impl(ctx_: Contextish, /, *, lvc: lv.Lavalink):
+async def shuffle_impl(ctx_: Contextish, lvc: lv.Lavalink):
     async with access_queue(ctx_, lvc) as q:
         if not q.upcoming:
-            await err_reply(ctx_, content=f"❗ This is the end of the queue")
+            await err_say(ctx_, content=f"❗ This is the end of the queue")
             return
         q.shuffle()
 
-        await reply(
+        await say(
             ctx_,
             show_author=True,
             content=f"🔀 Shuffled the upcoming tracks. `(Track #{q.pos+2}-{len(q)}; {len(q) - q.pos - 1} tracks)`",
@@ -300,27 +323,25 @@ async def insert_track(
 
 async def repeat_abs(
     ctx_: Contextish,
-    mode: t.Optional[str],
-    /,
-    *,
+    mode: t.Optional[RepeatMode],
     lvc: lv.Lavalink,
 ) -> None:
     """Select a repeat mode for the queue"""
     async with access_data(ctx_, lvc) as d:
         q = d.queue
         if mode is None:
-            modes = (*(m.value for m in RepeatMode),)
-            mode = modes[(modes.index(q.repeat_mode.value) + 1) % 3]
-            assert mode is not None
-        m = q.set_repeat(mode)
+            modes = (*RepeatMode,)
+            mode = modes[(modes.index(q.repeat_mode) + 1) % 3]
+        assert mode
+        q.set_repeat(mode)
 
-    if m is RepeatMode.NONE:
+    if mode is RepeatMode.NONE:
         msg = "Disabled repeat"
         e = '➡️'
-    elif m is RepeatMode.ALL:
+    elif mode is RepeatMode.ALL:
         msg = "Repeating the entire queue"
         e = '🔁'
-    elif m is RepeatMode.ONE:
+    elif mode is RepeatMode.ONE:
         msg = "Repeating only this current track"
         e = '🔂'
     else:
@@ -328,7 +349,7 @@ async def repeat_abs(
 
     from src.lib.lavaimpl import get_repeat_emoji
 
-    await reply(ctx_, show_author=True, content=f"{e} {msg}")
+    await say(ctx_, show_author=True, content=f"{e} {msg}")
     if d.nowplaying_msg:
         rest = get_rest(ctx_)
 
@@ -365,7 +386,7 @@ async def repeat_abs(
 @tj.with_str_slash_option(
     'source',
     "Search from where? (If not given, Youtube)",
-    choices=VALID_SOURCES,
+    choices=valid_sources,
     default='yt',
 )
 @tj.with_str_slash_option('song', "What song? [Could be a title or a direct link]")
@@ -377,10 +398,7 @@ async def play_s(
     shuffle: bool,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    if not url_regex.fullmatch(song):
-        song = '%ssearch:%s' % (source, song)
-
-    await _play(ctx, song, shuffle, lvc=lvc)
+    await _play(ctx, song, source, shuffle, lvc)
 
 
 @queue.with_menu_command
@@ -390,24 +408,27 @@ async def play_c(
     msg: hk.Message,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    assert msg.content
-    if not msg.content:
-        assert msg.guild_id
-        await err_reply(ctx, content="❌ Cannot process an empty message")
+    if not (cnt := extract_content(msg)):
+        await err_say(ctx, content="❌ Cannot process an empty message")
         return
-    song = msg.content.strip("<>|")
-    if not url_regex.fullmatch(song):
-        song = 'ytsearch:%s' % song
-
-    await _play(ctx, song, False, lvc=lvc)
+    song = cnt.strip("<>|")
+    await _play(ctx, song, 'yt', False, lvc)
 
 
 @queue.with_message_command
-@tj.with_option('source', '--source', '--src', default='yt')
-@tj.with_option('shuffle', '--shuffle', '--sh', default=False, empty_value=True)
+@tj.with_option('source', '--source', '-src', default='yt', converters=to_source)
+@tj.with_option(
+    'shuffle',
+    '--shuffle',
+    '-sh',
+    default=False,
+    empty_value=True,
+    converters=tj.to_bool,
+)
 @tj.with_greedy_argument('song')
 @tj.with_parser
 @tj.as_message_command('play', 'p', 'a', 'add', '+')
+@suppress_embeds
 async def play_m(
     ctx: tj.abc.MessageContext,
     song: str,
@@ -416,29 +437,20 @@ async def play_m(
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Play a song, or add it to the queue."""
-
-    song = song.strip("<>|")
-    await ctx.message.edit(flags=msgflag.SUPPRESS_EMBEDS)
-    if source not in VALID_SOURCES.values():
-        await err_reply(
-            ctx,
-            content=f"❗ Invalid source given. Must be one of the following:\n> {', '.join(('`%s (%s)`' % (j, i) for i,j in VALID_SOURCES.items()))}",
-        )
-        return
-
-    if not url_regex.fullmatch(song):
-        song = '%ssearch:%s' % (source, song)
-
-    await _play(ctx, song, shuffle, lvc=lvc)
+    await _play(ctx, song, source, shuffle, lvc)
 
 
-@auto_connect_vc
+@connect_vc
 @check(Checks.IN_VC | Checks.SPEAK)
 async def _play(
-    ctx: EitherContext, song: str, shuffle: bool, /, *, lvc: lv.Lavalink
+    ctx: EitherContext, song: str, source: str, shuffle: bool, lvc: lv.Lavalink
 ) -> None:
     """Attempts to play the song from youtube."""
     assert ctx.guild_id
+
+    song = song.strip("<>|")
+    if not url_regex.fullmatch(song):
+        song = '%ssearch:%s' % (source, song)
 
     async with trigger_thinking(ctx):
         query = await lvc.get_tracks(song)
@@ -449,7 +461,7 @@ async def _play(
         await play(ctx, lvc, tracks=query, respond=True, shuffle=shuffle)
     except lv.NoSessionPresent:
         # Occurs if lavalink crashes
-        await err_reply(
+        await err_say(
             ctx,
             content="⁉️ Something internal went wrong. Please try again in few minutes",
         )
@@ -484,47 +496,35 @@ async def remove_g_m(_: tj.abc.MessageContext):
 @tj.as_slash_command(
     'one', "Removes a track from the queue by queue position or track name"
 )
-async def remove_one_s(
-    ctx: tj.abc.SlashContext,
-    track: t.Optional[str],
-    lvc: al.Injected[lv.Lavalink],
-) -> None:
-    await _remove_one(ctx, track, lvc=lvc)
-
-
+# -
 @remove_g_m.with_command
 @tj.with_greedy_argument('track', default=None)
 @tj.with_parser
 @tj.as_message_command('one', '1', 'o', 's', '.', '^')
-async def remove_one_m(
-    ctx: tj.abc.MessageContext,
+# -
+@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK)
+async def remove_one_(
+    ctx: tj.abc.Context,
     track: t.Optional[str],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await _remove_one(ctx, track, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK)
-async def _remove_one(
-    ctx: tj.abc.Context, track: t.Optional[str], /, *, lvc: lv.Lavalink
-):
     assert ctx.guild_id
 
     try:
         rm = await remove_track(ctx, track, lvc)
     except InvalidArgument:
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Please specify a track to remove or have a track playing first",
         )
-    except IllegalArgument[tuple[int, ...]] as xe:
+    except IllegalArgument as xe:
         arg_exp = xe.arg.expected
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `{arg_exp[0]}` and `{arg_exp[1]}`**",
         )
     else:
-        await reply(
+        await say(
             ctx, content=f"**`ー`** Removed `{rm.track.info.title}` from the queue"
         )
 
@@ -542,33 +542,20 @@ async def _remove_one(
 @tj.as_slash_command(
     'bulk', "Removes a track from the queue by queue position or track name"
 )
-async def remove_bulk_s(
-    ctx: tj.abc.SlashContext,
-    start: int,
-    end: t.Optional[int],
-    lvc: al.Injected[lv.Lavalink],
-) -> None:
-    await _remove_bulk(ctx, start, end, lvc=lvc)
-
-
+#
 @remove_g_m.with_command
 @tj.with_argument('end', converters=int, default=None)
 @tj.with_argument('start', converters=int)
 @tj.with_parser
 @tj.as_message_command('bulk', 'b', 'm', 'r', '<>')
-async def remove_bulk_m(
-    ctx: tj.abc.MessageContext,
+#
+@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
+async def remove_bulk_(
+    ctx: tj.abc.Context,
     start: int,
     end: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    await _remove_bulk(ctx, start, end, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
-async def _remove_bulk(
-    ctx: tj.abc.Context, start: int, end: t.Optional[int], /, *, lvc: lv.Lavalink
-):
     assert ctx.guild_id
 
     q = await get_queue(ctx, lvc)
@@ -579,18 +566,18 @@ async def _remove_bulk(
     try:
         await remove_tracks(ctx, start, end, lvc)
     except IllegalArgument:
-        await err_reply(
+        await err_say(
             ctx,
             del_after=6.5,
             content=f"❌ Invalid start position or end position\n**Start position must be smaller or equal to end position *AND* both of them has to be in between 1 and the queue length **",
         )
     else:
-        await reply(
+        await say(
             ctx,
             content=f"`≡⁻` Removed track position `{start}-{end}` `({t_n} tracks)` from the queue",
         )
         if start == 1 and end is None:
-            await reply(
+            await say(
                 ctx,
                 hidden=True,
                 content="💡 It is best to only remove a part of the queue when using `/remove bulk`. *For clearing the entire queue, use `/clear` instead*",
@@ -603,12 +590,9 @@ async def _remove_bulk(
 @tj.as_slash_command('clear', "Clears the queue; Equivalent to /remove bulk start:1")
 #
 @tj.as_message_command('clear', 'destroy', 'clr', 'c')
-async def clear(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
-    await _clear(ctx, lvc=lvc)
-
-
+#
 @check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)
-async def _clear(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
+async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     from .playback import while_stop
 
     async with access_data(ctx, lvc) as d:
@@ -616,7 +600,7 @@ async def _clear(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
         l = len(q)
         async with while_stop(ctx, lvc, d):
             q.clr()
-        await reply(ctx, content=f"💥 Cleared the queue `({l} tracks)`")
+        await say(ctx, content=f"💥 Cleared the queue `({l} tracks)`")
         return
 
 
@@ -627,7 +611,7 @@ async def _clear(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 #
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
 async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
-    await shuffle_impl(ctx, lvc=lvc)
+    await shuffle_impl(ctx, lvc)
 
 
 # Move
@@ -656,57 +640,42 @@ async def move_g_m(_: tj.abc.MessageContext):
     default=None,
 )
 @tj.as_slash_command('last', "Moves the selected track to the end of the queue")
-async def move_last_s(
-    ctx: tj.abc.SlashContext,
-    track: t.Optional[int],
-    lvc: al.Injected[lv.Lavalink],
-):
-    await _move_last(ctx, track, lvc=lvc)
-
-
+#
 @move_g_m.with_command
 @tj.with_argument('track', converters=int, default=None)
 @tj.with_parser
 @tj.as_message_command('last', 'l', '>>')
-async def move_last_m(
-    ctx: tj.abc.MessageContext,
+#
+@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK)
+async def move_last_(
+    ctx: tj.abc.Context,
     track: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
 ):
-    """
-    Moves the selected track to the end of the queue
-    """
-    await _move_last(ctx, track, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK)
-async def _move_last(
-    ctx: tj.abc.Context, track: t.Optional[int], /, *, lvc: lv.Lavalink
-) -> None:
     """Moves the selected track to the end of the queue"""
     q = await get_queue(ctx, lvc)
     try:
         mv = await insert_track(ctx, len(q), track, lvc)
     except InvalidArgument:
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Please specify a track to move or have a track playing first",
         )
         return
 
     except IllegalArgument:
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `1` and `{len(q)}`**",
         )
         return
 
     except ValueError:
-        await err_reply(ctx, content=f"❗ This track is already at the end of the queue")
+        await err_say(ctx, content=f"❗ This track is already at the end of the queue")
         return
 
     else:
-        await reply(
+        await say(
             ctx,
             content=f"⏬ Moved track `{mv.track.info.title}` to the end of the queue",
         )
@@ -723,22 +692,16 @@ async def _move_last(
 )
 @tj.with_int_slash_option('first', "Position of the first track?")
 @tj.as_slash_command('swap', "Swaps positions of two tracks in a queue")
-async def move_swap_s(
-    ctx: tj.abc.SlashContext,
-    first: int,
-    second: t.Optional[int],
-    lvc: al.Injected[lv.Lavalink],
-):
-    await _move_swap(ctx, first, second, lvc=lvc)
-
-
+#
 @move_g_m.with_command
 @tj.with_argument('first', converters=int)
 @tj.with_argument('second', converters=int, default=None)
 @tj.with_parser
 @tj.as_message_command('swap', 'sw', '<>', '<->', '<=>')
-async def move_swap_m(
-    ctx: tj.abc.MessageContext,
+#
+@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
+async def move_swap_(
+    ctx: tj.abc.Context,
     first: int,
     second: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
@@ -746,14 +709,6 @@ async def move_swap_m(
     """
     Swaps positions of two tracks in a queue
     """
-    await _move_swap(ctx, first, second, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
-async def _move_swap(
-    ctx: tj.abc.Context, first: int, second: t.Optional[int], /, *, lvc: lv.Lavalink
-) -> None:
-    """Swaps positions of two tracks in a queue"""
     from .playback import while_stop, set_pause
 
     assert ctx.guild_id
@@ -763,7 +718,7 @@ async def _move_swap(
     np = q.current
     if second is None:
         if not np:
-            await err_reply(
+            await err_say(
                 ctx,
                 content=f"❌ Please specify a track to swap or have a track playing first",
             )
@@ -774,10 +729,10 @@ async def _move_swap(
 
     i_1st = first - 1
     if i_1st == i_2nd:
-        await err_reply(ctx, content=f"❗ Cannot swap a track with itself")
+        await err_say(ctx, content=f"❗ Cannot swap a track with itself")
         return
     if not ((0 <= i_1st < len(q)) and (0 <= i_2nd < len(q))):
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Invalid position. **Both tracks' position must be between `1` and `{len(q)}`**",
         )
@@ -793,7 +748,7 @@ async def _move_swap(
 
     await set_data(ctx.guild_id, lvc, d)
 
-    await reply(
+    await say(
         ctx,
         content=f"🔄 Swapped tracks `{q[i_2nd].track.info.title}` and `{q[i_1st].track.info.title}` in the queue",
     )
@@ -808,22 +763,16 @@ async def _move_swap(
 )
 @tj.with_int_slash_option('position', "Where to insert the track?")
 @tj.as_slash_command('insert', "Inserts a track in the queue after a new position")
-async def move_insert_s(
-    ctx: tj.abc.SlashContext,
-    position: int,
-    track: t.Optional[int],
-    lvc: al.Injected[lv.Lavalink],
-):
-    await _move_insert(ctx, position, track, lvc=lvc)
-
-
+#
 @move_g_m.with_command
 @tj.with_argument('track', converters=int, default=None)
 @tj.with_argument('position', converters=int)
 @tj.with_parser
 @tj.as_message_command('insert', 'ins', 'i', 'v', '^')
-async def move_insert_m(
-    ctx: tj.abc.MessageContext,
+#
+@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
+async def move_insert_(
+    ctx: tj.abc.Context,
     position: int,
     track: t.Optional[int],
     lvc: al.Injected[lv.Lavalink],
@@ -831,36 +780,29 @@ async def move_insert_m(
     """
     Inserts a track in the queue after a new position
     """
-    await _move_insert(ctx, position, track, lvc=lvc)
 
-
-@check(Checks.QUEUE | Checks.CONN | Checks.SPEAK | Checks.IN_VC_ALONE)
-async def _move_insert(
-    ctx: tj.abc.Context, position: int, track: t.Optional[int], /, *, lvc: lv.Lavalink
-) -> None:
-    """Inserts a track in the queue after a new position"""
     assert ctx.guild_id
 
     try:
         mv = await insert_track(ctx, position, track, lvc)
     except ValueError:
-        await err_reply(ctx, content=f"❗ Cannot insert a track after its own position")
+        await err_say(ctx, content=f"❗ Cannot insert a track after its own position")
         return
     except InvalidArgument:
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Please specify a track to insert or have a track playing first",
         )
         return
-    except IllegalArgument[tuple[int, ...]] as xe:
+    except IllegalArgument as xe:
         expected = xe.arg.expected
-        await err_reply(
+        await err_say(
             ctx,
             content=f"❌ Invalid position. **Both insert and track position must be between `{expected[0]}` and `{expected[1]}`**",
         )
         return
     else:
-        await reply(
+        await say(
             ctx,
             content=f"⤴️ Inserted track `{mv.track.info.title}` at position `{position}`",
         )
@@ -874,7 +816,6 @@ repeat_impl = check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE, vote=True)(
 )
 
 
-@queue.with_slash_command
 @tj.with_str_slash_option(
     'mode',
     "Which mode? (If not given, will cycle between: All > One > Off)",
@@ -882,38 +823,19 @@ repeat_impl = check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE, vote=True)(
     default=None,
 )
 @tj.as_slash_command('repeat', "Select a repeat mode for the queue")
-async def repeat_s(
-    ctx: tj.abc.SlashContext,
-    mode: t.Optional[str],
-    lvc: al.Injected[lv.Lavalink],
-):
-    await repeat_impl(ctx, mode, lvc=lvc)
-
-
-@queue.with_message_command
-@tj.with_argument('mode', default=None)
+#
+@tj.with_argument('mode', to_repeat_mode, default=None)
 @tj.with_parser
 @tj.as_message_command('repeat', 'r', 'rep', 'lp', 'rp', 'loop')
-async def repeat_m(
-    ctx: tj.abc.MessageContext,
-    mode: t.Optional[str],
+async def repeat_(
+    ctx: tj.abc.Context,
+    mode: t.Optional[RepeatMode],
     lvc: al.Injected[lv.Lavalink],
 ):
     """
     Select a repeat mode for the queue
     """
-    if mode:
-        mode = mode.lower()
-        from src.lib.lavaimpl import all_repeat_modes
-
-        if mode not in all_repeat_modes:
-            await err_reply(
-                ctx,
-                content=f"❗ Unrecognized repeat mode; Must be one of the following: `[{', '.join(all_repeat_modes)}]` `(got: {mode})`",
-            )
-            return
-
-    await repeat_impl(ctx, mode, lvc=lvc)
+    await repeat_impl(ctx, mode, lvc)
 
 
 # -

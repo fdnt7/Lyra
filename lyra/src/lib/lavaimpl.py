@@ -12,10 +12,10 @@ import lavasnek_rs as lv
 
 from .errors import NotConnected, QueueEmpty
 from .utils import EmojiRefs, GuildConfig, GuildOrInferable, infer_guild, get_client
-from .extras import get_img_pallete, get_thumbnail, curr_time_ms, inj_glob
+from .extras import get_img_pallete, get_thumbnail, curr_time_ms, inj_glob, split_preset
 
 
-all_repeat_modes: t.Final = 'off|0|one|o|1|all|a|q'.split('|')
+all_repeat_modes: t.Final = split_preset('off|0,one|o|1,all|a|q')
 repeat_emojis: t.Final[list[hk.KnownCustomEmoji]] = []
 
 BandsishTuple = tuple[
@@ -43,17 +43,6 @@ class RepeatMode(e.Enum):
     NONE = 'off'
     ALL = 'all'
     ONE = 'one'
-
-
-def match_repeat(mode: str) -> RepeatMode:
-    if mode in {'off', '0'}:
-        return RepeatMode.NONE
-    elif mode in {'one', 'o', '1'}:
-        return RepeatMode.ONE
-    elif mode in {'all', 'a', 'q'}:
-        return RepeatMode.ALL
-    else:
-        raise NotImplementedError
 
 
 # class QueuePosition(int):
@@ -174,9 +163,8 @@ class QueueList(list[lv.TrackQueue]):
         self.clear()
         self.extend(hist + upcoming)
 
-    def set_repeat(self, mode: str) -> RepeatMode:
-        self.repeat_mode = (m := match_repeat(mode))
-        return m
+    def set_repeat(self, mode: RepeatMode) -> None:
+        self.repeat_mode = mode
 
     def clr(self) -> None:
         self.clear()

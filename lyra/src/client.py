@@ -31,7 +31,7 @@ logger.setLevel(logging.DEBUG)
 fn = next(inj_glob('./config.yml'))
 
 with open(fn.resolve(), 'r') as f:
-    _y = yaml.load(f, yaml.Loader)
+    _y = yaml.load(f, yaml.Loader)  # type: ignore
 
     PREFIX: list[str] = _y['prefixes']
 
@@ -50,7 +50,9 @@ client = (
     .add_prefix(PREFIX)
     .set_hooks(base_h)
     .add_check(restricts_c)
-    .load_modules(*('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py')))
+    .load_modules(
+        *('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py'))
+    )
 )
 
 activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)

@@ -56,15 +56,15 @@ async def on_interaction_create(
 
     btt = inter.custom_id
     if btt == 'lyra_skip':
-        await skip_impl(inter, lvc=lvc)
+        await skip_impl(inter, lvc)
     elif btt == 'lyra_previous':
-        await previous_impl(inter, lvc=lvc)
+        await previous_impl(inter, lvc)
     elif btt == 'lyra_playpause':
-        await play_pause_impl(inter, lvc=lvc)
+        await play_pause_impl(inter, lvc)
     elif btt == 'lyra_shuffle':
-        await shuffle_impl(inter, lvc=lvc)
+        await shuffle_impl(inter, lvc)
     elif btt == 'lyra_repeat':
-        await repeat_impl(inter, None, lvc=lvc)
+        await repeat_impl(inter, None, lvc)
     else:
         return
 
