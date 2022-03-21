@@ -7,28 +7,30 @@ import alluka as al
 import lavasnek_rs as lv
 
 
-from src.lib.music import music_h, auto_connect_vc, generate_queue_embeds__
+from src.lib.music import music_h, connect_vc, generate_queue_embeds__
 from src.lib.utils import (
     Q_DIV,
     EitherContext,
     EmojiRefs,
     EditableComponentsType,
     guild_c,
-    reply,
-    err_reply,
+    say,
+    err_say,
+    extract_content,
     trigger_thinking,
     disable_components,
 )
 from src.lib.errors import QueryEmpty, LyricsNotFound
-from src.lib.extras import TIMEOUT, ms_stamp, wr, get_lyrics
+from src.lib.extras import TIMEOUT, to_stamp, wr, get_lyrics
 from src.lib.checks import Checks, check
 from src.lib.lavaimpl import get_queue, access_queue
+from src.lib.consts import LOG_PAD
 
 
 info = tj.Component(name='Info', strict=True).add_check(guild_c).set_hooks(music_h)
 
 
-logger = logging.getLogger('info       ')
+logger = logging.getLogger(f"{'info':<{LOG_PAD}}")
 logger.setLevel(logging.DEBUG)
 
 
@@ -38,12 +40,12 @@ logger.setLevel(logging.DEBUG)
 @tj.as_slash_command('ping', "Shows the bot's latency")
 #
 @tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
-async def ping(ctx: tj.abc.Context):
+async def ping_(ctx: tj.abc.Context):
     """
     Shows the bot's latency
     """
     assert ctx.shards
-    await reply(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
+    await say(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
 
 
 # Now Playing
@@ -54,18 +56,12 @@ async def ping(ctx: tj.abc.Context):
 @tj.as_message_command(
     'nowplaying', 'now-playing', 'np', 'now', 'curr', 'current', 'crr'
 )
-async def nowplaying(
+#
+@check(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
+async def nowplaying_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    """
-    Displays info on the currently playing song.
-    """
-    await nowplaying_(ctx, lvc=lvc)
-
-
-@check(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
-async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     """Displays info on the currently playing song."""
     assert not ((ctx.guild_id is None) or (ctx.cache is None) or (ctx.member is None))
 
@@ -84,8 +80,8 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     username_pad = (27 * len(ctx.member.display_name) + 97) // 31
     padding = min(54, max(title_pad, username_pad)) - 2
 
-    song_len = ms_stamp(t_info.length)
-    np_pos = ms_stamp(q.np_position)
+    song_len = to_stamp(t_info.length)
+    np_pos = to_stamp(q.np_position)
 
     progress = round(
         (q.np_position / t_info.length)
@@ -116,7 +112,7 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
         )
         .set_thumbnail(q.curr_t_thumbnail)
     )
-    await reply(ctx, hidden=True, embed=embed)
+    await say(ctx, hidden=True, embed=embed)
 
 
 # Search
@@ -131,12 +127,12 @@ async def nowplaying_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink) -> None:
     'search',
     "Searches for tracks on youtube from your query and lets you hear a part of it",
 )
-async def search(
+async def search_(
     ctx: EitherContext,
     query: str,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await search_(ctx, query, lvc=lvc)
+    await _search(ctx, query, lvc)
 
 
 @info.with_menu_command
@@ -146,17 +142,17 @@ async def search_c(
     msg: hk.Message,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
-    if not msg.content:
-        await err_reply(ctx, content="❌ Cannot process an empty message")
+    if not (cnt := extract_content(msg)):
+        await err_say(ctx, content="❌ Cannot process an empty message")
         return
-    await search_(ctx, msg.content, lvc=lvc)
+    await _search(ctx, cnt, lvc)
 
 
-@auto_connect_vc
+@connect_vc
 @check(Checks.CONN | Checks.SPEAK)
-async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> None:
-    from .queue import play__, enqueue_track__
-    from .playback import stop__, continue__
+async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
+    from .queue import play, enqueue_track
+    from .playback import stop, unstop
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
     assert ctx.guild_id and erf
@@ -173,10 +169,11 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
     async with trigger_thinking(ctx):
         _queried = await lvc.auto_search_tracks(query)
     if _queried.load_type in ('TRACK_LOADED', 'PLAYLIST_LOADED'):
-        await play__(ctx, lvc, tracks=_queried, respond=True)
-        await reply(
+        await play(ctx, lvc, tracks=_queried, respond=True)
+        await say(
             ctx,
             hidden=True,
+            follow_up=True,
             content="💡 It is best to input a search query to the `/search` command. *For links, use `/play` instead*",
         )
         return
@@ -187,7 +184,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
 
     queried_msg = "```css\n%s\n```" % (
         "\n".join(
-            f"{i: >2}. {ms_stamp(t.info.length):>9} | {wr(t.info.title, 48)}"
+            f"{i: >2}. {to_stamp(t.info.length):>9} | {wr(t.info.title, 48)}"
             for i, t in enumerate(queried[:QUERIED_N], 1)
         )
     )
@@ -226,7 +223,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
     embed = hk.Embed(
         title=f"🔎 Searching for `{query}`",
     ).add_field("Search results", value=queried_msg)
-    msg = await reply(
+    msg = await say(
         ctx,
         ensure_result=True,
         embed=embed,
@@ -248,7 +245,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
         sel_msg: t.Optional[hk.Message] = None
 
         if not await on_going_tracks():
-            await stop__(ctx, lvc)
+            await stop(ctx, lvc)
 
         async for event in stream:
             inter = event.interaction
@@ -264,7 +261,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
                     await ch.delete_messages(sel_msg)
                 await ctx.delete_initial_response()
                 if not prior_stop:
-                    await continue__(ctx, lvc)
+                    await unstop(ctx, lvc)
                 return
 
             if key in map(str, range(1, QUERIED_N + 1)):
@@ -278,7 +275,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
                     hk.ResponseType.DEFERRED_MESSAGE_CREATE,
                 )
                 if await on_going_tracks():
-                    sel_msg = await reply(
+                    sel_msg = await say(
                         inter,
                         ensure_result=True,
                         content=f"👆 Selected track **`{key}`** `({track.info.title})`",
@@ -289,7 +286,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
                     PREVIEW_START
                 ).finish_time_millis(PREVIEW_START + PREVIEW_TIME).replace(True).start()
 
-                sel_msg = await reply(
+                sel_msg = await say(
                     inter,
                     ensure_result=True,
                     content=f"🎧 Playing a preview of **`{key}`** `({track.info.title})`",
@@ -298,7 +295,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
                 continue
 
             if selected is None:
-                await err_reply(inter, content=f"❗ No tracks has been selected yet")
+                await err_say(inter, content=f"❗ No tracks has been selected yet")
                 continue
             selected_t = queried[int(selected) - 1]
             if key == 'enqueue':
@@ -312,9 +309,9 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
                 if sel_msg:
                     await ch.delete_messages(sel_msg)
                 if not prior_stop:
-                    await continue__(ctx, lvc)
+                    await unstop(ctx, lvc)
                 async with access_queue(ctx, lvc) as q:
-                    await enqueue_track__(
+                    await enqueue_track(
                         ctx,
                         lvc,
                         track=selected_t,
@@ -330,7 +327,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
                 )
                 return
             elif key == 'link':
-                await reply(
+                await say(
                     inter, hidden=True, content=f"🌐 Link is {selected_t.info.uri}"
                 )
             else:
@@ -340,7 +337,7 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
             components=(*disable_components(ctx.rest, *components),)
         )
         if not prior_stop:
-            await continue__(ctx, lvc)
+            await unstop(ctx, lvc)
 
 
 # Queue
@@ -349,15 +346,12 @@ async def search_(ctx: EitherContext, query: str, /, *, lvc: lv.Lavalink) -> Non
 @tj.as_slash_command('queue', "Lists out the entire queue")
 #
 @tj.as_message_command('queue', 'q', 'all')
-async def queue(
+#
+@check(Checks.QUEUE | Checks.CONN)
+async def queue_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await queue_(ctx, lvc=lvc)
-
-
-@check(Checks.QUEUE | Checks.CONN)
-async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
     q = await get_queue(ctx, lvc)
     pages = await generate_queue_embeds__(ctx, lvc)
     pages_n = len(pages)
@@ -408,7 +402,7 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
         )
 
     embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
-    msg = await reply(
+    msg = await say(
         ctx,
         ensure_result=True,
         embed=embed,
@@ -476,7 +470,9 @@ async def queue_(ctx: tj.abc.Context, /, *, lvc: lv.Lavalink):
 @tj.with_greedy_argument('song', default=None)
 @tj.with_parser
 @tj.as_message_command('lyrics', 'ly')
-async def lyrics(
+#
+@check(Checks.CATCH_ALL)
+async def lyrics_(
     ctx: EitherContext,
     song: t.Optional[str],
     lvc: al.Injected[lv.Lavalink],
@@ -484,25 +480,13 @@ async def lyrics(
     """
     Attempts to find the lyrics of the current song
     """
-    await lyrics_(ctx, song, lvc=lvc)
-
-
-@check(Checks.CATCH_ALL)
-async def lyrics_(
-    ctx: EitherContext,
-    song: t.Optional[str],
-    /,
-    *,
-    lvc: lv.Lavalink,
-) -> None:
-    """Attempts to find the lyrics of the current song"""
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     erf = ctx.client.get_type_dependency(EmojiRefs)
     assert bot and erf
 
     if song is None:
         if not ((q := await get_queue(ctx, lvc)) and (np := q.current)):
-            await err_reply(
+            await err_say(
                 ctx, content=f"❌ Please specify a song title or play a track first"
             )
             return
@@ -525,7 +509,7 @@ async def lyrics_(
         async with trigger_thinking(ctx):
             lyrics = await get_lyrics(song)
     except LyricsNotFound:
-        await err_reply(ctx, content=f"❓ Could not find any lyrics for the song")
+        await err_say(ctx, content=f"❓ Could not find any lyrics for the song")
         return
 
     for source in lyrics:
@@ -536,7 +520,7 @@ async def lyrics_(
             .add_to_menu()
         )
 
-    icons: tuple[str] = tuple(erf[source.casefold()].url for source in lyrics)
+    icons: tuple[str] = (*(erf[source.casefold()].url for source in lyrics),)
 
     # (
     #     ly_sel.add_option('Cancel', 'cancel')
@@ -571,7 +555,7 @@ async def lyrics_(
 
     ly_sel.add_to_container()
     cancel_b.add_to_container()
-    msg = await reply(
+    msg = await say(
         ctx,
         ensure_result=True,
         embed=next(iter(embeds.values())),

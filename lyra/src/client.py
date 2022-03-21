@@ -1,5 +1,4 @@
 import os
-import json
 import yaml
 
 # import yuyo
@@ -13,12 +12,13 @@ import tanjun as tj
 import lavasnek_rs as lv
 
 from .lib import (
-    REPEAT_EMOJIS,
+    repeat_emojis,
     EventHandler,
     EmojiRefs,
     GuildConfig,
     cfg_ref,
-    hooks,
+    base_h,
+    restricts_c,
     update_cfg,
     inj_glob,
 )
@@ -31,7 +31,7 @@ logger.setLevel(logging.DEBUG)
 fn = next(inj_glob('./config.yml'))
 
 with open(fn.resolve(), 'r') as f:
-    _y = yaml.load(f, yaml.Loader)
+    _y = yaml.load(f, yaml.Loader)  # type: ignore
 
     PREFIX: list[str] = _y['prefixes']
 
@@ -48,8 +48,11 @@ client = (
         mention_prefix=True,
     )
     .add_prefix(PREFIX)
-    .set_hooks(hooks)
-    .load_modules(*('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py')))
+    .set_hooks(base_h)
+    .add_check(restricts_c)
+    .load_modules(
+        *('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py'))
+    )
 )
 
 activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
@@ -67,11 +70,12 @@ logger.info("Loaded guild_configs")
 async def prefix_getter(
     ctx: tj.abc.MessageContext, cfg: al.Injected[GuildConfig]
 ) -> t.Iterable[str]:
-    return (
+    prefixes: list[str] = (
         cfg.setdefault(str(ctx.guild_id), {}).setdefault('prefixes', [])
         if ctx.guild_id
         else []
     )
+    return prefixes
 
 
 EMOJIS_ACCESS = 777069316247126036
@@ -90,7 +94,7 @@ async def on_started(
         EmojiRefs, emoji_refs
     )
 
-    REPEAT_EMOJIS.extend(emoji_refs[f'repeat{n}_b'] for n in range(3))
+    repeat_emojis.extend(emoji_refs[f'repeat{n}_b'] for n in range(3))
 
 
 @client.with_listener(hk.ShardReadyEvent)

@@ -2,6 +2,7 @@ import typing as t
 import asyncio
 import logging
 import datetime as dt
+import functools as ft
 
 import hikari as hk
 import tanjun as tj
@@ -12,13 +13,20 @@ from .utils import (
     Q_DIV,
     get_pref,
     get_cmd_n,
-    reply,
-    err_reply,
+    say,
+    err_say,
     delete_after,
     disable_components,
 )
-from .errors import NotConnected, NotInVoice, Forbidden, RequestedToSpeak, VotingTimeout
-from .extras import VoidCoroutine, NULL, TIMEOUT, ms_stamp, wr, chunk, chunk_b
+from .errors import (
+    NotConnected,
+    NotInVoice,
+    Forbidden,
+    RequestedToSpeak,
+    Restricted,
+    VotingTimeout,
+)
+from .extras import VoidCoroutine, NULL, TIMEOUT, to_stamp, wr, chunk, chunk_b
 from .lavaimpl import (
     get_queue,
     access_data,
@@ -34,13 +42,14 @@ logger.setLevel(logging.DEBUG)
 music_h = tj.AnyHooks()
 
 
-_P = t.ParamSpec('_P')
+_P_c = t.ParamSpec('_P_c')
 
 
-def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
-    async def inner(*args: _P.args, **kwargs: _P.kwargs):
+def connect_vc(func: t.Callable[_P_c, VoidCoroutine]):
+    @ft.wraps(func)
+    async def inner(*args: _P_c.args, **kwargs: _P_c.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), NULL)
-        lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), NULL)
+        lvc = next((a for a in args if isinstance(a, lv.Lavalink)), NULL)
 
         assert ctx and lvc
         p = get_pref(ctx)
@@ -48,30 +57,37 @@ def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
         assert ctx.guild_id
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
 
+        inj_func = tj.as_self_injecting(ctx.client)(func)
+
         async def __join():
             assert ctx
             if not conn:
                 # Join the users voice channel if we are not already connected
                 try:
-                    await join__(ctx, None, lvc)
+                    await join(ctx, None, lvc)
                 except NotInVoice:
-                    await err_reply(
+                    await err_say(
                         ctx,
                         content=f"❌ Please join a voice channel first. You can also do `{p}join channel:` `[🔊 ...]`",
                     )
                     return
                 except TimeoutError:
-                    await err_reply(
+                    await err_say(
                         ctx,
                         content="⌛ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
                     )
                     return
                 except Forbidden as exc:
-                    await err_reply(
+                    await err_say(
                         ctx,
-                        content=f"⛔ Not sufficient permissions to join channel <#{exc.channel}",
+                        content=f"⛔ Not sufficient permissions to join channel <#{exc.channel}>",
                     )
                     return
+                except Restricted as exc:
+                    await err_say(
+                        ctx,
+                        content=f"🚷 This voice channel is {'blacklisted from' if exc.mode == -1 else 'not whitelisted to'} connect{'ing' if exc.mode == -1 else ''}. Consider checking the restricted channels list from `{p}config restrict list`",
+                    )
                 except RequestedToSpeak as sig:
                     bot = ctx.client.get_type_dependency(hk.GatewayBot)
                     assert bot
@@ -79,7 +95,7 @@ def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
                     if isinstance(ctx, tj.abc.AppCommandContext):
                         await ctx.defer()
 
-                    wait_msg = await ctx.client.rest.create_message(
+                    wait_msg = await ctx.rest.create_message(
                         ctx.channel_id,
                         f"⏳🎭📎 <#{sig.channel}> `(Sent a request to speak. Waiting to become a speaker...)`",
                     )
@@ -94,15 +110,15 @@ def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
                             predicate=lambda e: e.state.user_id == bot_u.id
                             and bool(e.state.channel_id)
                             and not e.state.is_suppressed
-                            and bool(ctx.client.cache)
+                            and bool(ctx.cache)
                             and isinstance(
-                                ctx.client.cache.get_guild_channel(sig.channel),
+                                ctx.cache.get_guild_channel(sig.channel),
                                 hk.GuildStageChannel,
                             ),
                         )
                     except asyncio.TimeoutError:
                         await wait_msg.edit(
-                            "⌛ Waiting timed out. Invite the bot to speak and invoke the command again",
+                            "⌛ Waiting timed out. Please invite the bot to speak and reinvoke the command",
                         )
                         asyncio.create_task(delete_after(ctx, wait_msg, time=5.0))
                         return
@@ -118,7 +134,7 @@ def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
             if not await __join():
                 return
 
-        await func(*args, **kwargs)
+        await inj_func(*args, **kwargs)
 
     return inner
 
@@ -126,7 +142,7 @@ def auto_connect_vc(func: t.Callable[_P, VoidCoroutine]):
 async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
-    cmd_n = ''.join((get_pref(ctx), get_cmd_n(ctx)))
+    cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_n(ctx)))
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
@@ -144,11 +160,11 @@ async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
         ctx.guild_id, channel
     )
-    listeners = tuple(
-        filter(
+    listeners = (
+        *filter(
             lambda v: not v.member.is_bot,
             voice_states.values(),
-        )
+        ),
     )
 
     voted = {ctx.author.id}
@@ -170,7 +186,7 @@ async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
             color=0xC2CED5,
         ).set_footer("Press the green button below to cast a vote!")
 
-    msg = await reply(
+    msg = await say(
         ctx,
         ensure_result=True,
         embed=v_embed(),
@@ -193,7 +209,7 @@ async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
             key = inter.custom_id
             if key == 'vote':
                 if (user_id := inter.user.id) in voted:
-                    await err_reply(inter, content="❗ You've already voted")
+                    await err_say(inter, content="❗ You've already voted")
                     continue
 
                 voted.add(user_id)
@@ -204,7 +220,6 @@ async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
                 await inter.edit_initial_response(embed=v_embed())
 
             if len(voted) >= threshold:
-                await reply(inter, content='☑️ Vote threshold reached')
                 await inter.edit_initial_response(
                     components=(*disable_components(inter.app.rest, row),)
                 )
@@ -229,7 +244,7 @@ async def generate_nowplaying_embed__(
     req = cache.get_member(guild_id, curr_t.requester)
     assert req, "That member has left the guild"
 
-    song_len = ms_stamp(t_info.length)
+    song_len = to_stamp(t_info.length)
     # np_pos = q.np_position // 1_000
     # now = int(time.time())
 
@@ -251,8 +266,8 @@ async def generate_nowplaying_embed__(
     return embed
 
 
-from src.modules.connections import join__, cleanups__
-from src.modules.playback import skip__
+from src.modules.connections import join, cleanup  # type: ignore
+from src.modules.playback import skip  # type: ignore
 
 
 @music_h.with_on_error
@@ -286,7 +301,7 @@ async def generate_queue_embeds__(
         np_info = np.track.info
         req = ctx.cache.get_member(ctx.guild_id, np.requester)
         assert req is not None
-        np_text = f"```arm\n{q.pos+1: >2}. {ms_stamp(np_info.length):>6} | {wr(np_info.title, 50)} |\n````Requested by:` {req.mention}"
+        np_text = f"```arm\n{q.pos+1: >2}. {to_stamp(np_info.length):>6} | {wr(np_info.title, 50)} |\n````Requested by:` {req.mention}"
     else:
         np_text = f"```yaml\n{'---':^63}\n```"
 
@@ -310,11 +325,9 @@ async def generate_queue_embeds__(
 
     color = None if q.is_paused or not q.current else q.curr_t_palette[2]
 
-    _base_embed = hk.Embed(
-        title="💿 Queue",
-        description=desc,
-        color=color,
-    ).set_footer(f"Queue Duration: {ms_stamp(queue_elapsed)} / {ms_stamp(queue_durr)}")
+    _base_embed = hk.Embed(title="💿 Queue", description=desc, color=color,).set_footer(
+        f"Queue Duration: {to_stamp(queue_elapsed)} / {to_stamp(queue_durr)} ({to_stamp(queue_eta)} Left)"
+    )
 
     _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
     _format_prev = (
@@ -330,7 +343,7 @@ async def generate_queue_embeds__(
             "Previous",
             _format_prev
             % (
-                f"{q.pos: >2}․ {ms_stamp(prev.track.info.length):>6} # {wr(prev.track.info.title, 51)}"
+                f"{q.pos: >2}․ {to_stamp(prev.track.info.length):>6} # {wr(prev.track.info.title, 51)}"
                 if prev
                 else _empty
             ),
@@ -344,7 +357,7 @@ async def generate_queue_embeds__(
             _format
             % (
                 "\n".join(
-                    f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
+                    f"{j: >2}․ {to_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
                     for j, t_ in enumerate(upcoming[:Q_DIV], q.pos + 2)
                 )
                 or _empty,
@@ -357,7 +370,7 @@ async def generate_queue_embeds__(
             "Previous",
             _format_prev
             % "\n".join(
-                f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} # {wr(t_.track.info.title, 51)}"
+                f"{j: >2}․ {to_stamp(t_.track.info.length):>6} # {wr(t_.track.info.title, 51)}"
                 for j, t_ in enumerate(
                     prev_slice,
                     1 + max(0, i) * Q_DIV + (0 if i == -1 else len(his[:-1]) % Q_DIV),
@@ -373,7 +386,7 @@ async def generate_queue_embeds__(
             "Next up",
             _format
             % "\n".join(
-                f"{j: >2}․ {ms_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
+                f"{j: >2}․ {to_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
                 for j, t_ in enumerate(next_slice, q.pos + 2 + i * Q_DIV)
             ),
         )
@@ -381,4 +394,4 @@ async def generate_queue_embeds__(
         if next_slice
     ]
 
-    return tuple(prev_embeds + [np_embed] + next_embeds)
+    return (*prev_embeds, np_embed, *next_embeds)

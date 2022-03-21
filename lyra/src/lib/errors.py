@@ -9,22 +9,19 @@ import lavasnek_rs as lv
 from hikari.permissions import Permissions as hkperms
 
 
-T = t.TypeVar('T')
-
-
 @a.define
-class Argument(t.Generic[T]):
-    got: T
-    expected: T
+class Argument:
+    got: t.Any
+    expected: t.Any
 
 
 @a.define(init=False)
-class BaseMusicCommandException(abc.ABC, Exception):
+class BaseCommandException(abc.ABC, Exception):
     pass
 
 
 @a.define
-class BadArgument(BaseMusicCommandException):
+class BadArgument(BaseCommandException):
     arg: Argument
 
 
@@ -39,19 +36,25 @@ class IllegalArgument(BadArgument):
 
 
 @a.define(init=False)
-class ConnectionSignal(BaseMusicCommandException):
+class ConnectionSignal(BaseCommandException):
     pass
 
 
 @a.define(init=False)
-class InvalidTimestampFormat(BaseMusicCommandException):
+class InvalidTimestampFormat(BaseCommandException):
     pass
 
 
 @a.define
-class Forbidden(BaseMusicCommandException):
+class Forbidden(BaseCommandException):
     perms: hkperms
     channel: t.Optional[hk.Snowflakeish] = a.field(default=None, kw_only=True)
+
+
+@a.define
+class Restricted(BaseCommandException):
+    mode: t.Literal[1, -1]
+    obj: t.Any
 
 
 @a.define
@@ -64,7 +67,7 @@ class ChannelMoved(ConnectionSignal):
     old_channel: hk.Snowflakeish
     new_channel: hk.Snowflakeish
     to_stage: bool = a.field(factory=bool, kw_only=True)
-    
+
 
 @a.define
 class RequestedToSpeak(ConnectionSignal):
@@ -72,7 +75,7 @@ class RequestedToSpeak(ConnectionSignal):
 
 
 @a.define(init=False)
-class PlaybackException(BaseMusicCommandException):
+class PlaybackException(BaseCommandException):
     pass
 
 
@@ -107,8 +110,8 @@ class OthersListening(OthersInVoice):
 
 
 @a.define
-class NotInVoice(ConnectionException):
-    channel: t.Optional[hk.Snowflakeish]
+class NotInVoice(BaseCommandException):
+    pass
 
 
 @a.define(init=False)
@@ -142,15 +145,15 @@ class TrackStopped(PlaybackException):
 
 
 @a.define(init=False)
-class QueryEmpty(BaseMusicCommandException):
+class QueryEmpty(BaseCommandException):
     pass
 
 
 @a.define(init=False)
-class LyricsNotFound(BaseMusicCommandException):
+class LyricsNotFound(BaseCommandException):
     pass
 
 
 @a.define(init=False)
-class VotingTimeout(TimeoutError, BaseMusicCommandException):
+class VotingTimeout(TimeoutError, BaseCommandException):
     pass

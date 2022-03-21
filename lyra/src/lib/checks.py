@@ -1,5 +1,7 @@
+import asyncio
 import enum as e
 import typing as t
+import functools as ft
 
 import hikari as hk
 import tanjun as tj
@@ -11,15 +13,16 @@ from .utils import (
     get_pref,
     get_rest,
     fetch_permissions,
-    err_reply,
+    err_say,
+    init_confirmation_prompt,
 )
 from .errors import (
+    AlreadyConnected,
     NotYetSpeaker,
     OthersInVoice,
     PlaybackChangeRefused,
     TrackStopped,
     NotConnected,
-    NotInVoice,
     Unautherized,
     NotPlaying,
     QueueEmpty,
@@ -32,9 +35,8 @@ from .extras import NULL, format_flags
 from hikari.permissions import Permissions as hkperms
 
 
-DJ_PERMS = hkperms.DEAFEN_MEMBERS | hkperms.MUTE_MEMBERS
-MOVER_PERMS = hkperms.MOVE_MEMBERS | DJ_PERMS
-
+DJ_PERMS: t.Final = hkperms.DEAFEN_MEMBERS | hkperms.MUTE_MEMBERS
+MOVER_PERMS: t.Final = hkperms.MOVE_MEMBERS | DJ_PERMS
 
 ConnectionInfo = dict[str, t.Any]
 
@@ -139,6 +141,7 @@ def check(
     *,
     perms: hkperms = hkperms.NONE,
     vote: bool = False,
+    prompt: bool = False,
 ):
     from .lavaimpl import get_queue
     from .music import init_listeners_voting
@@ -149,7 +152,7 @@ def check(
 
     P = t.ParamSpec('P')
 
-    async def check_in_vc__(
+    async def _check_in_vc(
         ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
     ):
         member = ctx_.member
@@ -159,7 +162,7 @@ def check(
         assert client.cache
         auth_perms = await fetch_permissions(ctx_)
 
-        channel = conn['channel_id']
+        channel: int = conn['channel_id']
         voice_states = client.cache.get_voice_states_view_for_channel(
             ctx_.guild_id, channel
         )
@@ -171,14 +174,14 @@ def check(
         )
 
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
-            raise NotInVoice(channel)
+            raise AlreadyConnected(channel)
 
     async def check_in_vc(ctx_: Contextish, lvc: lv.Lavalink):
         assert ctx_.guild_id
 
         conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
         assert isinstance(conn, dict)
-        await check_in_vc__(ctx_, conn)
+        await _check_in_vc(ctx_, conn)
 
     async def check_np_yours(ctx_: Contextish, lvc: lv.Lavalink):
         assert ctx_.member
@@ -225,23 +228,26 @@ def check(
             raise TrackPaused
 
     def callback(func: t.Callable[P, VoidCoroutine]) -> t.Callable[P, VoidCoroutine]:
+        @ft.wraps(func)
         async def inner(*args: P.args, **kwargs: P.kwargs) -> None:
 
             ctx_ = next((a for a in args if isinstance(a, Contextish)), NULL)
-            lvc = next((a for a in kwargs.values() if isinstance(a, lv.Lavalink)), NULL)
 
             assert ctx_, "Missing a Contextish object"
             assert ctx_.guild_id
             p = get_pref(ctx_)
+            client = get_client(ctx_)
+
+            lvc = client.get_type_dependency(lv.Lavalink)
+            inj_func = tj.as_self_injecting(client)(func)
 
             try:
                 if perms:
                     auth_perms = await fetch_permissions(ctx_)
                     if not (auth_perms & (perms | hkperms.ADMINISTRATOR)):
                         raise Unautherized(perms)
-
                 if not lvc:
-                    await func(*args, **kwargs)
+                    await inj_func(*args, **kwargs)
                     return
 
                 if Checks.CONN & checks:
@@ -284,37 +290,48 @@ def check(
                 if Checks.PAUSE & checks:
                     await check_pause(ctx_, lvc)
 
-                await func(*args, **kwargs)
+                if prompt:
+                    assert isinstance(ctx_, tj.abc.Context)
+                    try:
+                        if not await init_confirmation_prompt(ctx_):
+                            await err_say(ctx_, content="🛑 Cancelled the command")
+                            return
+                    except asyncio.TimeoutError:
+                        await err_say(
+                            ctx_, content="⌛ Timed out. Please reinvoke the command"
+                        )
+                        return
+                await inj_func(*args, **kwargs)
             except Unautherized as exc:
-                await err_reply(
+                await err_say(
                     ctx_,
                     content=f"🚫 You lack the `{format_flags(exc.perms)}` permissions to use this command",
                 )
             except OthersListening as exc:
-                await err_reply(
+                await err_say(
                     ctx_,
                     content=f"🚫 You can only do this if you are alone in <#{exc.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
                 )
             except OthersInVoice as exc:
-                await err_reply(
+                await err_say(
                     ctx_,
                     content=f"🚫 Someone else is already in <#{exc.channel}>.\n **You bypass this by having the {mover_perms_fmt} permissions**",
                 )
-            except NotInVoice as exc:
-                await err_reply(
+            except AlreadyConnected as exc:
+                await err_say(
                     ctx_,
                     content=f"🚫 Join <#{exc.channel}> first. **You bypass this by having the {dj_perms_fmt} permissions**",
                 )
             except NotConnected:
-                await err_reply(
+                await err_say(
                     ctx_,
                     content=f"❌ Not currently connected to any channel. Use `{p}join` or `{p}play` first",
                 )
             except QueueEmpty:
-                await err_reply(ctx_, content="❗ The queue is empty")
+                await err_say(ctx_, content="❗ The queue is empty")
             except NotYetSpeaker as exc:
                 rest = get_rest(ctx_)
-                await err_reply(
+                await err_say(
                     ctx_,
                     content="❗👥 Not yet a speaker in the current stage. Sending a request to speak...",
                 )
@@ -322,21 +339,21 @@ def check(
                     ctx_.guild_id, exc.channel, request_to_speak=True
                 )
             except NotPlaying:
-                await err_reply(ctx_, content="❗ Nothing is playing at the moment")
+                await err_say(ctx_, content="❗ Nothing is playing at the moment")
             except PlaybackChangeRefused:
-                await err_reply(
+                await err_say(
                     ctx_,
                     content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
                 )
             except TrackPaused:
-                await err_reply(ctx_, content="❗ The current track is paused")
+                await err_say(ctx_, content="❗ The current track is paused")
             except TrackStopped:
-                await err_reply(
+                await err_say(
                     ctx_,
                     content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
                 )
             except QueryEmpty:
-                await err_reply(
+                await err_say(
                     ctx_, content="❓ No tracks found. Please try changing your wording"
                 )
 
