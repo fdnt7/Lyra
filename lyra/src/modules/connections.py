@@ -42,7 +42,7 @@ async def join(
     /,
 ) -> hk.Snowflake:
     """Joins your voice channel."""
-    assert ctx.guild_id
+    assert ctx.guild_id and ctx.member
 
     if not (ctx.cache and ctx.shards):
         raise InternalError
@@ -87,6 +87,8 @@ async def join(
     if not (my_perms & (p := hkperms.CONNECT)):
         raise Forbidden(p, channel=new_ch)
 
+    from src.modules.config import RESTRICTOR
+
     cfg = ctx.client.get_type_dependency(GuildConfig)
     assert cfg
 
@@ -94,9 +96,14 @@ async def join(
     res_ch_all: list[int] = res_ch.get('all', [])
     ch_wl = res_ch.get('wl_mode', 0)
 
-    if (ch_wl == 1 and new_ch not in res_ch_all) or (
-        ch_wl == -1 and new_ch in res_ch_all
-    ):
+    author_perms = await tj.utilities.fetch_permissions(
+        ctx.client, ctx.member, channel=ctx.channel_id
+    )
+
+    if (
+        (ch_wl == 1 and new_ch not in res_ch_all)
+        or (ch_wl == -1 and new_ch in res_ch_all)
+    ) and not (author_perms & (hkperms.ADMINISTRATOR | RESTRICTOR)):
         raise Restricted(ch_wl, obj=new_ch)
 
     # Connect to the channel

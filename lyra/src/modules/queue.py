@@ -820,6 +820,7 @@ repeat_impl = check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE, vote=True)(
     'mode',
     "Which mode? (If not given, will cycle between: All > One > Off)",
     choices={'All': 'all', 'One': 'one', 'Off': 'off'},
+    converters=to_repeat_mode,
     default=None,
 )
 @tj.as_slash_command('repeat', "Select a repeat mode for the queue")

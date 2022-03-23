@@ -88,6 +88,7 @@ def connect_vc(func: t.Callable[_P_c, VoidCoroutine]):
                         ctx,
                         content=f"🚷 This voice channel is {'blacklisted from' if exc.mode == -1 else 'not whitelisted to'} connect{'ing' if exc.mode == -1 else ''}. Consider checking the restricted channels list from `{p}config restrict list`",
                     )
+                    return
                 except RequestedToSpeak as sig:
                     bot = ctx.client.get_type_dependency(hk.GatewayBot)
                     assert bot

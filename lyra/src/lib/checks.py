@@ -35,8 +35,7 @@ from .extras import NULL, format_flags
 from hikari.permissions import Permissions as hkperms
 
 
-DJ_PERMS: t.Final = hkperms.DEAFEN_MEMBERS | hkperms.MUTE_MEMBERS
-MOVER_PERMS: t.Final = hkperms.MOVE_MEMBERS | DJ_PERMS
+DJ_PERMS: t.Final = hkperms.MOVE_MEMBERS
 
 ConnectionInfo = dict[str, t.Any]
 
@@ -105,7 +104,7 @@ async def check_speaker(ctx_: Contextish, /):
 
 
 async def check_others_not_in_vc__(
-    ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = MOVER_PERMS
+    ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
 ):
     auth_perms = await fetch_permissions(ctx_)
     member = ctx_.member
@@ -148,7 +147,6 @@ def check(
     from .extras import VoidCoroutine
 
     dj_perms_fmt = format_flags(DJ_PERMS)
-    mover_perms_fmt = format_flags(MOVER_PERMS)
 
     P = t.ParamSpec('P')
 
@@ -315,7 +313,7 @@ def check(
             except OthersInVoice as exc:
                 await err_say(
                     ctx_,
-                    content=f"🚫 Someone else is already in <#{exc.channel}>.\n **You bypass this by having the {mover_perms_fmt} permissions**",
+                    content=f"🚫 Someone else is already in <#{exc.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
                 )
             except AlreadyConnected as exc:
                 await err_say(
