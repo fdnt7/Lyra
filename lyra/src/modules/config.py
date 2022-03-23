@@ -105,10 +105,6 @@ async def restrict_list_edit(
     res_r_all: list[int] = res_r.setdefault('all', [])
     res_u_all: list[int] = res_u.setdefault('all', [])
 
-    ch_wl = res_ch.get('wl_mode', 0)
-    r_wl = res_r.get('wl_mode', 0)
-    u_wl = res_u.get('wl_mode', 0)
-
     new_ch: list[int] = []
     new_r: list[int] = []
     new_u: list[int] = []
@@ -407,7 +403,7 @@ async def restrict_add_m(
 
 
 @restrict_sg_s.with_command
-@tj.with_mentionable_slash_option('mentionable', "Which channel/role/member ?")
+@tj.with_str_slash_option('mentionable', "Which channel/role/member ?", converters=(tj.to_user, tj.to_role, tj.to_channel))
 @tj.as_slash_command(
     'add', "Adds new channels, roles or members to the restricted list"
 )
@@ -442,7 +438,7 @@ async def restrict_remove_m(
 
 
 @restrict_sg_s.with_command
-@tj.with_mentionable_slash_option('mentionable', "Which channel/role/member ?")
+@tj.with_str_slash_option('mentionable', "Which channel/role/member ?", converters=(tj.to_user, tj.to_role, tj.to_channel))
 @tj.as_slash_command(
     'remove', "Removes existing channels, roles or members from the restricted list"
 )
