@@ -541,7 +541,7 @@ async def restricts_c(
     if ch_wl == -1 and ctx.channel_id in res_ch_all:
         await ephim_say(
             ctx,
-            content=f"🚷 This channel is blacklisted from using the bot. Refrain from using the bot in {join_and(('<#%i>' % ch for ch in res_ch_all), and_=' or ')}",
+            content=f"🚷 This channel is blacklisted from using the bot. Refrain from using the bot in {join_and(('<#%s>' % ch for ch in res_ch_all), and_=' or ')}",
         )
         return False
 
