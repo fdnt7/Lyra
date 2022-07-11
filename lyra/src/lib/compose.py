@@ -1,20 +1,33 @@
 import asyncio
-import enum as e
 import typing as t
 import functools as ft
 
-import hikari as hk
 import tanjun as tj
 import lavasnek_rs as lv
 
+from hikari.permissions import Permissions as hkperms
 from .utils import (
+    BindSig,
+    BaseCommandType,
     Contextish,
     get_client,
     get_pref,
     get_rest,
     fetch_permissions,
+    say,
     err_say,
     init_confirmation_prompt,
+)
+from .flags import (
+    Binds,
+    Checks,
+    DJ_PERMS,
+    ConnectionInfo,
+    dj_perms_fmt,
+    others_not_in_vc_check_impl,
+    parse_binds,
+    parse_checks,
+    speaker_check,
 )
 from .errors import (
     AlreadyConnected,
@@ -31,110 +44,22 @@ from .errors import (
     QueryEmpty,
     VotingTimeout,
 )
-from .extras import NULL, format_flags
-from hikari.permissions import Permissions as hkperms
+from .extras import NULL, Decorator, Option, Result, format_flags
+from .lavautils import get_queue
 
 
-DJ_PERMS: t.Final = hkperms.MOVE_MEMBERS
-
-ConnectionInfo = dict[str, t.Any]
-
-
-class Checks(e.Flag):
-    CATCH_ALL = 0
-
-    IN_VC = e.auto()
-    """Checks whether you are in voice or whether you have the permissions specified"""
-
-    OTHERS_NOT_IN_VC = e.auto()
-    """Checks whether there is no one else in voice or whether you have the premissions specified"""
-
-    IN_VC_ALONE = IN_VC | OTHERS_NOT_IN_VC
-    """Checks whether you are alone in voice or whether you have the permissions specified"""
-
-    CONN = e.auto()
-    """Check whether the bot is currently connected in this guild's voice"""
-
-    QUEUE = e.auto()
-    """Check whether the queue for this guild is not yet empty"""
-
-    SPEAK = e.auto()
-    """Check whether the bot is a speaker if it's in a stage channel"""
-
-    PLAYING = e.auto()
-    """Check whether there is a currently playing track"""
-
-    CAN_SEEK_ANY = e.auto()
-    """Checks whether your requested track is currently playing or you have the DJ permissions"""
-
-    ALONE__SPEAK__CAN_SEEK_ANY = SPEAK | CAN_SEEK_ANY | IN_VC_ALONE
-    """Checks whether the bot is speaking and you are alone in voice or whether you have the permissions specified, then checks whether your requested track is currently playing or you have the DJ permissions"""
-
-    NP_YOURS = e.auto()
-    """Checks whether you requested the current track or you have the DJ permissions"""
-
-    ALONE__SPEAK__NP_YOURS = SPEAK | NP_YOURS | IN_VC_ALONE
-    """Checks whether the bot is speaking and you are alone in voice or whether you have the permissions specified, then checks whether you requested the current track or you have the DJ permissions"""
-
-    ADVANCE = STOP = e.auto()
-    """Check whether the current track had been stopped"""
-
-    PLAYBACK = PAUSE = e.auto()
-    """Checks whether the currently playing track had been paused"""
-
-
-async def check_speaker(ctx_: Contextish, /):
-    assert ctx_.guild_id
-
-    client = get_client(ctx_)
-    assert client.cache
-
-    bot_u = client.cache.get_me()
-    assert bot_u
-
-    state = client.cache.get_voice_state(ctx_.guild_id, bot_u.id)
-    assert state
-    if (
-        (vc_id := state.channel_id)
-        and isinstance(client.cache.get_guild_channel(vc_id), hk.GuildStageChannel)
-        and state.user_id == bot_u.id
-        and state.is_suppressed
-    ):
-        raise NotYetSpeaker(vc_id)
-
-
-async def check_others_not_in_vc__(
-    ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
-):
-    auth_perms = await fetch_permissions(ctx_)
-    member = ctx_.member
-    client = get_client(ctx_)
-    assert client.cache and ctx_.guild_id and member
-    channel = conn['channel_id']
-
-    voice_states = client.cache.get_voice_states_view_for_channel(
-        ctx_.guild_id, channel
-    )
-    others_in_voice = set(
-        filter(
-            lambda v: not v.member.is_bot and v.member.id != member.id,
-            voice_states.values(),
-        )
-    )
-
-    if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and others_in_voice:
-        raise OthersInVoice(channel)
-
-
-async def check_others_not_in_vc(ctx_: Contextish, lvc: lv.Lavalink, /):
+async def others_not_in_vc_check(ctx_: Contextish, lvc: lv.Lavalink, /) -> Result[bool]:
     assert ctx_.guild_id
 
     conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
     assert isinstance(conn, dict)
-    await check_others_not_in_vc__(ctx_, conn, perms=DJ_PERMS)
+    return await others_not_in_vc_check_impl(ctx_, conn, perms=DJ_PERMS)
 
 
-def check(
+#
+
+
+def with_cb_check(
     checks: Checks = Checks.CATCH_ALL,
     /,
     *,
@@ -142,11 +67,8 @@ def check(
     vote: bool = False,
     prompt: bool = False,
 ):
-    from .lavaimpl import get_queue
-    from .music import init_listeners_voting
-    from .extras import VoidCoroutine
-
-    dj_perms_fmt = format_flags(DJ_PERMS)
+    from .extras import VoidCoro
+    from .musicutils import init_listeners_voting
 
     P = t.ParamSpec('P')
 
@@ -154,7 +76,7 @@ def check(
         ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
     ):
         member = ctx_.member
-        assert member and ctx_.guild_id
+        assert ctx_.guild_id
 
         client = get_client(ctx_)
         assert client.cache
@@ -164,12 +86,12 @@ def check(
         voice_states = client.cache.get_voice_states_view_for_channel(
             ctx_.guild_id, channel
         )
-        author_in_voice = set(
-            filter(
-                lambda v: v.member.id == member.id,
+        author_in_voice = {
+            *filter(
+                lambda v: member and v.member.id == member.id,
                 voice_states.values(),
             )
-        )
+        }
 
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
             raise AlreadyConnected(channel)
@@ -225,7 +147,7 @@ def check(
         if (await get_queue(ctx_, lvc)).is_paused:
             raise TrackPaused
 
-    def callback(func: t.Callable[P, VoidCoroutine]) -> t.Callable[P, VoidCoroutine]:
+    def callback(func: t.Callable[P, VoidCoro]) -> t.Callable[P, VoidCoro]:
         @ft.wraps(func)
         async def inner(*args: P.args, **kwargs: P.kwargs) -> None:
 
@@ -253,14 +175,14 @@ def check(
                 if Checks.QUEUE & checks:
                     await check_queue(ctx_, lvc)
                 if Checks.SPEAK & checks:
-                    await check_speaker(ctx_)
+                    await speaker_check(ctx_)
                 if Checks.PLAYING & checks:
                     await check_playing(ctx_, lvc)
                 if Checks.IN_VC & checks:
                     await check_in_vc(ctx_, lvc)
                 if Checks.OTHERS_NOT_IN_VC & checks:
                     try:
-                        await check_others_not_in_vc(ctx_, lvc)
+                        await others_not_in_vc_check(ctx_, lvc)
                     except OthersInVoice as exc:
                         try:
                             if Checks.CAN_SEEK_ANY & checks:
@@ -292,11 +214,14 @@ def check(
                     assert isinstance(ctx_, tj.abc.Context)
                     try:
                         if not await init_confirmation_prompt(ctx_):
-                            await err_say(ctx_, content="🛑 Cancelled the command")
+                            await err_say(
+                                ctx_, follow_up=False, content="🛑 Cancelled the command"
+                            )
                             return
                     except asyncio.TimeoutError:
-                        await err_say(
-                            ctx_, content="⌛ Timed out. Please reinvoke the command"
+                        await say(
+                            ctx_,
+                            content="⌛ Timed out. Please reinvoke the command",
                         )
                         return
                 await inj_func(*args, **kwargs)
@@ -350,11 +275,83 @@ def check(
                     ctx_,
                     content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
                 )
-            except QueryEmpty:
-                await err_say(
-                    ctx_, content="❓ No tracks found. Please try changing your wording"
-                )
+            except QueryEmpty as exc:
+                await err_say(ctx_, content=f"❓ No tracks found for `{exc.query_str}`")
 
         return inner
 
     return callback
+
+
+_CMD = t.TypeVar('_CMD', bound=BaseCommandType)
+
+
+async def _as_author_permission_check(
+    ctx: tj.abc.Context, perms: hkperms | int
+) -> Result[bool]:
+    assert perms
+    check = tj.checks.AuthorPermissionCheck(perms, error_message=None)
+    if not await check(ctx):
+        await err_say(
+            ctx,
+            content=f"🚫 You lack the `{format_flags(hkperms(perms))}` permissions to use this command",
+        )
+        raise tj.HaltExecution
+    return True
+
+
+def with_cmd_composer(
+    binds: Option[Binds] = None,
+    checks: Option[Checks] = None,
+    *,
+    perms: Option[hkperms] = None,
+) -> Decorator[_CMD]:
+
+    _checks: list[tj.abc.CheckSig] = []
+    _binds: list[BindSig] = []
+
+    if binds:
+        _binds.extend(parse_binds(binds))
+
+    if checks:
+        _checks.extend(parse_checks(checks))
+
+    if perms:
+        _checks.insert(0, ft.partial(_as_author_permission_check, perms=perms))
+
+    def _with_checks_and_binds(cmd: _CMD, /) -> _CMD:
+        cmd.metadata['checks'] = checks
+        cmd.metadata['binds'] = binds
+        cmd.metadata['perms'] = perms
+        return tj.with_all_checks(*_binds, *_checks)(cmd)
+
+    return _with_checks_and_binds
+
+
+def with_cmd_checks(checks: Checks, /) -> Decorator[_CMD]:
+    """Bind an implementation of tanjun's "all check" to a command from the given check flags through a decorator call
+
+
+
+    Args
+    ---
+        checks (`Checks`): The check flags
+
+    Returns
+    ---
+        `t.Callable[[_CMD], _CMD]`: The bound command for method chaining
+    """
+
+    _checks = parse_checks(checks)
+
+    def _with_checks(cmd: _CMD, /) -> _CMD:
+        cmd.metadata['checks'] = checks
+        return tj.with_all_checks(*_checks)(cmd)
+
+    return _with_checks
+
+
+def with_author_permission_check(permissions: hkperms | int, /) -> Decorator[_CMD]:
+    return lambda c: c.add_check(
+        ft.partial(_as_author_permission_check, perms=permissions)
+    )

@@ -1,7 +1,6 @@
 import yaml
 import argparse
 
-from colorama import Back as cb
 from colorama import Fore as cf
 from colorama import Style as cs
 
@@ -10,6 +9,7 @@ parser.add_argument('-d', '--dev')
 
 args = parser.parse_args()
 with open('../config.yml', 'r') as f:
+    # pyright: reportUnknownMemberType=false
     _y = yaml.load(f, yaml.Loader)
 
     if args.dev in {'t', 'T'}:

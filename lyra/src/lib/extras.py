@@ -1,144 +1,90 @@
 import os
-import io
-import re
 import time
 import enum as e
 import typing as t
-import asyncio
 import pathlib as pl
 import functools as ft
 import itertools as it
-import urllib.error as urllib_er
-import urllib.request as urllib_rq
+import collections as cl
 
-import scipy.cluster  # type: ignore
-import sklearn.cluster  # type: ignore
-import attr as a
-import lyricsgenius as lg  # type: ignore
-import lavasnek_rs as lv
-
-
-from PIL import Image as pil_img
-from ytmusicapi import YTMusic  # type: ignore
-
-
-_T_co = t.TypeVar('_T_co', covariant=True)
-Required = t.Union[_T_co, None]
-VoidCoroutine = t.Coroutine[t.Any, t.Any, None]
-
-
-time_regex: t.Final = re.compile(
-    r"^((\d+):)?([0-5][0-9]|[0-9]):([0-5][0-9]|[0-9])(.([0-9]{1,3}))?$"
+# pyright: reportUnusedImport=false
+from ._extras_types import (
+    Option,
+    Decorator,
+    _DecoratedT,  # pyright: ignore [reportPrivateUsage]
+    Result,
+    NULL,
+    VoidCoro,
+    RGBTriplet,
+    MaybeIterable,
+    URLstr,
 )
-time_regex_2: t.Final = re.compile(
-    r"^(?!\s*$)((\d+)h)?(([0-9]|[0-5][0-9])m)?(([0-9]|[0-5][0-9])s)?(([0-9]|[0-9][0-9]|[0-9][0-9][0-9])ms)?$"
+from ._extras_vars import time_regex, time_regex_2, url_regex, loop
+from ._extras_untyped import (
+    limit_bytes_img_size,
+    get_img_pallete,
+    get_thumbnail,
+    get_lyrics,
+    url_to_bytesio,
 )
-youtube_regex: t.Final = re.compile(
-    r"^(?:https?:)?(?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch|v|embed)(?:\.php)?(?:\?.*v=|\/))([a-zA-Z0-9\_-]{7,15})(?:[\?&][a-zA-Z0-9\_-]+=[a-zA-Z0-9\_-]+)*(?:[&\/\#].*)?$"
-)
-url_regex: t.Final = re.compile(
-    r'^(?:http|ftp)s?://'  # http:// or https://
-    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
-    r'localhost|'  # localhost...
-    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-    r'(?::\d+)?'  # optional port
-    r'(?:/?|[/?]\S+)$',
-    re.I,
-)
-genius_regex: t.Final = re.compile(r'\d*Embed')
-genius_regex_2: t.Final = re.compile(r'^.+ Lyrics\n')
-# LYRICS_URL = 'https://some-random-api.ml/lyrics?title='
-
-TIMEOUT = 60
-RETRIES = 3
-
-ytmusic: t.Final = YTMusic()
-genius: t.Final = lg.Genius(
-    os.environ['GENIUS_ACCESS_TOKEN'], remove_section_headers=True, retries=3, timeout=8
-)
-genius.verbose = False
-loop = asyncio.get_event_loop()
+from .consts import LOG_PAD
 
 
-@a.define(hash=True, init=False, frozen=True)
-class NullType(object):
-    def __bool__(self) -> t.Literal[False]:
-        return False
+class AutoDocsFlag(e.Flag):
+    """
+    An implementation of python's `Flag` with documentation support
+
+    Usage:
+    ```
+    class A(AutoDocsFlag):
+        a = \"\"\"docs for a\"\"\", value_for_a
+
+    >>> A.a.__doc__
+    >>> "docs for a"
+    ```
+    """
+
+    def __new__(cls, _doc: str, value: Option[int] = None, *_other: t.Any):
+        obj = object.__new__(cls)
+        obj._value_ = (
+            (1 if not len(cls) else (((*cls,)[-1].value << 1) or 1))
+            if value is None
+            else value
+        )
+        return obj
+
+    def __init__(self, doc: str, *_: t.Any):
+        self.__doc__ = doc
+
+    def split(self):
+        return frozenset(e for e in self.__class__ if self & e)
 
 
-_S_co = t.TypeVar('_S_co', covariant=True)
-NULL = NullType()
-NullOr = t.Union[_S_co, NullType]
+class AutoDocsEnum(e.Enum):
+    """
+    An implementation of python's `Enum` with documentation support
 
+    Usage:
+    ```
+    class A(AutoDocsEnum):
+        a = \"\"\"docs for a\"\"\", value_for_a
 
-class LyricsData(t.NamedTuple):
-    source: str
-    lyrics: str
-    title: str
-    artist: str
-    thumbnail: str
-    url: t.Optional[str] = None
-    artist_icon: t.Optional[str] = None
-    artist_url: t.Optional[str] = None
+    >>> A.a.__doc__
+    >>> "docs for a"
+    ```
+    """
 
+    def __new__(cls, _doc: str, value: Option[int] = None, *_other: t.Any):
+        obj = object.__new__(cls)
+        obj._value_ = (
+            (1 if not len(cls) else (((*cls,)[-1].value + 1) or 1))
+            if value is None
+            else value
+        )
+        return obj
 
-async def get_lyrics_yt(song: str, /) -> t.Optional[LyricsData]:
-    queried = ytmusic.search(song, 'songs') + ytmusic.search(song, 'videos')  # type: ignore
-    if not queried:
-        return
-    track_data_0 = queried[0]['videoId']  # type: ignore
-    watches = ytmusic.get_watch_playlist(track_data_0)  # type: ignore
-    track_data: dict[str, t.Any] = watches['tracks'][0]
-    if watches['lyrics'] is None:
-        return
-
-    lyrics_id = watches['lyrics']  # type: ignore
-    assert isinstance(lyrics_id, str)
-    lyrics: dict[str, str] = ytmusic.get_lyrics(lyrics_id)  # type: ignore
-    source: str = lyrics['source'].replace("Source: ", '')
-
-    return LyricsData(
-        title=track_data['title'],
-        lyrics=lyrics['lyrics'],
-        thumbnail=track_data['thumbnail'][-1]['url'],
-        artist=" & ".join((a['name'] for a in track_data['artists'])),
-        source=source,
-    )
-
-
-async def get_lyrics_ge(song: str, /) -> t.Optional[LyricsData]:
-    song_0 = genius.search_song(song, get_full_info=False)  # type: ignore
-    if not song_0:
-        return
-
-    lyrics = genius.lyrics(song_url=song_0.url)  # type: ignore
-
-    if not lyrics:
-        return
-
-    lyrics = genius_regex_2.sub('', genius_regex.sub('', lyrics))  # type: ignore
-
-    artist = song_0.primary_artist  # type: ignore
-    return LyricsData(
-        title=song_0.title,  # type: ignore
-        url=song_0.url,  # type: ignore
-        artist=song_0.artist,  # type: ignore
-        lyrics=lyrics,
-        thumbnail=song_0.song_art_image_url,  # type: ignore
-        source="Genius",
-        artist_icon=artist.image_url,  # type: ignore
-        artist_url=artist.url,  # type: ignore
-    )
-
-
-async def get_lyrics(song: str, /) -> dict[str, LyricsData]:
-    from .errors import LyricsNotFound
-
-    # tests = (get_lyrics_ge(song), get_lyrics_yt(song))
-    tests = (get_lyrics_yt(song),)
-    if not any(lyrics := await asyncio.gather(*tests)):
-        raise LyricsNotFound
-    return {l.source: l for l in lyrics if l}
+    def __init__(self, doc: str, *_: t.Any):
+        self.__doc__ = doc
 
 
 def curr_time_ms() -> int:
@@ -198,16 +144,18 @@ def format_flags(flags: e.Flag, /) -> str:
     return ' & '.join(f.replace('_', ' ').title() for f in str(flags).split('|'))
 
 
-_E = t.TypeVar('_E')
+_TE = t.TypeVar('_TE')
 
 
-def chunk(seq: t.Sequence[_E], n: int, /) -> t.Generator[t.Sequence[_E], None, None]:
+def chunk(seq: t.Sequence[_TE], n: int, /) -> t.Generator[t.Sequence[_TE], None, None]:
     """Yield successive `n`-sized chunks from `seq`."""
     for i in range(0, len(seq), n):
         yield seq[i : i + n]
 
 
-def chunk_b(seq: t.Sequence[_E], n: int, /) -> t.Generator[t.Sequence[_E], None, None]:
+def chunk_b(
+    seq: t.Sequence[_TE], n: int, /
+) -> t.Generator[t.Sequence[_TE], None, None]:
     """Yield successive `n`-sized chunks from `seq`, backwards."""
     start = 0
     for end in range(len(seq) % n, len(seq) + 1, n):
@@ -221,51 +169,6 @@ def inj_glob(pattern: str, /):
     else:
         p = pl.Path('.') / '..'
     return p.glob(pattern)
-
-
-@ft.cache
-def get_img_pallete(
-    img_url: str, /, *, n: int = 10, resize: tuple[int, int] = (150, 150)
-):
-    import numpy as np
-
-    img_b = io.BytesIO(urllib_rq.urlopen(img_url).read())
-    img = pil_img.open(img_b).resize(resize)  # optional, to reduce time
-    ar = np.asarray(img)  # type: ignore
-    shape = ar.shape
-    ar = ar.reshape(np.product(shape[:2]), shape[2]).astype(float)  # type: ignore
-
-    kmeans = sklearn.cluster.MiniBatchKMeans(  # type: ignore
-        n_clusters=n, init="k-means++", max_iter=20, random_state=1000
-    ).fit(ar)
-    codes = kmeans.cluster_centers_  # type: ignore
-
-    # assign codes
-    vecs, _dist = scipy.cluster.vq.vq(ar, codes)  # type: ignore
-    # count occurrences
-    counts, _bins = np.histogram(vecs, len(codes))  # type: ignore
-
-    return (
-        *((*(int(code) for code in codes[i]),) for i in np.argsort(counts)[::-1]),  # type: ignore
-    )  # returns colors in order of dominance
-
-
-@ft.cache
-def get_thumbnail(t_info: lv.Info, /) -> str | t.NoReturn:
-    id_ = t_info.identifier
-
-    # TODO: Make this support not just Youtube
-    res = ('maxresdefault', 'sddefault', 'mqdefault', 'hqdefault', 'default')
-
-    for x in res:
-        url = f'https://img.youtube.com/vi/{id_}/{x}.jpg'
-        try:
-            if (urllib_rq.urlopen(url)).getcode() == 200:
-                return url
-        except urllib_er.HTTPError:
-            continue
-
-    raise NotImplementedError
 
 
 _CE = t.TypeVar('_CE')
@@ -295,3 +198,27 @@ def split_preset(str_: str, /, *, sep_1: str = ',', sep_2: str = '|'):
 
 def fmt_str(iter_strs: t.Iterable[str], /, *, sep: str = ', ') -> str:
     return sep.join('\"%s\"' % s for s in iter_strs)
+
+
+def composed(*decs: Decorator[_DecoratedT]) -> Decorator[_DecoratedT]:
+    def decorator(f: _DecoratedT) -> _DecoratedT:
+        for dec in reversed(decs):
+            f = dec(f)
+        return f
+
+    return decorator
+
+
+__E = t.TypeVar('__E')
+_KE = t.TypeVar('_KE')
+
+
+def groupby(
+    seq: t.Iterable[__E], /, *, key: t.Callable[[__E], _KE] = lambda e: e
+) -> dict[_KE, list[__E]]:
+    d: dict[_KE, list[__E]] = cl.defaultdict(list)
+    return ft.reduce(lambda grp, val: grp[key(val)].append(val) or grp, seq, d)
+
+
+def lgfmt(dunder_name: str, /) -> str:
+    return f"{'.'.join(dunder_name.split('.')[1:]):<{LOG_PAD}}"

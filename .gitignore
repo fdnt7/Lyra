@@ -1,5 +1,6 @@
 desktop.ini
 
+.lyra
 lyra/.idea
 lyra/.vscode
 lyra/.mypy_cache
@@ -7,6 +8,7 @@ lyra/.venv
 lyra/shared
 lyra/old
 lyra/temp
+lyra/typings
 
 lavalink-win
 lavalink-linux

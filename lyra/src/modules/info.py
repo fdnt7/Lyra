@@ -1,68 +1,52 @@
-import typing as t
-import logging
-
 import hikari as hk
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-
-from src.lib.music import music_h, connect_vc, generate_queue_embeds__
-from src.lib.utils import (
-    Q_DIV,
+from ..lib.utils import (
+    Q_CHUNK,
+    TIMEOUT,
     EitherContext,
     EmojiRefs,
     EditableComponentsType,
-    guild_c,
+    limit_img_size_by_guild,
     say,
     err_say,
     extract_content,
     trigger_thinking,
     disable_components,
+    with_metadata,
 )
-from src.lib.errors import QueryEmpty, LyricsNotFound
-from src.lib.extras import TIMEOUT, to_stamp, wr, get_lyrics
-from src.lib.checks import Checks, check
-from src.lib.lavaimpl import get_queue, access_queue
-from src.lib.consts import LOG_PAD
+from ..lib.playback import stop, unstop
+from ..lib.musicutils import generate_queue_embeds, init_component
+from ..lib.errors import QueryEmpty, LyricsNotFound
+from ..lib.extras import Option, to_stamp, wr, get_lyrics
+from ..lib.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
+from ..lib.lavautils import get_queue, access_queue
 
 
-info = tj.Component(name='Info', strict=True).add_check(guild_c).set_hooks(music_h)
-
-
-logger = logging.getLogger(f"{'info':<{LOG_PAD}}")
-logger.setLevel(logging.DEBUG)
-
-
-# Ping
-
-
-@tj.as_slash_command('ping', "Shows the bot's latency")
-#
-@tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
-async def ping_(ctx: tj.abc.Context):
-    """
-    Shows the bot's latency
-    """
-    assert ctx.shards
-    await say(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
+info = init_component(__name__)
 
 
 # Now Playing
 
 
+with_np_cmd_check = with_cmd_checks(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
+
+
+@with_np_cmd_check
 @tj.as_slash_command('now-playing', "Displays info of the current track")
 #
+@with_np_cmd_check
 @tj.as_message_command(
-    'nowplaying', 'now-playing', 'np', 'now', 'curr', 'current', 'crr'
+    'now-playing', 'nowplaying', 'np', 'now', 'curr', 'current', 'crr'
 )
-#
-@check(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
 async def nowplaying_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Displays info on the currently playing song."""
+
     assert not ((ctx.guild_id is None) or (ctx.cache is None) or (ctx.member is None))
 
     q = await get_queue(ctx, lvc)
@@ -97,6 +81,8 @@ async def nowplaying_(
 
     color = None if q.is_paused else q.curr_t_palette[1]
 
+    if thumb := q.curr_t_thumbnail:
+        thumb = limit_img_size_by_guild(thumb, ctx, ctx.cache)
     embed = (
         hk.Embed(
             title=f"{'🎶 ' if not q.is_paused else ''}{t_info.title}",
@@ -110,18 +96,26 @@ async def nowplaying_(
             f"Requested by: {req.display_name}",
             icon=req.avatar_url or ctx.author.default_avatar_url,
         )
-        .set_thumbnail(q.curr_t_thumbnail)
+        .set_thumbnail(thumb)
     )
+
     await say(ctx, hidden=True, embed=embed)
 
 
 # Search
 
 
+with_se_cmd_check_and_connect_vc = with_cmd_composer(
+    Binds.CONNECT_VC, Checks.CONN | Checks.SPEAK
+)
+
+
+@with_se_cmd_check_and_connect_vc
 @tj.with_greedy_argument('query')
 @tj.with_parser
 @tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
 #
+@with_se_cmd_check_and_connect_vc
 @tj.with_str_slash_option('query', "What to be queried?")
 @tj.as_slash_command(
     'search',
@@ -132,10 +126,13 @@ async def search_(
     query: str,
     lvc: al.Injected[lv.Lavalink],
 ):
+    """Searches for tracks on youtube from your query and lets you hear a part of it"""
+
     await _search(ctx, query, lvc)
 
 
-@info.with_menu_command
+@with_se_cmd_check_and_connect_vc
+@with_metadata(handle='search')
 @tj.as_message_menu('Search this song up')
 async def search_c(
     ctx: tj.abc.MenuContext,
@@ -148,11 +145,8 @@ async def search_c(
     await _search(ctx, cnt, lvc)
 
 
-@connect_vc
-@check(Checks.CONN | Checks.SPEAK)
 async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
-    from .queue import play, enqueue_track
-    from .playback import stop, unstop
+    from ..lib.music import play, add_tracks_
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
     assert ctx.guild_id and erf
@@ -167,20 +161,20 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
     assert bot
 
     async with trigger_thinking(ctx):
-        _queried = await lvc.auto_search_tracks(query)
-    if _queried.load_type in ('TRACK_LOADED', 'PLAYLIST_LOADED'):
-        await play(ctx, lvc, tracks=_queried, respond=True)
+        results = await lvc.auto_search_tracks(query)
+    if results.load_type in {'TRACK_LOADED', 'PLAYLIST_LOADED'}:
+        await play(ctx, lvc, tracks=results, respond=True)
         await say(
             ctx,
             hidden=True,
             follow_up=True,
-            content="💡 It is best to input a search query to the `/search` command. *For links, use `/play` instead*",
+            content="💡 This is already a song link. *Did you mean to use `/play` instead?*",
         )
         return
 
-    queried = _queried.tracks
+    queried = results.tracks
     if not queried:
-        raise QueryEmpty
+        raise QueryEmpty(query)
 
     queried_msg = "```css\n%s\n```" % (
         "\n".join(
@@ -225,6 +219,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
     ).add_field("Search results", value=queried_msg)
     msg = await say(
         ctx,
+        follow_up=True,
         ensure_result=True,
         embed=embed,
         components=components,
@@ -241,8 +236,8 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
         and e.interaction.user == ctx.author
         and e.interaction.message == msg
     ) as stream:
-        selected: t.Optional[str] = None
-        sel_msg: t.Optional[hk.Message] = None
+        selected: Option[str] = None
+        sel_msg: Option[hk.Message] = None
 
         if not await on_going_tracks():
             await stop(ctx, lvc)
@@ -257,9 +252,10 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
                     await lvc.stop(
                         ctx.guild_id,
                     )
+                del_l = {msg}
                 if sel_msg:
-                    await ch.delete_messages(sel_msg)
-                await ctx.delete_initial_response()
+                    del_l.add(sel_msg)
+                await ch.delete_messages(*del_l)
                 if not prior_stop:
                     await unstop(ctx, lvc)
                 return
@@ -311,10 +307,10 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
                 if not prior_stop:
                     await unstop(ctx, lvc)
                 async with access_queue(ctx, lvc) as q:
-                    await enqueue_track(
+                    await add_tracks_(
                         ctx,
                         lvc,
-                        track=selected_t,
+                        selected_t,
                         queue=q,
                         respond=False,
                         ignore_stop=True,
@@ -343,17 +339,20 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
 # Queue
 
 
+with_q_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN)
+
+
+@with_q_cmd_check
 @tj.as_slash_command('queue', "Lists out the entire queue")
 #
+@with_q_cmd_check
 @tj.as_message_command('queue', 'q', 'all')
-#
-@check(Checks.QUEUE | Checks.CONN)
 async def queue_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ):
     q = await get_queue(ctx, lvc)
-    pages = await generate_queue_embeds__(ctx, lvc)
+    pages = await generate_queue_embeds(ctx, lvc)
     pages_n = len(pages)
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
@@ -389,7 +388,7 @@ async def queue_(
 
         return row
 
-    _i_ori = (q.pos - 2) // Q_DIV + 1
+    _i_ori = (q.pos - 2) // Q_CHUNK + 1
     i = _i_ori
 
     def _update_buttons(b: EditableComponentsType):
@@ -414,6 +413,7 @@ async def queue_(
     )
 
     with bot.stream(hk.InteractionCreateEvent, timeout=TIMEOUT).filter(
+        # pyright: reportUnknownLambdaType=false
         lambda e: isinstance(e.interaction, hk.ComponentInteraction)
         and e.interaction.message == msg
         and e.interaction.user.id == ctx.author.id
@@ -470,16 +470,13 @@ async def queue_(
 @tj.with_greedy_argument('song', default=None)
 @tj.with_parser
 @tj.as_message_command('lyrics', 'ly')
-#
-@check(Checks.CATCH_ALL)
 async def lyrics_(
     ctx: EitherContext,
-    song: t.Optional[str],
+    song: Option[str],
     lvc: al.Injected[lv.Lavalink],
 ):
-    """
-    Attempts to find the lyrics of the current song
-    """
+    """Attempts to find the lyrics of the current song"""
+
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     erf = ctx.client.get_type_dependency(EmojiRefs)
     assert bot and erf
@@ -567,7 +564,7 @@ async def lyrics_(
         and e.interaction.message == msg
         and e.interaction.user.id == ctx.author.id
     ) as stream:
-        _last_sel: t.Optional[str] = None
+        _last_sel: Option[str] = None
         async for event in stream:
             inter = event.interaction
             assert isinstance(inter, hk.ComponentInteraction)
