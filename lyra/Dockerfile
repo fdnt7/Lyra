@@ -2,14 +2,6 @@ FROM python:3.10.2-slim-buster
 
 WORKDIR /app
 
-COPY . .
-RUN find . \! -iname "*-db-firebase-adminsdk-*.json"  -mindepth 2 -maxdepth 2 -print | xargs rm -rf
-
-FROM python:3.10.2-slim-buster
-
-WORKDIR /app
-
-COPY --from=0 ["/app", "shared"]
 COPY config.yml shared/config.yml
 COPY bands.yml shared/bands.yml
 COPY lyra .

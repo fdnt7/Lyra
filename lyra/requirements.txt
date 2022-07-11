@@ -1,20 +1,24 @@
-# alluka==0.1.0
-git+https://github.com/FasterSpeeding/Alluka@69b88e205a6e12c67287f0355665e705fe62cd33#egg=alluka
-attrs==21.4.0
-black==22.1.0
-hikari==2.0.0.dev107
-hikari-tanjun==2.4.3a1
+colorhash
+alluka==0.1.1
+attrs
+black
+hikari==2.0.0.dev109
+hikari-tanjun==2.5.3a1
 lyricsgenius==3.0.1
-PyYAML==6.0
-requests==2.27.1
+PyYAML
+requests
 ytmusicapi==0.20.0
 python-dotenv
-firebase_admin
+mutagen
+pymongo
+pymongo[srv]
 colorama
 Pillow
 scipy
 sklearn
 numpy
+soundcloud-lib
+memoization
 # ./lavasnek_rs-0.1.0_alpha.4-cp310-none-win_amd64.whl
 
 uvloop

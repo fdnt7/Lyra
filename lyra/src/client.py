@@ -1,47 +1,48 @@
 import os
-import yaml
-
-# import yuyo
-# import miru
 import typing as t
 import logging
 import pathlib as pl
+
+import yaml
 import hikari as hk
 import alluka as al
 import tanjun as tj
 import lavasnek_rs as lv
 
+import src.lib.globs as globs
+
 from .lib import (
-    repeat_emojis,
     EventHandler,
+    LyraDBClientType,
+    LyraDBCollectionType,
+    repeat_emojis,
     EmojiRefs,
-    GuildConfig,
-    cfg_ref,
     base_h,
     restricts_c,
-    update_cfg,
     inj_glob,
+    lgfmt,
 )
+from .lib.dataimpl import init_mongo_client
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(lgfmt(__name__))
 logger.setLevel(logging.DEBUG)
 
 
 fn = next(inj_glob('./config.yml'))
 
 with open(fn.resolve(), 'r') as f:
-    _y = yaml.load(f, yaml.Loader)  # type: ignore
+    _d = yaml.load(f, yaml.Loader)
 
-    PREFIX: list[str] = _y['prefixes']
+    PREFIX: list[str] = _d['prefixes']
 
-    _dev: bool = _y['dev_mode']
+    _dev: bool = _d['dev_mode']
     TOKEN: str = os.environ['LYRA_DEV_TOKEN' if _dev else 'LYRA_TOKEN']
 
-    decl_glob_cmds: list[int] | t.Literal[True] = _y['guilds'] if _dev else True
+    decl_glob_cmds: list[int] | t.Literal[True] = _d['guilds'] if _dev else True
+    emoji_guild: int = _d['emoji_guild']
 
-
-client = (
+_client = globs.init_client(
     tj.Client.from_gateway_bot(
         bot := hk.GatewayBot(token=TOKEN),
         declare_global_commands=(decl_glob_cmds),
@@ -57,50 +58,55 @@ client = (
 
 activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
 
-
-lavalink_client: lv.Lavalink
 emoji_refs = EmojiRefs({})
 
-cfg_fetched: t.Any = cfg_ref.get()
-guild_config = GuildConfig(cfg_fetched)
-logger.info("Loaded guild_configs")
 
-
-@client.with_prefix_getter
+@_client.with_prefix_getter
 async def prefix_getter(
-    ctx: tj.abc.MessageContext, cfg: al.Injected[GuildConfig]
+    ctx: tj.abc.MessageContext,
+    cfg: al.Injected[al.Injected[LyraDBCollectionType]],
 ) -> t.Iterable[str]:
-    prefixes: list[str] = (
-        cfg.setdefault(str(ctx.guild_id), {}).setdefault('prefixes', [])
-        if ctx.guild_id
-        else []
-    )
+    g_id = str(ctx.guild_id)
+    flt = {'id': g_id}
+
+    # pyright: reportUnknownMemberType=false
+    if _g_cfg := cfg.find_one(flt):
+        g_cfg = _g_cfg
+    else:
+        cfg.insert_one(flt)
+        g_cfg: dict[str, t.Any] = flt.copy()
+
+    prefixes: list[str] = g_cfg.setdefault('prefixes', []) if ctx.guild_id else []
     return prefixes
 
 
-EMOJIS_ACCESS = 777069316247126036
-
-
-@client.with_listener(hk.StartedEvent)
+@_client.with_listener(hk.StartedEvent)
 async def on_started(
     _: hk.StartedEvent,
-    client_: al.Injected[tj.Client],
+    client: al.Injected[tj.Client],
 ):
-    emojis = await client_.rest.fetch_guild_emojis(EMOJIS_ACCESS)
-
+    emojis = await client.rest.fetch_guild_emojis(emoji_guild)
     emoji_refs.update({e.name: e for e in emojis})
+    logger.info("Fetched emojis from Lýra's Emoji Server")
 
-    client_.set_type_dependency(GuildConfig, guild_config).set_type_dependency(
-        EmojiRefs, emoji_refs
+    mongo_client = init_mongo_client()
+
+    prefs_db = mongo_client.get_database('prefs')
+    guilds_co = prefs_db.get_collection('guilds')
+
+    (
+        client.set_type_dependency(LyraDBClientType, mongo_client)
+        .set_type_dependency(LyraDBCollectionType, guilds_co)
+        .set_type_dependency(EmojiRefs, emoji_refs)
     )
 
     repeat_emojis.extend(emoji_refs[f'repeat{n}_b'] for n in range(3))
 
 
-@client.with_listener(hk.ShardReadyEvent)
+@_client.with_listener(hk.ShardReadyEvent)
 async def on_shard_ready(
     event: hk.ShardReadyEvent,
-    client_: al.Injected[tj.Client],
+    client: al.Injected[tj.Client],
 ) -> None:
     """Event that triggers when the hikari gateway is ready."""
 
@@ -120,23 +126,10 @@ async def on_shard_ready(
 
     lvc = await builder.build(EventHandler())
 
-    global lavalink_client
-    lavalink_client = lvc
-    client_.set_type_dependency(lv.Lavalink, lvc)
-
-    # app_id = 0
-    # guild_ids = []
-    # _L = len(guild_ids)
-    # for i, g in enumerate(guild_ids, 1):
-    #     # print(await bot.rest.fetch_guild(g))
-    #     cmds = await bot.rest.fetch_application_commands(698222394548027492, g)
-    #     L = len(cmds)
-    #     for j, cmd in enumerate(cmds, 1):
-    #         await cmd.delete()
-    #         print(f"#{i}/{_L} {j}/{L} {g}", cmd)
+    client.set_type_dependency(lv.Lavalink, lvc)
 
 
-@client.with_listener(hk.VoiceStateUpdateEvent)
+@_client.with_listener(hk.VoiceStateUpdateEvent)
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
     lvc: al.Injected[lv.Lavalink],
@@ -154,7 +147,7 @@ async def on_voice_state_update(
     )
 
 
-@client.with_listener(hk.VoiceServerUpdateEvent)
+@_client.with_listener(hk.VoiceServerUpdateEvent)
 async def on_voice_server_update(
     event: hk.VoiceServerUpdateEvent,
     lvc: al.Injected[lv.Lavalink],
@@ -166,8 +159,3 @@ async def on_voice_server_update(
             event.endpoint,
             event.token,
         )
-
-
-@client.with_listener(hk.StoppingEvent)
-async def on_stopping(_: hk.StoppingEvent, cfg: al.Injected[GuildConfig]) -> None:
-    update_cfg(cfg)

@@ -11,6 +11,7 @@ lyra/.mypy_cache
 lyra/.venv
 lyra/old
 lyra/temp
+lyra/typings
 
 /__pycache__
 lyra/__pycache__/

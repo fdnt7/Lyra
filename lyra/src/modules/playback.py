@@ -1,322 +1,94 @@
-import typing as t
-import asyncio
-import logging
-import contextlib as ctxlib
+import functools as ft
 
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-
-from src.lib.music import STOP_REFRESH, music_h
-from src.lib.utils import (
-    ButtonBuilderType,
-    GuildOrRESTInferable,
-    GuildOrInferable,
-    RESTInferable,
-    Contextish,
-    EmojiRefs,
-    guild_c,
-    get_rest,
-    get_client,
-    say,
-    err_say,
-    infer_guild,
-    edit_components,
+from ..lib.compose import Binds
+from ..lib.musicutils import init_component
+from ..lib.extras import to_stamp, to_ms
+from ..lib.compose import (
+    with_cmd_composer,
+    with_cmd_checks,
 )
-from src.lib.checks import Checks, check
-from src.lib.extras import to_stamp, to_ms
-from src.lib.lavaimpl import (
-    RepeatMode,
-    NodeData,
+from ..lib.flags import (
+    ALONE__SPEAK__CAN_SEEK_ANY,
+    ALONE__SPEAK__NP_YOURS,
+    Checks,
+)
+from ..lib.errors import (
+    IllegalArgument,
+)
+from ..lib.lavautils import (
     get_data,
     set_data,
-    access_data,
     get_queue,
     access_queue,
 )
-from src.lib.errors import (
-    TrackStopped,
-    NotPlaying,
-    QueueEmpty,
-    IllegalArgument,
-    Argument,
+from ..lib.playback import (
+    previous_abs,
+    set_pause,
+    seek,
+    skip,
+    skip_abs,
+    stop,
+    while_stop,
 )
-from src.lib.consts import LOG_PAD
-
-
-playback = (
-    tj.Component(name='Playback', strict=True).add_check(guild_c).set_hooks(music_h)
+from ..lib.utils import (
+    say,
+    err_say,
 )
 
 
-logger = logging.getLogger(f"{'playback':<{LOG_PAD}}")
-logger.setLevel(logging.DEBUG)
-
-
-async def stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
-    async with access_queue(g_inf, lvc) as q:
-        q.is_stopped = True
-
-    await lvc.stop(infer_guild(g_inf))
-
-
-async def stop_in_ctxmng(
-    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
-) -> None:
-    g = infer_guild(g_inf)
-
-    data.queue.is_stopped = True
-    await set_data(g, lvc, data)
-    await lvc.stop(g)
-
-
-async def unstop(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
-    assert ctx.guild_id
-    async with access_queue(ctx, lvc) as q:
-        q.is_stopped = False
-
-
-async def wait_for_track_finish_event_fire(
-    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
-):
-    while not (await get_data(infer_guild(g_inf), lvc)).track_stopped_fired:
-        await asyncio.sleep(STOP_REFRESH)
-    data.track_stopped_fired = False
-
-
-@ctxlib.asynccontextmanager
-async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /):
-    await stop_in_ctxmng(g_inf, lvc, data)
-    prior_playing = data.queue.current
-    try:
-        yield
-    finally:
-        if prior_playing:
-            await wait_for_track_finish_event_fire(g_inf, lvc, data)
-        data.queue.is_stopped = False
-
-
-async def set_pause(
-    g_r_inf: GuildOrRESTInferable,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    pause: t.Optional[bool],
-    respond: bool = False,
-    strict: bool = False,
-    update_controller: bool = False,
-) -> None:
-    g = infer_guild(g_r_inf)
-
-    try:
-        client = get_client(g_r_inf)
-        erf = client.get_type_dependency(EmojiRefs)
-        assert erf
-
-        d = await get_data(g, lvc)
-        q = d.queue
-        if q.is_stopped:
-            if strict:
-                raise TrackStopped
-            return
-        if pause is None:
-            pause = not q.is_paused
-        if respond:
-            if pause and q.is_paused:
-                await err_say(g_r_inf, content="❗ Already paused")
-                return
-            if not (pause or q.is_paused):
-                await err_say(g_r_inf, content="❗ Already resumed")
-                return
-
-        np_pos = q.np_position
-        if np_pos is None:
-            raise NotPlaying
-
-        q.is_paused = pause
-        if pause:
-            q.update_paused_np_position(np_pos)
-            await lvc.pause(g)
-            e = '▶️'
-            msg = "Paused"
-        else:
-            q.update_curr_t_started(-np_pos)
-            await lvc.resume(g)
-            e = '⏸️'
-            msg = "Resumed"
-
-        await set_data(g, lvc, d)
-        if respond:
-            if isinstance(g_r_inf, Contextish):
-                await say(g_r_inf, show_author=True, content=f"{e} {msg}")
-            else:
-                g_r_inf
-
-        if update_controller and d.nowplaying_msg:
-            if not isinstance(g_r_inf, RESTInferable):
-                raise RuntimeError(
-                    "`g_r_inf` was not type `RESTInferable` but `update_controller` was passed `True`"
-                )
-            rest = get_rest(g_r_inf)
-
-            assert d.nowplaying_components
-            edits: t.Callable[
-                [ButtonBuilderType], ButtonBuilderType
-            ] = lambda x: x.set_emoji(erf[f"{msg[:-1].casefold()}_b"])
-            predicates: t.Callable[[ButtonBuilderType], bool] = lambda x: x.emoji in {
-                erf["pause_b"],
-                erf["resume_b"],
-            }
-
-            components = edit_components(
-                rest,
-                *d.nowplaying_components,
-                edits=edits,
-                predicates=predicates,
-            )
-
-            await d.edit_now_playing_components(rest, components)
-    except (QueueEmpty, NotPlaying):
-        if strict:
-            raise
-        pass
-
-
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-)
-async def play_pause_impl(ctx: Contextish, lvc: lv.Lavalink):
-    await set_pause(ctx, lvc, pause=None, respond=True, update_controller=True)
-
-
-async def skip(
-    g_inf: GuildOrInferable,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    advance: bool = True,
-    change_repeat: bool = False,
-    change_stop: bool = True,
-) -> t.Optional[lv.TrackQueue]:
-    async with access_queue(g_inf, lvc) as q:
-        skip = q.current
-        if change_repeat:
-            q.reset_repeat()
-        await lvc.stop(g := infer_guild(g_inf))
-        if q.is_stopped:
-            if advance:
-                q.adv()
-            if next_t := q.next:
-                await lvc.play(g, next_t.track).start()
-        if change_stop:
-            q.is_stopped = False
-        await set_pause(g_inf, lvc, pause=False)
-        return skip
-
-
-async def skip_abs(ctx_: Contextish, lvc: lv.Lavalink):
-    skip_t = await skip(ctx_, lvc, change_repeat=True)
-
-    assert skip_t is not None
-    await say(ctx_, show_author=True, content=f"⏭️ ~~`{skip_t.track.info.title}`~~")
-
-
-async def back(
-    ctx_: Contextish,
-    lvc: lv.Lavalink,
-    /,
-    *,
-    advance: bool = True,
-    change_repeat: bool = False,
-) -> lv.TrackQueue:
-    async with access_data(ctx_, lvc) as d:
-        q = d.queue
-        i = q.pos
-        if change_repeat:
-            q.reset_repeat()
-
-        async with while_stop(ctx_, lvc, d):
-            rep = q.repeat_mode
-            if rep is RepeatMode.ALL:
-                i -= 1
-                i %= len(q)
-                prev = q[i]
-            elif rep is RepeatMode.ONE:
-                prev = q.current
-                assert prev is not None
-            else:
-                prev = q.history[-1]
-                i -= 1
-
-            if advance:
-                q.pos = i
-
-        await lvc.play(infer_guild(ctx_), prev.track).start()
-    await set_pause(ctx_, lvc, pause=False)
-    return prev
-
-
-async def previous_abs(ctx_: Contextish, lvc: lv.Lavalink):
-    if (
-        q := await get_queue(ctx_, lvc)
-    ).repeat_mode is RepeatMode.NONE and not q.history:
-        await err_say(ctx_, content="❗ This is the start of the queue")
-        return
-
-    prev = await back(ctx_, lvc)
-    await say(ctx_, show_author=True, content=f"⏮️ **`{prev.track.info.title}`**")
-
-
-async def seek(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
-    assert ctx.guild_id
-    if total_ms < 0:
-        raise IllegalArgument(Argument(total_ms, 0))
-    async with access_queue(ctx, lvc) as q:
-        assert q.current is not None
-        if total_ms >= (song_len := q.current.track.info.length):
-            raise IllegalArgument(Argument(total_ms, song_len))
-        q.update_curr_t_started(-total_ms)
-        await lvc.seek_millis(ctx.guild_id, total_ms)
-        return total_ms
+playback = init_component(__name__)
 
 
 # ~
 
 
+set_pause_part = ft.partial(set_pause, respond=True, update_controller=True)
+
+play_pause_abs = ft.partial(set_pause_part, pause=None)
+
+COMMON_CHECKS = (
+    Checks.CONN
+    | Checks.QUEUE
+    | Checks.PLAYING
+    | Checks.ADVANCE
+    | ALONE__SPEAK__NP_YOURS
+)
+
+with_common_cmd_check = with_cmd_checks(COMMON_CHECKS)
+
+with_activity_cmd_check = with_cmd_checks(COMMON_CHECKS | Checks.PAUSE)
+
+
 # Play-Pause
 
 
+@with_common_cmd_check
 @tj.as_slash_command(
     'play-pause', "Toggles the playback of the current song between play and pause"
 )
 #
-@tj.as_message_command('playpause', 'play-pause', 'pp', '>||')
+@with_common_cmd_check
+@tj.as_message_command('play-pause', 'playpause', 'pp', '>||')
 async def play_pause_(
     ctx: tj.abc.MessageContext,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Pauses the current song."""
-    await play_pause_impl(ctx, lvc)
+    await play_pause_abs(ctx, lvc)
 
 
 # Pause
 
 
+@with_common_cmd_check
 @tj.as_slash_command('pause', "Pauses the current song")
 #
+@with_common_cmd_check
 @tj.as_message_command('pause', '>', 'ps')
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-)
 async def pause_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
@@ -324,23 +96,17 @@ async def pause_(
     """Pauses the current song."""
     assert ctx.guild_id
 
-    await set_pause(ctx, lvc, pause=True, respond=True, update_controller=True)
+    await set_pause_part(ctx, lvc, pause=True)
 
 
 # Resume
 
 
+@with_common_cmd_check
 @tj.as_slash_command("resume", "Resumes the current track")
 #
+@with_common_cmd_check
 @tj.as_message_command('resume', 'res', 'rs', '||')
-#
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-)
 async def resume_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
@@ -348,23 +114,17 @@ async def resume_(
     """Resumes the current song."""
     assert not ((ctx.guild_id is None) or (ctx.member is None))
 
-    await set_pause(ctx, lvc, pause=False, respond=True, update_controller=True)
+    await set_pause_part(ctx, lvc, pause=False)
 
 
 # Stop
 
 
+@with_common_cmd_check
 @tj.as_slash_command('stop', "Stops the current track; skip to play again")
 #
+@with_common_cmd_check
 @tj.as_message_command('stop', 'st', '[]')
-#
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-)
 async def stop_(
     ctx: tj.abc.MessageContext,
     lvc: al.Injected[lv.Lavalink],
@@ -377,24 +137,17 @@ async def stop_(
 # Fast-forward
 
 
+@with_activity_cmd_check
 @tj.with_float_slash_option(
     'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
 )
 @tj.as_slash_command('fast-forward', "Fast-forwards the current track")
 #
+@with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.0)
 @tj.with_parser
 @tj.as_message_command(
-    'fastforward', 'fast-forward', 'forward', 'fw', 'fwd', 'ff', '>>'
-)
-#
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-    | Checks.PAUSE
+    'fast-forward', 'fastforward', 'forward', 'fw', 'fwd', 'ff', '>>'
 )
 async def fastforward_(
     ctx: tj.abc.MessageContext,
@@ -425,23 +178,16 @@ async def fastforward_(
 # Rewind
 
 
+@with_activity_cmd_check
 @tj.with_float_slash_option(
     'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
 )
 @tj.as_slash_command('rewind', "Rewinds the current track")
 #
+@with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.00)
 @tj.with_parser
 @tj.as_message_command('rewind', 'rw', 'rew', '<<')
-#
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-    | Checks.PAUSE
-)
 async def rewind_(
     ctx: tj.abc.Context,
     seconds: float,
@@ -470,34 +216,40 @@ async def rewind_(
 # Skip
 
 
-skip_impl = check(
-    Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__NP_YOURS,
-    vote=True,
-)(skip_abs)
+with_skip_cmd_check_and_voting = with_cmd_composer(
+    Binds.VOTE, Checks.PLAYING | Checks.CONN | Checks.QUEUE | ALONE__SPEAK__NP_YOURS
+)
 
 
+@with_skip_cmd_check_and_voting
 @tj.as_slash_command('skip', "Skips the current track")
 #
+@with_skip_cmd_check_and_voting
 @tj.as_message_command('skip', 's', '>>|')
 async def skip_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ) -> None:
     """Skips the current song."""
-    await skip_impl(ctx, lvc)
+    await skip_abs(ctx, lvc)
 
 
 # Play at
 
 
+with_playat_cmd_check_and_voting = with_cmd_composer(
+    Binds.VOTE, Checks.QUEUE | Checks.CONN | ALONE__SPEAK__CAN_SEEK_ANY
+)
+
+
+@with_playat_cmd_check_and_voting
 @tj.with_int_slash_option("position", "Play the track at what position?")
 @tj.as_slash_command("play-at", "Plays the track at the specified position")
 #
+@with_playat_cmd_check_and_voting
 @tj.with_argument('position', converters=int)
 @tj.with_parser
-@tj.as_message_command('playat', 'play-at', 'pa', 'i', 'pos', 'skipto', '->', '^')
-#
-@check(Checks.QUEUE | Checks.CONN | Checks.ALONE__SPEAK__CAN_SEEK_ANY, vote=True)
+@tj.as_message_command('play-at', 'playat', 'pa', 'i', 'pos', 'skipto', '->', '^')
 async def play_at_(
     ctx: tj.abc.Context,
     position: int,
@@ -531,11 +283,16 @@ async def play_at_(
 # Next
 
 
+with_next_cmd_check = with_cmd_checks(
+    Checks.PLAYING | Checks.CONN | Checks.QUEUE | ALONE__SPEAK__NP_YOURS
+)
+
+
+@with_next_cmd_check
 @tj.as_slash_command('next', "Plays the next track in the queue")
 #
+@with_next_cmd_check
 @tj.as_message_command('next', 'n')
-#
-@check(Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__NP_YOURS)
 async def next_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
@@ -550,35 +307,37 @@ async def next_(
 # Previous
 
 
-previous_impl = check(
-    Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__CAN_SEEK_ANY, vote=True
-)(previous_abs)
+with_prev_cmd_check_and_voting = with_cmd_composer(
+    Binds.VOTE, Checks.CONN | Checks.QUEUE | ALONE__SPEAK__CAN_SEEK_ANY
+)
 
 
+@with_prev_cmd_check_and_voting
 @tj.as_slash_command('previous', "Plays the previous track in the queue")
 #
+@with_prev_cmd_check_and_voting
 @tj.as_message_command('previous', 'prev', 'pr', 'prv', 'pre', 'b', 'back', '|<<')
 async def previous_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
 ):
-    await previous_impl(ctx, lvc)
+    await previous_abs(ctx, lvc)
 
 
 # Restart
 
 
+with_re_cmd_check_and_voting = with_cmd_composer(
+    Binds.VOTE,
+    Checks.PLAYING | Checks.CONN | Checks.QUEUE | ALONE__SPEAK__NP_YOURS | Checks.PAUSE,
+)
+
+
+@with_re_cmd_check_and_voting
 @tj.as_slash_command('restart', "Restarts the current track; Equivalent to /seek 0:00")
 #
+@with_re_cmd_check_and_voting
 @tj.as_message_command('restart', 're', '<')
-#
-@check(
-    Checks.PLAYING
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-    | Checks.PAUSE
-)
 async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     assert ctx.guild_id
     async with access_queue(ctx, lvc) as q:
@@ -593,6 +352,7 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # Seek
 
 
+@with_activity_cmd_check
 @tj.with_str_slash_option(
     'timestamp',
     "Seek to where? (Must be in format such as 2m17s, 4:05)",
@@ -600,18 +360,10 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 )
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")
 #
+@with_activity_cmd_check
 @tj.with_argument('timestamp', to_ms)
 @tj.with_parser
 @tj.as_message_command('seek', 'sk', '-v', '-^')
-#
-@check(
-    Checks.PLAYING
-    | Checks.ADVANCE
-    | Checks.CONN
-    | Checks.QUEUE
-    | Checks.ALONE__SPEAK__NP_YOURS
-    | Checks.PAUSE
-)
 async def seek_(
     ctx: tj.abc.Context,
     timestamp: int,

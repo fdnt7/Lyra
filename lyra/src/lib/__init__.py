@@ -1,11 +1,13 @@
-from .extras import loop, inj_glob
-from .utils import EmojiRefs, GuildConfig, base_h, restricts_c
-from .music import NotConnected, cleanup
-from .lavaimpl import (
-    EventHandler,
+# pyright: reportUnusedImport=false
+from .extras import inj_glob, lgfmt
+from .utils import EmojiRefs, base_h, restricts_c
+from .music import cleanup
+from .errors import NotConnected
+from .lavautils import (
     access_equalizer,
     access_data,
     get_data,
     repeat_emojis,
 )
-from .dataimpl import cfg_ref, update_cfg
+from .lavaimpl import EventHandler
+from .dataimpl import LyraDBClientType, LyraDBCollectionType

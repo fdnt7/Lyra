@@ -1,30 +1,30 @@
 import typing as t
-import logging
 
 import hikari as hk
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-
-from src.lib.music import music_h
-from src.lib.utils import (
-    guild_c,
+from ..lib.musicutils import init_component
+from ..lib.extras import Option
+from ..lib.utils import (
     say,
     err_say,
     with_message_command_group_template,
 )
-from src.lib.errors import NotConnected
-from src.lib.checks import DJ_PERMS, Checks, check
-from src.lib.lavaimpl import Bands, access_equalizer
-from src.lib.consts import LOG_PAD
+from ..lib.errors import NotConnected
+from ..lib.compose import (
+    DJ_PERMS,
+    Checks,
+    with_cmd_composer,
+)
+from ..lib.lavautils import Bands, access_equalizer
 
 
-tuning = tj.Component(name='Tuning', strict=True).add_check(guild_c).set_hooks(music_h)
+tuning = init_component(__name__)
 
 
-logger = logging.getLogger(f"{'tuning':<{LOG_PAD}}")
-logger.setLevel(logging.DEBUG)
+# ~
 
 
 def to_preset(value: str, /):
@@ -43,7 +43,7 @@ async def set_mute(
     lvc: lv.Lavalink,
     /,
     *,
-    mute: t.Optional[bool],
+    mute: Option[bool],
     respond: bool = False,
 ) -> None:
     assert not (ctx.cache is None or ctx.guild_id is None)
@@ -72,7 +72,10 @@ async def set_mute(
             await say(ctx, content=msg)
 
 
-# ~
+with_common_cmd_check = with_cmd_composer(checks=Checks.CONN, perms=DJ_PERMS)
+with_stage_cmd_check = with_cmd_composer(
+    checks=Checks.CONN | Checks.SPEAK, perms=DJ_PERMS
+)
 
 
 @tuning.with_listener(hk.VoiceStateUpdateEvent)
@@ -94,7 +97,6 @@ volume_g_s = tuning.with_slash_command(
 )
 
 
-@tuning.with_message_command
 @tj.as_message_command_group('volume', 'v', 'vol', strict=True)
 @with_message_command_group_template
 async def volume_g_m(_: tj.abc.MessageContext):
@@ -106,6 +108,7 @@ async def volume_g_m(_: tj.abc.MessageContext):
 
 
 @volume_g_s.with_command
+@with_stage_cmd_check
 @tj.with_int_slash_option(
     'scale',
     "The volume scale? [Need to be between 0 and 10]",
@@ -114,11 +117,10 @@ async def volume_g_m(_: tj.abc.MessageContext):
 @tj.as_slash_command('set', "Set the volume of the bot from 0-10")
 #
 @volume_g_m.with_command
+@with_stage_cmd_check
 @tj.with_argument('scale', converters=int, min_value=0, max_value=10)
 @tj.with_parser
 @tj.as_message_command('set', '=', '.')
-#
-@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def volume_set_(
     ctx: tj.abc.Context,
     scale: int,
@@ -139,17 +141,17 @@ async def volume_set_(
 
 
 @volume_g_s.with_command
+@with_stage_cmd_check
 @tj.with_int_slash_option(
     'amount', "Increase by how much (If not given, by 1)", default=1
 )
 @tj.as_slash_command('up', "Increase the bot's volume")
 #
 @volume_g_m.with_command
+@with_stage_cmd_check
 @tj.with_argument('amount', converters=int, default=1)
 @tj.with_parser
 @tj.as_message_command('up', 'u', '+', '^')
-#
-@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def volume_up_(
     ctx: tj.abc.Context,
     amount: int,
@@ -182,17 +184,17 @@ async def volume_up_(
 
 
 @volume_g_s.with_command
+@with_stage_cmd_check
 @tj.with_int_slash_option(
     'amount', "Decrease by how much? (If not given, by 1)", default=1
 )
 @tj.as_slash_command('down', "Decrease the bot's volume")
 #
 @volume_g_m.with_command
+@with_stage_cmd_check
 @tj.with_argument('amount', converters=int, default=1)
 @tj.with_parser
 @tj.as_message_command('down', 'd', '-', 'v')
-#
-@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def volume_down_(
     ctx: tj.abc.Context,
     amount: int,
@@ -224,11 +226,11 @@ async def volume_down_(
 # Mute
 
 
+@with_common_cmd_check
 @tj.as_slash_command('mute', 'Server mutes the bot')
 #
+@with_common_cmd_check
 @tj.as_message_command('mute', 'm')
-#
-@check(Checks.CONN, perms=DJ_PERMS)
 async def mute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     """
     Server mutes the bot
@@ -239,11 +241,11 @@ async def mute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # Unmute
 
 
+@with_common_cmd_check
 @tj.as_slash_command('unmute', 'Server unmutes the bot')
 #
+@with_common_cmd_check
 @tj.as_message_command('unmute', 'u', 'um')
-#
-@check(Checks.CONN, perms=DJ_PERMS)
 async def unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     """
     Server unmutes the bot
@@ -254,11 +256,11 @@ async def unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # Mute-Unmute
 
 
+@with_common_cmd_check
 @tj.as_slash_command('mute-unmute', 'Toggles between server mute and unmuting the bot')
 #
-@tj.as_message_command('muteunmute', 'mute-unmute', 'mm', 'mu', 'tm', 'togglemute')
-#
-@check(Checks.CONN, perms=DJ_PERMS)
+@with_common_cmd_check
+@tj.as_message_command('mute-unmute', 'muteunmute', 'mm', 'mu', 'tm', 'togglemute')
 async def mute_unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     """
     Toggles between server mute and unmuting the bot
@@ -274,7 +276,6 @@ equalizer_g_s = tuning.with_slash_command(
 )
 
 
-@tuning.with_message_command
 @tj.as_message_command_group('equalizer', 'eq', strict=True)
 @with_message_command_group_template
 async def equalizer_g_m(_: tj.abc.MessageContext):
@@ -285,10 +286,14 @@ async def equalizer_g_m(_: tj.abc.MessageContext):
 ## Equalizer Rreset
 
 
-valid_presets: t.Final[dict[str, str]] = {j['name']: i for i, j in Bands._load_bands().items()} | {'Flat': 'flat'}  # type: ignore
+valid_presets: t.Final[dict[str, str]] = {
+    j['name']: i
+    for i, j in Bands._load_bands().items()  # pyright: ignore [reportPrivateUsage, reportGeneralTypeIssues]
+} | {'Flat': 'flat'}
 
 
 @equalizer_g_s.with_command
+@with_stage_cmd_check
 @tj.with_str_slash_option(
     'preset',
     "Which present?",
@@ -297,11 +302,10 @@ valid_presets: t.Final[dict[str, str]] = {j['name']: i for i, j in Bands._load_b
 @tj.as_slash_command('preset', "Sets the bot's equalizer to a preset")
 #
 @equalizer_g_m.with_command
+@with_stage_cmd_check
 @tj.with_argument('preset', to_preset)
 @tj.with_parser
 @tj.as_message_command('preset', 'pre', '=')
-#
-@check(Checks.CONN | Checks.SPEAK, perms=DJ_PERMS)
 async def equalizer_preset_(
     ctx: tj.abc.Context,
     preset: str,

@@ -6,12 +6,26 @@ import contextlib as ctxlib
 import hikari as hk
 import tanjun as tj
 import alluka as al
+import src.lib.globs as globs
 
 from hikari.permissions import Permissions as hkperms
 from hikari.messages import MessageFlag as msgflag
 
-from .extras import NULL, TIMEOUT, VoidCoroutine, join_and
+from .consts import TIMEOUT, Q_CHUNK  # pyright: ignore [reportUnusedImport]
+from .errors import BaseLyraException
+from .extras import (
+    Option,
+    VoidCoro,
+    format_flags,
+    join_and,
+    URLstr,
+    limit_bytes_img_size,
+    url_to_bytesio,
+)
+from .dataimpl import LyraDBCollectionType
 
+
+_T = t.TypeVar('_T')
 
 EitherContext = tj.abc.MessageContext | tj.abc.AppCommandContext
 Contextish = tj.abc.Context | hk.ComponentInteraction
@@ -40,21 +54,27 @@ GuildOrRESTInferable = GuildOrInferable | RESTInferable
 * `GuildOrInferable`
 * `RESTInferable`"""
 
+MaybeClientInferable = t.Any | tj.abc.Context
+
 ButtonBuilderType = hk.api.ButtonBuilder[hk.api.ActionRowBuilder]
+ConnectionInfo = dict[
+    str, t.Any
+]  # TODO: Remove this once lavasnek_rs use the correct type
 SelectMenuBuilderType = hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
 EditableComponentsType = ButtonBuilderType | SelectMenuBuilderType
 MentionableType = hk.GuildChannel | hk.Role | hk.Member
+BaseCommandType = tj.abc.ExecutableCommand[tj.abc.Context]
+BindSig = tj.abc.CheckSig
 
 EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
-GuildConfig = t.NewType('GuildConfig', dict[str, dict[str, t.Any]])
-
 base_h = tj.AnyHooks()
 guild_c = tj.checks.GuildCheck(
     error_message="🙅 Commands can only be used in guild channels"
 )
 
-
-Q_DIV = 15
+RESTRICTOR = hkperms.MANAGE_CHANNELS | hkperms.MANAGE_ROLES
+DJ_PERMS: t.Final = hkperms.MOVE_MEMBERS
+dj_perms_fmt: t.Final = format_flags(DJ_PERMS)
 
 
 async def delete_after(
@@ -71,7 +91,7 @@ async def err_say(
     /,
     *,
     del_after: float = 3.5,
-    channel: hk.GuildTextChannel = ...,
+    channel: hk.Snowflakeish = ...,
     **kwargs: t.Any,
 ) -> hk.Message:
     ...
@@ -83,9 +103,10 @@ async def err_say(
     /,
     *,
     del_after: float = 3.5,
+    follow_up: bool = True,
     ensure_result: t.Literal[False] = False,
     **kwargs: t.Any,
-) -> t.Optional[hk.Message]:
+) -> Option[hk.Message]:
     ...
 
 
@@ -95,6 +116,7 @@ async def err_say(
     /,
     *,
     del_after: float = 3.5,
+    follow_up: bool = True,
     ensure_result: t.Literal[True] = True,
     **kwargs: t.Any,
 ) -> hk.Message:
@@ -106,11 +128,20 @@ async def err_say(
     /,
     *,
     del_after: float = 3.5,
+    follow_up: bool = True,
     ensure_result: bool = False,
-    channel: t.Optional[hk.GuildTextChannel] = None,
+    channel: Option[hk.Snowflakeish] = None,
     **kwargs: t.Any,
-) -> t.Optional[hk.Message]:
-    return await say(g_r_inf, hidden=True, ensure_result=ensure_result, channel=channel, delete_after=del_after, **kwargs)  # type: ignore
+) -> Option[hk.Message]:
+    return await say(
+        g_r_inf,
+        hidden=True,
+        ensure_result=ensure_result,
+        channel=channel,
+        follow_up=follow_up,
+        delete_after=del_after,
+        **kwargs,
+    )  # pyright: ignore [reportUnknownVariableType]
 
 
 @t.overload
@@ -118,7 +149,7 @@ async def ephim_say(
     g_: GuildInferableEvents | hk.Snowflakeish,
     /,
     *,
-    channel: hk.GuildTextChannel = ...,
+    channel: hk.Snowflakeish = ...,
     **kwargs: t.Any,
 ) -> hk.Message:
     ...
@@ -137,9 +168,9 @@ async def ephim_say(
     g_r_inf: GuildOrRESTInferable,
     /,
     *,
-    channel: t.Optional[hk.GuildTextChannel] = None,
+    channel: Option[hk.Snowflakeish] = None,
     **kwargs: t.Any,
-) -> t.Optional[hk.Message]:
+) -> Option[hk.Message]:
     if isinstance(g_r_inf, hk.ComponentInteraction | tj.abc.AppCommandContext):
         return await say(g_r_inf, hidden=True, channel=channel, **kwargs)
 
@@ -150,7 +181,7 @@ async def say(
     /,
     *,
     hidden: bool = False,
-    channel: hk.GuildTextChannel = ...,
+    channel: hk.Snowflakeish = ...,
     **kwargs: t.Any,
 ) -> hk.Message:
     ...
@@ -165,7 +196,7 @@ async def say(
     follow_up: bool = False,
     ensure_result: t.Literal[False] = False,
     **kwargs: t.Any,
-) -> t.Optional[hk.Message]:
+) -> Option[hk.Message]:
     ...
 
 
@@ -191,7 +222,7 @@ async def say(
     ensure_result: t.Literal[False] = False,
     show_author: bool = False,
     **kwargs: t.Any,
-) -> t.Optional[hk.Message]:
+) -> Option[hk.Message]:
     ...
 
 
@@ -216,10 +247,10 @@ async def say(
     follow_up: bool = False,
     ensure_result: bool = False,
     show_author: bool = False,
-    channel: t.Optional[hk.GuildTextChannel] = None,
+    channel: Option[hk.Snowflakeish] = None,
     **kwargs: t.Any,
 ):
-    msg: t.Optional[hk.Message] = None
+    msg: Option[hk.Message] = None
     if kwargs.get('embed', hk.UNDEFINED) is hk.UNDEFINED:
         kwargs['embed'] = None
     if kwargs.get('components', hk.UNDEFINED) is hk.UNDEFINED:
@@ -314,14 +345,14 @@ def edit_components(
     predicates: t.Callable[[_C_contra], bool] = lambda _: True,
 ) -> tuple[hk.api.ActionRowBuilder]:
     action_rows_ = [*action_rows]
-    for a in action_rows_:
-        components = a.components
-        a = rest.build_action_row()
+    for ar in action_rows_:
+        components = ar.components
+        ar = rest.build_action_row()
         for c in map(
             lambda c_: (edits(c_) if predicates(c_) else reverts(c_)),
             components,
         ):
-            a.add_component(c)
+            ar.add_component(c)
     return (*action_rows_,)
 
 
@@ -342,7 +373,7 @@ def trigger_thinking(
     *,
     ephemeral: bool = False,
     flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED,
-) -> ctxlib._AsyncGeneratorContextManager[None]:  # type: ignore
+) -> ctxlib._AsyncGeneratorContextManager[None]:  # pyright: ignore [reportPrivateUsage]
     ...
 
 
@@ -353,7 +384,7 @@ def trigger_thinking(
     ephemeral: bool = False,
     flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED,
 ):
-    if isinstance(ctx, tj.abc.MessageContext):
+    if isinstance(ctx, tj.abc.MessageContext) or ctx.has_responded:
         ch = ctx.get_channel()
         assert ch
         return ch.trigger_typing()
@@ -362,10 +393,7 @@ def trigger_thinking(
     @ctxlib.asynccontextmanager
     async def _defer():
         await ctx.defer(ephemeral=ephemeral, flags=flags)
-        try:
-            yield
-        except:
-            raise
+        yield
 
     return _defer()
 
@@ -378,7 +406,7 @@ async def init_confirmation_prompt(ctx: tj.abc.Context):
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
-    cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_n(ctx)))
+    cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_repr(ctx)))
     callback = getattr(ctx.command, 'callback', None)
     if callback:
         docs = callback.__doc__
@@ -416,38 +444,21 @@ async def init_confirmation_prompt(ctx: tj.abc.Context):
     return inter.custom_id == 'prompt_y'
 
 
-_P_e = t.ParamSpec('_P_e')
+_CMD = t.TypeVar('_CMD', bound=BaseCommandType)
 
 
-def suppress_embeds(func: t.Callable[_P_e, VoidCoroutine]):
-    @ft.wraps(func)
-    async def inner(*args: _P_e.args, **kwargs: _P_e.kwargs):
-        ctx = next((a for a in args if isinstance(a, tj.abc.MessageContext)), NULL)
-        assert ctx
-        assert ctx.guild_id and ctx.cache
+def with_metadata(**kwargs: t.Any) -> t.Callable[[_CMD], _CMD]:
+    def _with_metadata(cmd: _CMD) -> _CMD:
+        cmd.metadata.update(**kwargs)
+        return cmd
 
-        bot_u = ctx.cache.get_me()
-        assert bot_u
-
-        bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
-        assert bot_m
-
-        bot_perms = await tj.utilities.fetch_permissions(
-            ctx.client, bot_m, channel=ctx.channel_id
-        )
-        if bot_perms & hkperms.MANAGE_MESSAGES:
-            await ctx.message.edit(flags=msgflag.SUPPRESS_EMBEDS)
-
-        inj_func = tj.as_self_injecting(ctx.client)(func)
-        await inj_func(*args, **kwargs)
-
-    return inner
+    return _with_metadata
 
 
 _P_mgT = t.ParamSpec('_P_mgT')
 
 
-def with_message_command_group_template(func: t.Callable[_P_mgT, VoidCoroutine], /):
+def with_message_command_group_template(func: t.Callable[_P_mgT, VoidCoro], /):
     @ft.wraps(func)
     async def inner(*args: _P_mgT.args, **kwargs: _P_mgT.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
@@ -471,12 +482,13 @@ def with_message_command_group_template(func: t.Callable[_P_mgT, VoidCoroutine],
     return inner
 
 
-async def restricts_c(ctx: tj.abc.Context, /, *, cfg: al.Injected[GuildConfig]) -> bool:
-    from src.modules.config import RESTRICTOR
-
+async def restricts_c(
+    ctx: tj.abc.Context, /, *, cfg: al.Injected[LyraDBCollectionType]
+) -> bool:
     assert ctx.guild_id and ctx.member
 
-    g_cfg = cfg[str(ctx.guild_id)]
+    g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
+    assert g_cfg
 
     res_ch: dict[str, t.Any] = g_cfg.get('restricted_ch', {})
     res_r: dict[str, t.Any] = g_cfg.get('restricted_r', {})
@@ -553,27 +565,58 @@ async def on_parser_error(ctx: tj.abc.Context, error: tj.errors.ParserError) -> 
 
 @base_h.with_on_error
 async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
-    if isinstance(error, hk.ForbiddenError):
-        await ctx.respond("⛔ Lacked enough permissions to execute the command.")
-        return True
+    if isinstance(error, BaseLyraException):
+        pass
+    elif isinstance(error, hk.ForbiddenError):
+        await say(ctx, content="⛔ Lacked enough permissions to execute the command.")
+    else:
+        # error_tb = f"\n```py\n{''.join(tb.format_exception(type(error), value=error, tb=error.__traceback__))}```"
+        error_tb = '`%s`' % error
 
-    # error_tb = f"\n```py\n{''.join(tb.format_exception(type(error), value=error, tb=error.__traceback__))}```"
-    error_tb = '`%s`' % error
-
-    await ctx.respond(f"⁉️ An unhandled error occurred: {error_tb}")
-    return False
+        await say(ctx, content=f"⁉️ An unhandled error occurred: {error_tb}")
+        return False
+    return True
 
 
 @base_h.with_pre_execution
-async def pre_execution(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]) -> None:
-    cfg.setdefault(str(ctx.guild_id), {})
+async def pre_execution(
+    ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]
+) -> None:
+    g_id = str(ctx.guild_id)
+    flt = {'id': g_id}
+
+    # pyright: reportUnknownMemberType=false
+    if _g_cfg := cfg.find_one(flt):
+        g_cfg = _g_cfg
+    else:
+        cfg.insert_one(flt)
+        g_cfg: dict[str, t.Any] = flt.copy()
+
+    if not g_cfg.get('auto_hide_embeds', True) or not isinstance(
+        ctx, tj.abc.MessageContext
+    ):
+        return
+
+    assert ctx.guild_id and ctx.cache
+
+    bot_u = ctx.cache.get_me()
+    assert bot_u
+
+    bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
+    assert bot_m
+
+    bot_perms = await tj.utilities.fetch_permissions(
+        ctx.client, bot_m, channel=ctx.channel_id
+    )
+    if bot_perms & hkperms.MANAGE_MESSAGES:
+        await ctx.message.edit(flags=msgflag.SUPPRESS_EMBEDS)
 
 
-def infer_guild(g_inf: GuildOrRESTInferable, /) -> hk.Snowflakeish:
-    if isinstance(g_inf, hk.Snowflakeish):
-        return g_inf
-    assert g_inf.guild_id
-    return g_inf.guild_id
+def infer_guild(g_r_inf: GuildOrRESTInferable, /) -> hk.Snowflakeish:
+    if isinstance(g_r_inf, hk.Snowflakeish):
+        return g_r_inf
+    assert g_r_inf.guild_id
+    return g_r_inf.guild_id
 
 
 def get_pref(ctx: Contextish, /):
@@ -581,32 +624,32 @@ def get_pref(ctx: Contextish, /):
         return next(iter(ctx.client.prefixes))
     if isinstance(ctx, tj.abc.SlashContext):
         return '/'
-    if isinstance(ctx, tj.abc.AppCommandContext):
-        return '/'
-    return '/'
+    if isinstance(ctx, tj.abc.MenuContext):
+        return '[>]'
+    return ';;'
 
 
-async def fetch_permissions(ctx: Contextish, /) -> hk.Permissions:
-    if isinstance(ctx, tj.abc.Context):
-        member = ctx.member
+async def fetch_permissions(ctx_: Contextish, /) -> hk.Permissions:
+    if isinstance(ctx_, tj.abc.Context):
+        member = ctx_.member
         assert member
         auth_perms = await tj.utilities.fetch_permissions(
-            ctx.client, member, channel=ctx.channel_id
+            ctx_.client, member, channel=ctx_.channel_id
         )
     else:
-        member = ctx.member
+        member = ctx_.member
         assert member
         auth_perms = member.permissions
     return auth_perms
 
 
-def get_client(any_: t.Optional[t.Any] = None, /):
-    if isinstance(any_, tj.abc.Context):
-        return any_.client
-    else:
-        from src.client import client
+def get_client(_c_inf: Option[MaybeClientInferable] = None, /) -> tj.abc.Client:
+    if isinstance(_c_inf, tj.abc.Context):
+        return _c_inf.client
 
-        return client
+    # pyright: reportGeneralTypeIssues=false
+    _c: tj.Client = globs.client
+    return _c
 
 
 def get_rest(g_r_inf: RESTInferable, /):
@@ -615,20 +658,64 @@ def get_rest(g_r_inf: RESTInferable, /):
     return g_r_inf.app.rest
 
 
-def get_cmd_n(ctx: tj.abc.Context, /):
+def get_cmd_trigger(cmd: BaseCommandType, /) -> tuple[str]:
+    if isinstance(cmd, tj.abc.SlashCommand | tj.abc.SlashCommandGroup):
+        return (cmd.name,)
+    if isinstance(cmd, tj.abc.MessageCommand | tj.abc.MessageCommandGroup):
+        return (*cmd.names,)
+    if isinstance(cmd, tj.abc.MenuCommand):
+        return (cmd.name,)
+    raise NotImplementedError
+
+
+def get_cmd_handle(cmd: BaseCommandType, /) -> str:
+    if isinstance(cmd, tj.abc.SlashCommand | tj.abc.SlashCommandGroup):
+        return cmd.name
+    if isinstance(cmd, tj.abc.MessageCommand | tj.abc.MessageCommandGroup):
+        return next(iter(cmd.names))
+    if isinstance(cmd, tj.abc.MenuCommand):
+        return cmd.metadata['handle']
+    raise NotImplementedError
+
+
+def get_cmd_repr(ctx: tj.abc.Context, /):
     cmd = ctx.command
 
-    def _recurse(
-        _cmd: tj.abc.ExecutableCommand[tj.abc.Context], _names: list[str]
-    ) -> list[str]:
+    def _recurse(_cmd: BaseCommandType, _names: list[str]) -> list[str]:
         if isinstance(_cmd, tj.abc.MessageCommand):
             _names.append(next(iter(_cmd.names)))
         elif isinstance(_cmd, tj.abc.SlashCommand | tj.abc.MenuCommand):
             _names.append(_cmd.name)
 
-        if not (parent_cmd := getattr(_cmd, 'parent', None)):  # type: ignore
+        if not (
+            parent_cmd := getattr(
+                _cmd, 'parent', None  # pyright: ignore [reportUnknownArgumentType]
+            )
+        ):
             return _names
         return _recurse(parent_cmd, _names)
 
     assert cmd
     return ''.join(_recurse(cmd, []))
+
+
+def get_guild_upload_limit(guild: hk.Guild, /) -> int:
+    match guild.premium_tier:
+        case hk.GuildPremiumTier.NONE | 0 | hk.GuildPremiumTier.TIER_1 | 1:
+            return 8 * 2**20
+        case hk.GuildPremiumTier.TIER_2 | 2:
+            return 50 * 2**20
+        case hk.GuildPremiumTier.TIER_3 | 3:
+            return 100 * 2**20
+        case _:
+            raise NotImplementedError
+
+
+def limit_img_size_by_guild(
+    img_url_b: URLstr | bytes, g_inf: GuildOrInferable, /, cache: hk.api.Cache
+):
+    if isinstance(img_url_b, str):
+        img_url_b = url_to_bytesio(img_url_b).getvalue()
+    guild = cache.get_guild(infer_guild(g_inf))
+    assert guild
+    return limit_bytes_img_size(img_url_b, get_guild_upload_limit(guild))

@@ -1,39 +1,42 @@
-import logging
-
 import hikari as hk
-import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-
-from src.lib.music import music_h
-from src.lib.utils import guild_c
-from src.lib.checks import Checks, check
-from src.lib.errors import NotConnected
-from src.lib.lavaimpl import get_data
-from src.lib.consts import LOG_PAD
-
-
-control = (
-    tj.Component(name='control', strict=True).add_check(guild_c).set_hooks(music_h)
+from ..lib.musicutils import init_component
+from ..lib.errors import NotConnected
+from ..lib.flags import (
+    ALONE__SPEAK__CAN_SEEK_ANY,
+    ALONE__SPEAK__NP_YOURS,
+    IN_VC_ALONE,
 )
+from ..lib.compose import (
+    Checks,
+    with_cb_check,
+)
+from ..lib.lavautils import get_data
 
 
-logger = logging.getLogger(f"{'control':<{LOG_PAD}}")
-logger.setLevel(logging.DEBUG)
+control = init_component(__name__)
 
 
-from .queue import repeat_abs, shuffle_impl
-from .playback import skip_abs, previous_abs, play_pause_impl
+from .queue import repeat_abs, shuffle_abs
+from .playback import skip_abs, previous_abs, play_pause_abs
 
-
-skip_impl = check(
-    Checks.PLAYING | Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__NP_YOURS,
+play_pause_impl = with_cb_check(
+    Checks.PLAYING
+    | Checks.ADVANCE
+    | Checks.CONN
+    | Checks.QUEUE
+    | ALONE__SPEAK__NP_YOURS
+)(play_pause_abs)
+skip_impl = with_cb_check(
+    Checks.PLAYING | Checks.CONN | Checks.QUEUE | ALONE__SPEAK__NP_YOURS,
 )(skip_abs)
-repeat_impl = check(Checks.QUEUE | Checks.CONN | Checks.IN_VC_ALONE)(repeat_abs)
-previous_impl = check(Checks.CONN | Checks.QUEUE | Checks.ALONE__SPEAK__CAN_SEEK_ANY)(
+previous_impl = with_cb_check(Checks.CONN | Checks.QUEUE | ALONE__SPEAK__CAN_SEEK_ANY)(
     previous_abs
 )
+repeat_impl = with_cb_check(Checks.QUEUE | Checks.CONN | IN_VC_ALONE)(repeat_abs)
+shuffle_impl = with_cb_check(Checks.QUEUE | Checks.CONN | IN_VC_ALONE)(shuffle_abs)
 
 
 # ~

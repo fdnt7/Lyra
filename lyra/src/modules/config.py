@@ -4,38 +4,44 @@ import hikari as hk
 import tanjun as tj
 import alluka as al
 
-
 from hikari.permissions import Permissions as hkperms
-from src.lib.extras import flatten, fmt_str, join_and, uniquify, split_preset
-from src.lib.music import music_h
-from src.lib.checks import check
-from src.lib.utils import (
-    GuildConfig,
+
+from ..lib.musicutils import init_component
+from ..lib.dataimpl import LyraDBCollectionType
+from ..lib.compose import Binds, with_author_permission_check, with_cmd_composer
+from ..lib.extras import flatten, fmt_str, join_and, uniquify, split_preset
+from ..lib.utils import (
+    RESTRICTOR,
     MentionableType,
-    guild_c,
     with_message_command_group_template,
     say,
     err_say,
 )
 
 
-config = tj.Component(name='Config', strict=True).add_check(guild_c).set_hooks(music_h)
+config = init_component(__name__)
 
-RESTRICTOR = hkperms.MANAGE_CHANNELS | hkperms.MANAGE_ROLES
+
+# ~
 
 valid_mentionables: t.Final = {'Channels': 'ch', 'Roles': 'r', 'Members': 'u'}
 inv_mentionables: t.Final = {v: k for k, v in valid_mentionables.items()}
+BlacklistMode = t.Literal[-1, 0, 1]
 
 all_mentionable_categories = split_preset(
     'channels|channel|chan|ch|c,roles|role|rle|r,users|user|members|member|usr|mbr|u|m'
 )
 
+with_dangerous_restricts_cmd_check = with_cmd_composer(Binds.CONFIRM, perms=RESTRICTOR)
+with_admin_cmd_check = with_author_permission_check(hkperms.ADMINISTRATOR)
+with_restricts_cmd_check = with_author_permission_check(RESTRICTOR)
 
-def _c(b: t.Literal[-1, 0, 1]):
+
+def _c(b: BlacklistMode):
     return 'Whitelisted' if b == 1 else ('Blacklisted' if b == -1 else 'N/A')
 
 
-def _e(b: t.Literal[-1, 0, 1]):
+def _e(b: BlacklistMode):
     return '✅' if b == 1 else ('❌' if b == -1 else '❔')
 
 
@@ -52,17 +58,41 @@ def to_mentionable_category(value: str):
     )
 
 
+async def to_multi_mentionables(value: str, /, ctx: al.Injected[tj.abc.Context]):
+    _split = value.split()
+    mentionables: t.Collection[
+        hk.PartialUser | hk.PartialRole | hk.PartialChannel
+    ] = set()
+
+    for _m in _split:
+        for conv in (tj.to_user, tj.to_role, tj.to_channel):
+            try:
+                mentionables.add(await conv(_m, ctx))
+            except ValueError:
+                continue
+            else:
+                break
+        else:
+            raise ValueError(f'Cannot convert mentionable {_m}')
+    return frozenset(mentionables)
+
+
 async def restrict_mode_set(
     ctx: tj.abc.Context,
-    cfg: GuildConfig,
+    cfg: LyraDBCollectionType,
     /,
     *,
     category: str,
-    mode: t.Literal[-1, 0, 1] = 0,
+    mode: BlacklistMode = 0,
     wipe: bool = False,
 ):
+    # pyright: reportUnknownMemberType=false
     assert ctx.guild_id
-    g_cfg = cfg[str(ctx.guild_id)]
+    flt = {'id': str(ctx.guild_id)}
+
+    g_cfg = cfg.find_one(flt)
+    assert g_cfg
+
     cat_name = inv_mentionables[category]
     mode_name = _c(mode)
 
@@ -84,18 +114,20 @@ async def restrict_mode_set(
         msg = f"📝{_e(mode)} Set *{cat_name.lower()}* restriction mode to **`{mode_name}`**"
 
     await say(ctx, content=msg)
+    cfg.find_one_and_replace(flt, g_cfg)
 
 
 async def restrict_list_edit(
     ctx: tj.abc.Context,
-    cfg: GuildConfig,
+    cfg: LyraDBCollectionType,
     /,
     *,
     mentionables: t.Collection[MentionableType],
     mode: t.Literal['+', '-'],
 ):
     assert ctx.guild_id
-    g_cfg = cfg[str(ctx.guild_id)]
+    g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
+    assert g_cfg
 
     res_ch = g_cfg.setdefault('restricted_ch', {})
     res_r = g_cfg.setdefault('restricted_r', {})
@@ -155,13 +187,10 @@ async def restrict_list_edit(
     await say(ctx, content=msg)
 
 
-# ~
-
-
 ## config prefix
 
 
-config_g_s = config.with_slash_command(
+config_g_s = config.with_command(
     tj.slash_command_group('config', "Manage the bot's guild-specific settings")
 )
 
@@ -171,8 +200,19 @@ prefix_sg_s = config_g_s.with_command(
 )
 
 
-@config.with_message_command
-@tj.as_message_command_group('config', 'con', 'settings', 'k', 'cfg', strict=True)
+@tj.as_message_command_group(
+    'config',
+    'con',
+    'cfg',
+    'settings',
+    'k',
+    'preferences',
+    'preference',
+    'prefs',
+    'pref',
+    'prf',
+    strict=True,
+)
 @with_message_command_group_template
 async def config_g_m(_: tj.abc.MessageContext):
     """Manage the bot's guild-specific settings"""
@@ -180,7 +220,7 @@ async def config_g_m(_: tj.abc.MessageContext):
 
 
 @config_g_m.with_command
-@tj.as_message_command_group('prefix', 'pref', 'prf', '/', strict=True)
+@tj.as_message_command_group('prefix', 'pfx', '/', strict=True)
 @with_message_command_group_template
 async def prefix_sg_m(_: tj.abc.MessageContext):
     """Manages the bot's prefixes"""
@@ -195,11 +235,16 @@ async def prefix_sg_m(_: tj.abc.MessageContext):
 # -
 @prefix_sg_m.with_command
 @tj.as_message_command('list', 'l', '.')
-async def prefix_list_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]) -> None:
+async def prefix_list_(
+    ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]
+) -> None:
     """Lists all usable prefixes of the bot"""
-    assert ctx.guild_id
 
-    g_prefixes: list[str] = cfg[str(ctx.guild_id)].setdefault('prefixes', [])
+    assert ctx.guild_id
+    g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
+    assert g_cfg
+
+    g_prefixes: list[str] = g_cfg.setdefault('prefixes', [])
 
     embed = hk.Embed(title='「／」 All usable prefixes')
     embed.add_field(
@@ -217,56 +262,70 @@ async def prefix_list_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]) -> No
 
 
 @prefix_sg_s.with_command
+@with_admin_cmd_check
 @tj.with_str_slash_option('prefix', "What prefix?")
 @tj.as_slash_command('add', "Adds a new prefix of the bot for this guild")
 # -
 @prefix_sg_m.with_command
+@with_admin_cmd_check
 @tj.with_argument('prefix')
 @tj.with_parser
 @tj.as_message_command('add', '+', 'a', 'new', 'create', 'n')
-@check(perms=hkperms.ADMINISTRATOR)
 async def prefix_add_(
     ctx: tj.abc.Context,
     prefix: str,
-    cfg: al.Injected[GuildConfig],
+    cfg: al.Injected[LyraDBCollectionType],
 ):
     """Adds a new prefix of the bot for this guild"""
-    assert ctx.guild_id
 
-    g_prefixes: list[str] = cfg[str(ctx.guild_id)].setdefault('prefixes', [])
+    # pyright: reportUnknownMemberType=false
+    assert ctx.guild_id
+    flt = {'id': str(ctx.guild_id)}
+
+    g_cfg = cfg.find_one(flt)
+    assert g_cfg
+
+    g_prefixes: list[str] = g_cfg.setdefault('prefixes', [])
 
     if prefix in g_prefixes + list(ctx.client.prefixes):
         await err_say(ctx, content=f"❗ Already defined this prefix")
         return
 
-    cfg[str(ctx.guild_id)]['prefixes'].append(prefix)
+    g_prefixes.append(prefix)
     await say(
         ctx, content=f"**`「／」+`** Added `{prefix}` as a new prefix for this guild"
     )
+    cfg.find_one_and_replace(flt, g_cfg)
 
 
 ### config prefix remove
 
 
 @prefix_sg_s.with_command
+@with_admin_cmd_check
 @tj.with_str_slash_option('prefix', "Which prefix?")
 @tj.as_slash_command('remove', "Removes an existing prefix of the bot for this guild")
-# -
+#
 @prefix_sg_m.with_command
+@with_admin_cmd_check
 @tj.with_argument('prefix')
 @tj.with_parser
 @tj.as_message_command('remove', '-', 'rem', 'r', 'rm', 'd', 'del', 'delete')
-@check(perms=hkperms.ADMINISTRATOR)
 async def prefix_remove_(
     ctx: tj.abc.Context,
     prefix: str,
-    cfg: al.Injected[GuildConfig],
+    cfg: al.Injected[LyraDBCollectionType],
 ):
-    """
-    Removes an existing prefix of the bot for this guild
-    """
+    """Removes an existing prefix of the bot for this guild"""
+
+    # pyright: reportUnknownMemberType=false
     assert ctx.guild_id
-    g_prefixes: list[str] = cfg[str(ctx.guild_id)].setdefault('prefixes', [])
+    flt = {'id': str(ctx.guild_id)}
+
+    g_cfg = cfg.find_one(flt)
+    assert g_cfg
+
+    g_prefixes: list[str] = g_cfg.setdefault('prefixes', [])
 
     if prefix in ctx.client.prefixes:
         await err_say(ctx, content=f"❌ This prefix is global and cannot be removed")
@@ -278,6 +337,7 @@ async def prefix_remove_(
 
     g_prefixes.remove(prefix)
     await say(ctx, content=f"**`「／」ー`** Removed the prefix `{prefix}` for this guild")
+    cfg.find_one_and_replace(flt, g_cfg)
 
 
 ## config nowplayingmsg
@@ -302,25 +362,36 @@ async def nowplayingmsg_sg_m(_: tj.abc.MessageContext):
 
 
 @nowplayingmsg_sg_s.with_command
+@with_author_permission_check(hkperms.MANAGE_GUILD)
 @tj.as_slash_command(
     'toggle', "Toggles the now playing messages to be automatically sent or not"
 )
-# -
+#
 @nowplayingmsg_sg_m.with_command
+@with_author_permission_check(hkperms.MANAGE_GUILD)
 @tj.as_message_command('toggle', 'tggl', 't')
-@check(perms=hkperms.MANAGE_GUILD)
-async def nowplayingmsg_toggle_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
+async def nowplayingmsg_toggle_(
+    ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]
+):
     """Toggles the now playing messages to be automatically sent or not"""
-    assert ctx.guild_id
-    send_np_msg: bool = cfg[str(ctx.guild_id)].setdefault('send_nowplaying_msg', False)
 
-    cfg[str(ctx.guild_id)]['send_nowplaying_msg'] = not send_np_msg
+    # pyright: reportUnknownMemberType=false
+    assert ctx.guild_id
+    flt = {'id': str(ctx.guild_id)}
+
+    g_cfg = cfg.find_one(flt)
+    assert g_cfg
+
+    send_np_msg: bool = g_cfg.setdefault('send_nowplaying_msg', False)
+
+    g_cfg['send_nowplaying_msg'] = not send_np_msg
     msg = (
         "🔕 Not sending now playing messages from now on"
         if send_np_msg
         else "🔔 Sending now playing messages from now on"
     )
     await say(ctx, content=msg)
+    cfg.find_one_and_replace(flt, g_cfg)
 
 
 ## config restricts
@@ -349,19 +420,20 @@ async def restrict_sg_m(_: tj.abc.MessageContext):
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command('list', "Shows the current restricted channels, roles and members")
-async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
+async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]):
     """Shows the current restricted channels, roles and members"""
 
     assert ctx.guild_id
-    g_cfg = cfg[str(ctx.guild_id)]
+    g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
+    assert g_cfg
 
     res_ch: dict[str, t.Any] = g_cfg.get('restricted_ch', {})
     res_r: dict[str, t.Any] = g_cfg.get('restricted_r', {})
     res_u: dict[str, t.Any] = g_cfg.get('restricted_u', {})
 
-    ch_wl = res_ch.get('wl_mode', 0)
-    r_wl = res_r.get('wl_mode', 0)
-    u_wl = res_u.get('wl_mode', 0)
+    ch_wl: BlacklistMode = res_ch.get('wl_mode', 0)
+    r_wl: BlacklistMode = res_r.get('wl_mode', 0)
+    u_wl: BlacklistMode = res_u.get('wl_mode', 0)
 
     def empty_or(str_: str):
         return str_ or '```diff\n-Empty-\n```'
@@ -391,75 +463,56 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
 
 
 @restrict_sg_m.with_command
+@with_author_permission_check(RESTRICTOR)
 @tj.with_multi_argument('mentionables', (tj.to_user, tj.to_role, tj.to_channel))
 @tj.with_parser
 @tj.as_message_command('add', 'a', '+')
-async def restrict_add_m(
-    ctx: tj.abc.MessageContext,
-    mentionables: t.Collection[MentionableType],
-    cfg: al.Injected[GuildConfig],
-):
-    await _restrict_add(ctx, mentionables, cfg)
-
-
+#
 @restrict_sg_s.with_command
-@tj.with_str_slash_option('mentionable', "Which channel/role/member ?", converters=(tj.to_user, tj.to_role, tj.to_channel))
+@with_author_permission_check(RESTRICTOR)
+@tj.with_str_slash_option(
+    'mentionable',
+    "Which channel/role/member ?",
+    converters=to_multi_mentionables,
+)
 @tj.as_slash_command(
     'add', "Adds new channels, roles or members to the restricted list"
 )
-async def restrict_add_s(
-    ctx: tj.abc.SlashContext,
-    mentionable: MentionableType,
-    cfg: al.Injected[GuildConfig],
-):
-    await _restrict_add(ctx, [mentionable], cfg)
-
-
-@check(perms=RESTRICTOR)
-async def _restrict_add(
-    ctx: tj.abc.Context,
+async def restrict_add_(
+    ctx: tj.abc.MessageContext,
     mentionables: t.Collection[MentionableType],
-    cfg: GuildConfig,
+    cfg: al.Injected[LyraDBCollectionType],
 ):
     """Adds new channels, roles or members to the restricted list"""
     await restrict_list_edit(ctx, cfg, mentionables=mentionables, mode='+')
 
 
-@restrict_sg_m.with_command
-@tj.with_multi_argument('mentionables', (tj.to_user, tj.to_role, tj.to_channel))
-@tj.with_parser
-@tj.as_message_command('remove', 'rm', 'del', 'r', 'd', '-')
-async def restrict_remove_m(
-    ctx: tj.abc.MessageContext,
-    mentionables: t.Collection[MentionableType],
-    cfg: al.Injected[GuildConfig],
-):
-    await _restrict_remove(ctx, mentionables, cfg)
-
-
-@restrict_sg_s.with_command
-@tj.with_str_slash_option('mentionable', "Which channel/role/member ?", converters=(tj.to_user, tj.to_role, tj.to_channel))
-@tj.as_slash_command(
-    'remove', "Removes existing channels, roles or members from the restricted list"
-)
-async def restrict_remove_s(
-    ctx: tj.abc.SlashContext,
-    mentionable: MentionableType,
-    cfg: al.Injected[GuildConfig],
-):
-    await _restrict_remove(ctx, [mentionable], cfg)
-
-
 ### config restricts remove
 
 
-@check(perms=RESTRICTOR)
-async def _restrict_remove(
-    ctx: tj.abc.Context,
+@restrict_sg_m.with_command
+@with_restricts_cmd_check
+@tj.with_multi_argument('mentionables', (tj.to_user, tj.to_role, tj.to_channel))
+@tj.with_parser
+@tj.as_message_command('remove', 'rm', 'del', 'r', 'd', '-')
+#
+@restrict_sg_s.with_command
+@with_restricts_cmd_check
+@tj.with_str_slash_option(
+    'mentionable',
+    "Which channel/role/member ?",
+    converters=to_multi_mentionables,
+)
+@tj.as_slash_command(
+    'remove', "Removes existing channels, roles or members from the restricted list"
+)
+async def restrict_remove_(
+    ctx: tj.abc.MessageContext,
     mentionables: t.Collection[MentionableType],
-    cfg: GuildConfig,
+    cfg: al.Injected[LyraDBCollectionType],
 ):
     """Removes existing channels, roles or members from the restricted list"""
+
     await restrict_list_edit(ctx, cfg, mentionables=mentionables, mode='-')
 
 
@@ -467,22 +520,24 @@ async def _restrict_remove(
 
 
 @restrict_sg_m.with_command
+@with_restricts_cmd_check
 @tj.with_argument('category', to_mentionable_category)
 @tj.with_parser
 @tj.as_message_command('blacklist', 'bl')
 # -
 @restrict_sg_s.with_command
+@with_restricts_cmd_check
 @tj.with_str_slash_option(
     'category',
     "Which category?",
     choices=valid_mentionables,
 )
 @tj.as_slash_command('blacklist', "Sets a category's restriction mode to blacklisting")
-@check(perms=RESTRICTOR)
 async def restrict_blacklist_(
-    ctx: tj.abc.Context, category: str, cfg: al.Injected[GuildConfig]
+    ctx: tj.abc.Context, category: str, cfg: al.Injected[LyraDBCollectionType]
 ):
     """Sets a category's restriction mode to blacklisting"""
+
     await restrict_mode_set(ctx, cfg, category=category, mode=-1)
 
 
@@ -490,32 +545,36 @@ async def restrict_blacklist_(
 
 
 @restrict_sg_m.with_command
+@with_restricts_cmd_check
 @tj.with_argument('category', to_mentionable_category)
 @tj.with_parser
 @tj.as_message_command('whitelist', 'wl')
 # -
 @restrict_sg_s.with_command
+@with_restricts_cmd_check
 @tj.with_str_slash_option(
     'category',
     "Which category?",
     choices=valid_mentionables,
 )
 @tj.as_slash_command('whitelist', "Sets a category's restriction mode to whitelisting")
-@check(perms=RESTRICTOR)
 async def restrict_whitelist_(
-    ctx: tj.abc.Context, category: str, cfg: al.Injected[GuildConfig]
+    ctx: tj.abc.Context, category: str, cfg: al.Injected[LyraDBCollectionType]
 ):
     """Sets a category's restriction mode to whitelisting"""
+
     await restrict_mode_set(ctx, cfg, category=category, mode=1)
 
 
 @restrict_sg_m.with_command
+@with_restricts_cmd_check
 @tj.with_argument('wipe', tj.to_bool, default=True)
 @tj.with_argument('category', to_mentionable_category)
 @tj.with_parser
 @tj.as_message_command('clear', 'clr')
 # -
 @restrict_sg_s.with_command
+@with_restricts_cmd_check
 @tj.with_bool_slash_option(
     'wipe', "Also wipes the restricted list of that category? (If not given, Yes)"
 )
@@ -525,11 +584,14 @@ async def restrict_whitelist_(
     choices=valid_mentionables,
 )
 @tj.as_slash_command('clear', "Clears a category's restriction mode")
-@check(perms=RESTRICTOR)
 async def restrict_clear_(
-    ctx: tj.abc.Context, category: str, wipe: bool, cfg: al.Injected[GuildConfig]
+    ctx: tj.abc.Context,
+    category: str,
+    wipe: bool,
+    cfg: al.Injected[LyraDBCollectionType],
 ):
     """Clears a category's restriction mode"""
+
     await restrict_mode_set(ctx, cfg, category=category, wipe=wipe)
 
 
@@ -537,15 +599,20 @@ async def restrict_clear_(
 
 
 @restrict_sg_m.with_command
+@with_dangerous_restricts_cmd_check
 @tj.as_message_command('wipe', 'reset', 'wp')
 # -
 @restrict_sg_s.with_command
+@with_dangerous_restricts_cmd_check
 @tj.as_slash_command('wipe', "Wipes the restricted list of EVERY category")
-@check(perms=RESTRICTOR, prompt=True)
-async def restrict_wipe_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
+async def restrict_wipe_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]):
     """Wipes the restricted list of EVERY category"""
+
     assert ctx.guild_id
-    g_cfg = cfg[str(ctx.guild_id)]
+    flt = {'id': str(ctx.guild_id)}
+
+    g_cfg = cfg.find_one(flt)
+    assert g_cfg
 
     g_cfg['restricted_ch'] = {'all': [], 'wl_mode': 0}
     g_cfg['restricted_r'] = {'all': [], 'wl_mode': 0}
@@ -555,6 +622,7 @@ async def restrict_wipe_(ctx: tj.abc.Context, cfg: al.Injected[GuildConfig]):
         ctx,
         content="📝🧹 Wiped all restricted channels, roles and members list and cleared the restriction modes",
     )
+    cfg.find_one_and_replace(flt, g_cfg)
 
 
 # -

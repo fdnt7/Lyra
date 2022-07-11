@@ -5,155 +5,161 @@ import attr as a
 import hikari as hk
 import lavasnek_rs as lv
 
-
 from hikari.permissions import Permissions as hkperms
 
+from ._extras_types import Option
 
-@a.define
+
+@a.frozen
 class Argument:
     got: t.Any
     expected: t.Any
 
 
-@a.define(init=False)
-class BaseCommandException(abc.ABC, Exception):
+@a.frozen(init=False)
+class BaseLyraException(abc.ABC, Exception):
     pass
 
 
-@a.define
-class BadArgument(BaseCommandException):
+@a.frozen
+class BadArgument(BaseLyraException):
     arg: Argument
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class InvalidArgument(BadArgument):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class IllegalArgument(BadArgument):
     pass
 
 
-@a.define(init=False)
-class ConnectionSignal(BaseCommandException):
+@a.frozen(init=False)
+class ConnectionSignal(BaseLyraException):
     pass
 
 
-@a.define(init=False)
-class InvalidTimestampFormat(BaseCommandException):
+@a.frozen(init=False)
+class InvalidTimestampFormat(BaseLyraException):
     pass
 
 
-@a.define
-class Forbidden(BaseCommandException):
+@a.frozen
+class Forbidden(BaseLyraException):
     perms: hkperms
-    channel: t.Optional[hk.Snowflakeish] = a.field(default=None, kw_only=True)
+    channel: Option[hk.Snowflakeish] = a.field(default=None, kw_only=True)
 
 
-@a.define
-class Restricted(BaseCommandException):
+@a.frozen
+class Restricted(BaseLyraException):
     mode: t.Literal[1, -1]
     obj: t.Any
 
 
-@a.define
+@a.frozen
 class Unautherized(Forbidden):
     pass
 
 
-@a.define
+@a.frozen
 class ChannelMoved(ConnectionSignal):
     old_channel: hk.Snowflakeish
     new_channel: hk.Snowflakeish
     to_stage: bool = a.field(factory=bool, kw_only=True)
 
 
-@a.define
+@a.frozen
 class RequestedToSpeak(ConnectionSignal):
     channel: hk.Snowflakeish
 
 
-@a.define(init=False)
-class PlaybackException(BaseCommandException):
+@a.frozen(init=False)
+class PlaybackException(BaseLyraException):
     pass
 
 
-@a.define
+@a.frozen
 class ConnectionException(PlaybackException):
     channel: hk.Snowflakeish
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class NotConnected(PlaybackException):
     pass
 
 
-@a.define
+@a.frozen
 class NotYetSpeaker(ConnectionException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class AlreadyConnected(ConnectionException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class OthersInVoice(ConnectionException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class OthersListening(OthersInVoice):
     pass
 
 
-@a.define
-class NotInVoice(BaseCommandException):
+@a.frozen(init=False)
+class NotInVoice(BaseLyraException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class InternalError(PlaybackException):
     pass
 
 
-@a.define
+@a.frozen
 class PlaybackChangeRefused(PlaybackException):
-    track: t.Optional[lv.TrackQueue] = None
+    track: Option[lv.TrackQueue] = None
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class NotPlaying(PlaybackException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class QueueEmpty(PlaybackException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class TrackPaused(PlaybackException):
     pass
 
 
-@a.define(init=False)
+@a.frozen(init=False)
 class TrackStopped(PlaybackException):
     pass
 
 
-@a.define(init=False)
-class QueryEmpty(BaseCommandException):
+@a.frozen
+class QueryEmpty(BaseLyraException):
+    query_str: str
+
+
+@a.frozen(init=False)
+class LyricsNotFound(BaseLyraException):
     pass
 
 
-@a.define(init=False)
-class LyricsNotFound(BaseCommandException):
+@a.frozen(init=False)
+class NoPlayableTracks(BaseLyraException):
     pass
 
 
-@a.define(init=False)
-class VotingTimeout(TimeoutError, BaseCommandException):
+@a.frozen(init=False)
+class VotingTimeout(TimeoutError, BaseLyraException):
     pass
