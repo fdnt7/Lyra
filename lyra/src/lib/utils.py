@@ -529,7 +529,7 @@ async def restricts_c(
 
     if ch_wl == 1:
         if not (cond := ctx.channel_id in res_ch_all):
-            wl_ch_txt = join_and(('<#%i>' % ch for ch in res_ch_all), and_=' or ')
+            wl_ch_txt = join_and(('<#%s>' % ch for ch in res_ch_all), and_=' or ')
             await ephim_say(
                 ctx,
                 content=f"🚷 This channel isn't whitelisted to use the bot. Consider using the bot in {wl_ch_txt}"
