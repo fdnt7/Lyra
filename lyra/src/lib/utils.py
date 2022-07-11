@@ -498,9 +498,9 @@ async def restricts_c(
     r_wl = res_r.get('wl_mode', 0)
     u_wl = res_u.get('wl_mode', 0)
 
-    res_ch_all: list[int] = res_ch.setdefault('all', [])
-    res_r_all: list[int] = res_r.setdefault('all', [])
-    res_u_all: list[int] = res_u.setdefault('all', [])
+    res_ch_all: set[int] = {*(map(int, res_ch.setdefault('all', [])))}
+    res_r_all: set[int] = {*(map(int, res_r.setdefault('all', [])))}
+    res_u_all: set[int] = {*(map(int, res_u.setdefault('all', [])))}
 
     author_perms = await tj.utilities.fetch_permissions(
         ctx.client, ctx.member, channel=ctx.channel_id
@@ -519,17 +519,17 @@ async def restricts_c(
         return False
 
     if r_wl == 1:
-        if not (cond := bool({*ctx.member.role_ids} & {*res_r_all})):
+        if not (cond := bool({*ctx.member.role_ids} & res_r_all)):
             await ephim_say(ctx, content="🚷 You aren't role whitelisted to use the bot")
         return cond
 
-    if r_wl == -1 and {*ctx.member.role_ids} & {*res_r_all}:
+    if r_wl == -1 and {*ctx.member.role_ids} & res_r_all:
         await ephim_say(ctx, content="🚷 You are role blacklisted from using the bot")
         return False
 
     if ch_wl == 1:
         if not (cond := ctx.channel_id in res_ch_all):
-            wl_ch_txt = join_and(('<#%s>' % ch for ch in res_ch_all), and_=' or ')
+            wl_ch_txt = join_and(('<#%i>' % ch for ch in res_ch_all), and_=' or ')
             await ephim_say(
                 ctx,
                 content=f"🚷 This channel isn't whitelisted to use the bot. Consider using the bot in {wl_ch_txt}"
@@ -541,7 +541,7 @@ async def restricts_c(
     if ch_wl == -1 and ctx.channel_id in res_ch_all:
         await ephim_say(
             ctx,
-            content=f"🚷 This channel is blacklisted from using the bot. Refrain from using the bot in {join_and(('<#%s>' % ch for ch in res_ch_all), and_=' or ')}",
+            content=f"🚷 This channel is blacklisted from using the bot. Refrain from using the bot in {join_and(('<#%i>' % ch for ch in res_ch_all), and_=' or ')}",
         )
         return False
 

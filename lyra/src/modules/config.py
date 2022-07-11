@@ -126,31 +126,32 @@ async def restrict_list_edit(
     mode: t.Literal['+', '-'],
 ):
     assert ctx.guild_id
-    g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
+    flt = {'id': str(ctx.guild_id)}
+    g_cfg = cfg.find_one()
     assert g_cfg
 
     res_ch = g_cfg.setdefault('restricted_ch', {})
     res_r = g_cfg.setdefault('restricted_r', {})
     res_u = g_cfg.setdefault('restricted_u', {})
 
-    res_ch_all: list[int] = res_ch.setdefault('all', [])
-    res_r_all: list[int] = res_r.setdefault('all', [])
-    res_u_all: list[int] = res_u.setdefault('all', [])
+    res_ch_all: list[str] = res_ch.setdefault('all', [])
+    res_r_all: list[str] = res_r.setdefault('all', [])
+    res_u_all: list[str] = res_u.setdefault('all', [])
 
-    new_ch: list[int] = []
-    new_r: list[int] = []
-    new_u: list[int] = []
+    new_ch: list[str] = []
+    new_r: list[str] = []
+    new_u: list[str] = []
 
     for u in uniquify(mentionables):
         u_in_list = (u_id := u.id) in res_ch_all + res_r_all + res_u_all
         if u_in_list if mode == '+' else not u_in_list:
             continue
         if isinstance(u, hk.PartialChannel):
-            new_ch.append(u_id)
+            new_ch.append(str(u_id))
         elif isinstance(u, hk.Role):
-            new_r.append(u_id)
+            new_r.append(str(u_id))
         else:
-            new_u.append(u_id)
+            new_u.append(str(u_id))
 
     delta_act = '**`＋`** Added' if mode == '+' else '**`ー`** Removed'
     delta_txt = 'new' if mode == '+' else 'restricted'
@@ -185,6 +186,7 @@ async def restrict_list_edit(
     msg = f"📝 {delta_act} {deltas_msg}" if deltas_msg else delta_txt_skipped
 
     await say(ctx, content=msg)
+    cfg.find_one_and_replace(flt, g_cfg)
 
 
 ## config prefix
