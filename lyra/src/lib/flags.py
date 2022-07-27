@@ -30,7 +30,7 @@ from .errors import (
     OthersListening,
     PlaybackChangeRefused,
     RequestedToSpeak,
-    Unautherized,
+    Unauthorized,
     VotingTimeout,
 )
 from .extras import AutoDocsFlag, Result, format_flags
@@ -197,14 +197,14 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         auth_perms = await fetch_permissions(ctx)
         if not (auth_perms & (DJ_PERMS | hkperms.ADMINISTRATOR)):
             if not (np := (await get_queue(ctx, lvc)).current):
-                raise Unautherized(DJ_PERMS)
+                raise Unauthorized(DJ_PERMS)
             if ctx.member.id != np.requester:
                 raise PlaybackChangeRefused(np)
         return True
 
     async def ___handles_voting(
         ctx: tj.abc.Context,
-        exc_: OthersListening | PlaybackChangeRefused | Unautherized,
+        exc_: OthersListening | PlaybackChangeRefused | Unauthorized,
         /,
         *,
         lvc: lv.Lavalink,
@@ -236,7 +236,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         except (
             OthersListening,
             PlaybackChangeRefused,
-            Unautherized,
+            Unauthorized,
         ) as exc_:
             try:
                 return await ___handles_voting(ctx, exc_, lvc=lvc)
@@ -250,7 +250,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
                     ctx,
                     content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
                 )
-            except Unautherized as _exc:
+            except Unauthorized as _exc:
                 await err_say(
                     ctx,
                     content=f"🚫 You lack the `{format_flags(_exc.perms)}` permissions to use this command",

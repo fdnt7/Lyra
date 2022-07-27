@@ -31,7 +31,7 @@ from .errors import (
     QueueEmpty,
     TrackPaused,
     TrackStopped,
-    Unautherized,
+    Unauthorized,
     VotingTimeout,
 )
 from .lavautils import RepeatMode, access_data, get_queue
@@ -56,7 +56,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
                 ctx,
                 content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
             )
-        case Unautherized():
+        case Unauthorized():
             await err_say(
                 ctx,
                 content=f"🚫 You lack the `{format_flags(error.perms)}` permissions to use this command",
