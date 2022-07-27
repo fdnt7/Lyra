@@ -59,7 +59,7 @@ class Restricted(BaseLyraException):
 
 
 @a.frozen
-class Unautherized(Forbidden):
+class Unauthorized(Forbidden):
     pass
 
 

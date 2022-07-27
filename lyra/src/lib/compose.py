@@ -36,7 +36,7 @@ from .errors import (
     PlaybackChangeRefused,
     TrackStopped,
     NotConnected,
-    Unautherized,
+    Unauthorized,
     NotPlaying,
     QueueEmpty,
     TrackPaused,
@@ -120,7 +120,7 @@ def with_cb_check(
         auth_perms = await fetch_permissions(ctx_)
         if not (auth_perms & (DJ_PERMS | hkperms.ADMINISTRATOR)):
             if not (np := (await get_queue(ctx_, lvc)).current):
-                raise Unautherized(DJ_PERMS)
+                raise Unauthorized(DJ_PERMS)
             if ctx_.member.id != np.requester:
                 raise PlaybackChangeRefused(np)
 
@@ -165,7 +165,7 @@ def with_cb_check(
                 if perms:
                     auth_perms = await fetch_permissions(ctx_)
                     if not (auth_perms & (perms | hkperms.ADMINISTRATOR)):
-                        raise Unautherized(perms)
+                        raise Unauthorized(perms)
                 if not lvc:
                     await inj_func(*args, **kwargs)
                     return
@@ -194,7 +194,7 @@ def with_cb_check(
                         except (
                             OthersListening,
                             PlaybackChangeRefused,
-                            Unautherized,
+                            Unauthorized,
                         ) as exc_:
                             if vote:
                                 assert isinstance(ctx_, tj.abc.Context)
@@ -225,7 +225,7 @@ def with_cb_check(
                         )
                         return
                 await inj_func(*args, **kwargs)
-            except Unautherized as exc:
+            except Unauthorized as exc:
                 await err_say(
                     ctx_,
                     content=f"🚫 You lack the `{format_flags(exc.perms)}` permissions to use this command",
