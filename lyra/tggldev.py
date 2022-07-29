@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dev')
 
 args = parser.parse_args()
-with open('../config.yml', 'r') as f:
+with open('config.yml', 'r') as f:
     # pyright: reportUnknownMemberType=false
     _y = yaml.load(f, yaml.Loader)
 
@@ -21,7 +21,7 @@ with open('../config.yml', 'r') as f:
     else:
         raise TypeError("--dev argument must be either t or f")
 
-with open('../config.yml', 'w') as f:
+with open('config.yml', 'w') as f:
     _y['dev_mode'] = dev
     yaml.dump(_y, f)
     print(
