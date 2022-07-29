@@ -10,8 +10,7 @@ lyra/old
 lyra/temp
 lyra/typings
 
-lavalink-win
-lavalink-linux
+lavalink-local
 
 /__pycache__
 lyra/__pycache__/

@@ -8,12 +8,12 @@
 [![Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://pypi.org/project/black)
 [![License](https://img.shields.io/github/license/Fridenity/Lyra)](https://github.com/Fridenity/Lyra/blob/main/LICENSE)
   
-A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/hikari), [hikari-tanjun](https://github.com/FasterSpeeding/Tanjun) and [lavasnek_rs](https://github.com/vicky5124/lavasnek_rs) on Python 3.10.2.
+A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/hikari), [hikari-tanjun](https://github.com/FasterSpeeding/Tanjun) and [lavasnek_rs](https://github.com/vicky5124/lavasnek_rs) on Python 3.10.5.
 
 </div>
 
 ## Inviting the bot to your own servers
-* DM me on Discord: `Teammìe#0118`. **I am very selective on what server can have the bot. If the server is relatively active in VC (<8 hours a day) then I will probably decline.**
+* DM me on Discord: `Teammìe#0118`. **I am likely to decline your request if your server has a very active VC (`≳6` hr/d)**
 
 ## Supporting the bot
 * **Please consider supporting the bot by pressing the `❤️ Sponsor` button at the top!**
@@ -33,7 +33,7 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
         LAVALINK_PORT="..."
 
         MONGODB_PWD="..."
-        MONGODB_CONN_STR="..."
+        MONGODB_CONN_STR="..." # replace the pwd in the str with %s
         ```
     * `config.yml`
         ```yml
@@ -44,29 +44,41 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
         guilds: # unused if dev_mode is false
         - ...
         ```
-    * Feel free to change internal constant and configs in `/lyra/src/lib/consts.py`
 * Obtain these files
     * `headers_auth.json` (Instructions [here](https://ytmusicapi.readthedocs.io/en/latest/setup.html))
 
+<sup>**`-`** Feel free to change internal constant and configs in `/lyra/src/lib/consts.py` and add your own EQ bands in `bands.yml` </sup>
 ### Building & Running the bot via docker
 * 
     ```
     docker compose up
     ``` 
 
-    You can also add the `-d` flag to run the containers in detached mode
+    <sup>**`^`** You can also add the `-d` flag to run the containers in detached mode</sup>
 
 ### Running the bot without docker
-If given two options, do the former when running on Windows and latter when running on Linux.
-* Create a `lavalink-win` or `lavalink-linux` folder
-* Put the `jdk-13.0.2` folder (from [this .zip](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_windows-x64_bin.zip) or [this .tar.gz](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_linux-x64_bin.tar.gz)) and `application.yml` in there
-* Run `scripts/server.bat` or `scripts/server.sh`
-* Run `scripts/bot-startup.bat` or `scripts/bot-startup.sh`
+* Create a `lavalink-local` folder
+    * Extract *(or symlink)* the `jdk-13.0.2` folder from this [.zip](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_windows-x64_bin.zip)<sup>win</sup> | [.tar.gz](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_linux-x64_bin.tar.gz)<sup>nix</sup>
+    * Get the latest build of `Lavalink.jar` from [here](https://ci.fredboat.com/repository/download/Lavalink_Build/9447:id/Lavalink.jar)
+    * *(Optional)* Create `application.yml` like [this](https://github.com/freyacodes/Lavalink/blob/master/LavalinkServer/application.yml.example) to configure Lavalink
+        ```hs
+        lavalink-local
+        ├──jdk-13.0.2 -- maybe symlink
+        │  └──...
+        ├──application.yml -- optional
+        └──Lavalink.jar
+        ```
+        <sup>**`^`** Your `lavalink-local` folder should look like this</sup>
+* Run `scripts/server.bat`<sup>win</sup> | `scripts/server`<sup>nix</sup> and wait for Lavalink to finish starting up
+* Run `scripts/bot.bat`<sup>win</sup> |  `scripts/bot`<sup>nix</sup> to start the bot up
 
+    <sub>**`^`** Options for *Windows* and *Linux* are superscripted with `win` and `nix` respectively</sup>
 ### Toggling between dev modes
 * 
     ```
-    python3 ./lyra/tggldev.py [OPTIONS]
+    python ./lyra/tggldev.py [OPTIONS]...
     ```
+    <sup>**`^`** If that doesn't work, try `python3` instead</sup>
+
     Options:
-    * `--dev`, `-d`: The dev mode. Possible values are `t | T` for On and `f | F` for Off. If this option was not parsed, the mode will be toggled from the previous state.
+    * `--dev`, `-d`: The dev mode. Possible values are `t | T` for On and `f | F` for Off. If this option was not given, the mode will be toggled from the previous state.
