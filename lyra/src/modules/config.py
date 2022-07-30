@@ -473,7 +473,7 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 @restrict_sg_s.with_command
 @with_author_permission_check(RESTRICTOR)
 @tj.with_str_slash_option(
-    'mentionable',
+    'mentionables',
     "Which channel/role/member ?",
     converters=to_multi_mentionables,
 )
@@ -501,7 +501,7 @@ async def restrict_add_(
 @restrict_sg_s.with_command
 @with_restricts_cmd_check
 @tj.with_str_slash_option(
-    'mentionable',
+    'mentionables',
     "Which channel/role/member ?",
     converters=to_multi_mentionables,
 )
