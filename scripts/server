@@ -1,4 +1,4 @@
 #!/bin/sh
 # For starting the lavalink server (Linux)
 
-(cd lavalink-jar && ./jdk-13.0.2/bin/java -jar Lavalink.jar)
+(cd lavalink-local && jdk-13.0.2/bin/java -jar Lavalink.jar)
