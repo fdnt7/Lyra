@@ -86,8 +86,7 @@ def to_repeat_mode(value: str, /):
 def concat_audio(msg: hk.Message, /, _song: Option[str]):
     audio_files = (
         *filter(
-            lambda f: getattr(f, 'media_type', '').startswith('audio'),
-            msg.attachments,
+            lambda f: f.media_type and f.media_type.startswith('audio'), msg.attachments
         ),
     )
     if not (_song or audio_files):

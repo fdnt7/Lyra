@@ -1,5 +1,3 @@
-desktop.ini
-
 .lyra
 lyra/.idea
 lyra/.vscode
@@ -10,17 +8,13 @@ lyra/old
 lyra/temp
 lyra/typings
 
-lavalink-local
+**/__pycache__
+**/desktop.ini
 
-/__pycache__
-lyra/__pycache__/
-lyra/src/__pycache__
-lyra/src/lib/__pycache__/
-lyra/src/modules/__pycache__/
+lavalink-local/jdk-13.0.2
+lavalink-local/Lavalink.jar
+lavalink-local/application.yml
 
 .env
 headers_auth.json
-guild_settings.json
 config.yml
-lavasnek_rs-0.1.0_alpha.4-cp310-none-win_amd64.whl
-lyra-db-firebase-adminsdk-6u69r-4575f2e0e1.json

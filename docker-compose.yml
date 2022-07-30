@@ -15,6 +15,6 @@ services:
     image: lyra_lavalink
     build: ./lavalink
     container_name: lavalink
-    environment: 
-      - PASSWORD=youshallnotpass
+    env_file:
+      - .env
     restart: unless-stopped

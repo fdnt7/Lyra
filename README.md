@@ -20,7 +20,7 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
 
 ## Running your own instance of Lýra
 ### Prerequisites
-* Set up a MongoDB database
+* Set up a [MongoDB Atlas Database](https://www.mongodb.com/atlas/database)
 * Create & fill these files with the necessary info:
     * `.env`
         ```py
@@ -29,7 +29,7 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
         LYRA_TOKEN="..."
 
         LAVALINK_HOST="lavalink"
-        LAVALINK_PASSWORD="..."
+        LAVALINK_PWD="..."
         LAVALINK_PORT="..."
 
         MONGODB_PWD="..."
@@ -48,33 +48,31 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
     * `headers_auth.json` (Instructions [here](https://ytmusicapi.readthedocs.io/en/latest/setup.html))
 
 <sup>**`-`** Feel free to change internal constant and configs in `/lyra/src/lib/consts.py` and add your own EQ bands in `bands.yml` </sup>
+
 ### Building & Running the bot via docker
-* 
-    ```
-    docker compose up
-    ``` 
+*   Run `sudo docker-compose up`
 
     <sup>**`^`** You can also add the `-d` flag to run the containers in detached mode</sup>
 
 ### Running the bot without docker
-* Create a `lavalink-local` folder
+* In the `lavalink-local` folder
 
     <sup>**`∨`** Options for *Windows* and *Linux* are superscripted with `win` and `nix` respectively</sup>
     * Extract *(or symlink)* the `jdk-13.0.2`<sup>[win](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_windows-x64_bin.zip) | [nix](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_linux-x64_bin.tar.gz)</sup> folder
     * Get the latest build of [`Lavalink.jar`](https://ci.fredboat.com/repository/download/Lavalink_Build/9447:id/Lavalink.jar)
-    * *(Optional)* Create [`application.yml`](https://github.com/freyacodes/Lavalink/blob/master/LavalinkServer/application.yml.example) to configure Lavalink
-        ```hs
-        lavalink-local
-        ├──jdk-13.0.2 -- maybe symlink
-        │  └──...
-        ├──application.yml -- optional
-        └──Lavalink.jar
-        ```
-        <sup>**`^`** Your `lavalink-local` folder should look like this</sup>
-*
+
+    <sub>**`∨`** Your `lavalink-local` folder should look like this</sub>
+    
+    ```hs
+    lavalink-local
+    ├──jdk-13.0.2 -- maybe symlink
+    │  └──...
+    ├──application.yml.dev -- lavalink config, feel free to edit
+    └──Lavalink.jar
     ```
-    (cd lyra && pip install -Ur requirements.txt)
-    ```
+        
+* Run `(cd lyra && pip install -Ur requirements.txt)`
+
     <sup>**`^`** If that doesn't work, try `pip3` instead</sup>
     
     <sup>**`^`** If you prefer having a [venv](https://docs.python.org/3/tutorial/venv.html), run `(cd lyra && python -m venv .venv && pip install -Ur requirements.txt)` and then run `. lyra/.venv/bin/Activate.ps1`ʷᶦⁿ | `. lyra/.venv/bin/activate`ⁿᶦˣ</sup>
@@ -85,10 +83,8 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
     <sup>**`^`** To run the bot in debug mode, run `. scripts/bot-debug.bat`ʷᶦⁿ | `. scripts/bot-debug`ⁿᶦˣ</sup>
 
 ### Toggling between dev modes
-* 
-    ```
-    python lyra/tggldev.py [OPTIONS]...
-    ```
+*   `python lyra/tggldev.py [OPTIONS]...`
+
     <sup>**`^`** If that doesn't work, try `python3` instead</sup>
 
     Options:
