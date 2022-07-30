@@ -101,14 +101,7 @@ async def join(
     assert g_cfg
 
     res_ch = g_cfg.get('restricted_ch', {})
-    res_ch_all: set[int] = {
-        *(
-            map(
-                int,
-                res_ch.get('all', []),  # pyright: ignore [reportUnknownArgumentType]
-            )
-        )
-    }
+    res_ch_all: set[int] = {*(map(int, res_ch.get('all', [])))} # pyright: ignore [reportUnknownArgumentType]
     ch_wl: t.Literal[-1, 0, 1] = res_ch.get('wl_mode', 0)
 
     author_perms = await tj.utilities.fetch_permissions(
