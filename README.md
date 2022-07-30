@@ -60,7 +60,7 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
 * Create a `lavalink-local` folder
 
     <sup>**`∨`** Options for *Windows* and *Linux* are superscripted with `win` and `nix` respectively</sup>
-    * Extract *(or symlink)* the `jdk-13.0.2` folder from this [.zip](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_windows-x64_bin.zip)<sup>win</sup> | [.tar.gz](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_linux-x64_bin.tar.gz)<sup>nix</sup>
+    * Extract *(or symlink)* the `jdk-13.0.2`<sup>[win](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_windows-x64_bin.zip) | [nix](https://download.java.net/java/GA/jdk13.0.2/d4173c853231432d94f001e99d882ca7/8/GPL/openjdk-13.0.2_linux-x64_bin.tar.gz)</sup> folder
     * Get the latest build of [`Lavalink.jar`](https://ci.fredboat.com/repository/download/Lavalink_Build/9447:id/Lavalink.jar)
     * *(Optional)* Create [`application.yml`](https://github.com/freyacodes/Lavalink/blob/master/LavalinkServer/application.yml.example) to configure Lavalink
         ```hs
@@ -79,8 +79,8 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
     
     <sup>**`^`** If you prefer having a [venv](https://docs.python.org/3/tutorial/venv.html), run `(cd lyra && python -m venv .venv && pip install -Ur requirements.txt)` and then run `. lyra/.venv/bin/Activate.ps1`ʷᶦⁿ | `. lyra/.venv/bin/activate`ⁿᶦˣ</sup>
     
-* Run `. scripts/server.bat`<sup>win</sup> | `scripts/server`<sup>nix</sup> and wait for Lavalink to finish starting up
-* Run `. scripts/bot.bat`<sup>win</sup> |  `scripts/bot`<sup>nix</sup> to start the bot up
+* Run `. scripts/server.bat`<sup>win</sup> | `. scripts/server`<sup>nix</sup> and wait for Lavalink to finish starting up
+* Run `. scripts/bot.bat`<sup>win</sup> |  `. scripts/bot`<sup>nix</sup> to start the bot up
 
     <sup>**`^`** To run the bot in debug mode, run `. scripts/bot-debug.bat`ʷᶦⁿ | `. scripts/bot-debug`ⁿᶦˣ</sup>
 
