@@ -127,7 +127,8 @@ async def restrict_list_edit(
 ):
     assert ctx.guild_id
     flt = {'id': str(ctx.guild_id)}
-    g_cfg = cfg.find_one()
+
+    g_cfg = cfg.find_one(flt)
     assert g_cfg
 
     res_ch = g_cfg.setdefault('restricted_ch', {})
