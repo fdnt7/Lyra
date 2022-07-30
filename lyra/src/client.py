@@ -119,7 +119,7 @@ async def on_shard_ready(
     builder = (
         lv.LavalinkBuilder(event.my_user.id, TOKEN)
         .set_host(host)
-        .set_password(os.environ['LAVALINK_PASSWORD'])
+        .set_password(os.environ['LAVALINK_PWD'])
         .set_port(int(os.environ['LAVALINK_PORT']))
         .set_start_gateway(False)
     )

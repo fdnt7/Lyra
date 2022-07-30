@@ -4,8 +4,8 @@ services:
   lavalink:
     image: lyra_lavalink
     container_name: lavalink
-    environment: 
-      - PASSWORD=PASSWORD 
+    environment:
+      - LAVALINK_PWD=LAVALINK_PWD
     ports:
-      - 2333:2333
+      - ${LAVALINK_PORT}:${LAVALINK_PORT}
     restart: unless-stopped

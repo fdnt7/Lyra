@@ -7,7 +7,7 @@ COPY application.yml application.yml
 RUN apt update -y && apt upgrade -y
 RUN apt install wget -y
 RUN wget https://github.com/freyacodes/Lavalink/releases/latest/download/Lavalink.jar
-EXPOSE 2333
+EXPOSE ${LAVALINK_PORT}
 
 ENV TZ=Asia/Bangkok
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone

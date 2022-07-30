@@ -1,0 +1,16 @@
+.github
+lavalink-local
+scripts
+
+lyra/.idea
+lyra/.vscode
+lyra/.mypy_cache
+lyra/.venv
+lyra/old
+lyra/temp
+lyra/typings
+
+lyra/tggldev.py
+
+**/__pycache__
+**/desktop.ini
