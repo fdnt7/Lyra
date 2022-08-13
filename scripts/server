@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 # For starting the lavalink server (Linux)
 
 set -a
-source .env
+. ./.env
 set +a
 
 (cd lavalink-local && envsubst < application.yml.dev > application.yml && sudo chattr +i application.yml && jdk-13.0.2/bin/java -jar Lavalink.jar)

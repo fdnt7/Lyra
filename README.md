@@ -47,7 +47,7 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
 * Obtain these files
     * `headers_auth.json` (Instructions [here](https://ytmusicapi.readthedocs.io/en/latest/setup.html))
 
-<sup>**`-`** Feel free to change internal constant and configs in `/lyra/src/lib/consts.py` and add your own EQ bands in `bands.yml` </sup>
+<sup>**`?`** Feel free to change internal constant and configs in [`lyra/src/lib/consts.py`](lyra/src/lib/consts.py) and add your own EQ bands in [`bands.yml`](bands.yml) </sup>
 
 ### Building & Running the bot via docker
 *   Run `sudo docker-compose up`
@@ -75,17 +75,18 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
 
     <sup>**`^`** If that doesn't work, try `pip3` instead</sup>
     
-    <sup>**`^`** If you prefer having a [venv](https://docs.python.org/3/tutorial/venv.html), run `(cd lyra && python -m venv .venv && pip install -Ur requirements.txt)` and then run `. lyra/.venv/bin/Activate.ps1`ʷᶦⁿ | `. lyra/.venv/bin/activate`ⁿᶦˣ</sup>
+    <sup>**`^`** If you prefer having a [venv](https://docs.python.org/3/tutorial/venv.html), run `(cd lyra && python -m venv .venv && . lyra/.venv/bin/Activate.ps1 && pip install -Ur requirements.txt)`ʷᶦⁿ | `(cd lyra && python -m venv .venv && . lyra/.venv/bin/activate && pip install -Ur requirements.txt)`ⁿᶦˣ </sup>
     
-* Run `. scripts/server.bat`<sup>win</sup> | `. scripts/server`<sup>nix</sup> and wait for Lavalink to finish starting up
-* Run `. scripts/bot.bat`<sup>win</sup> |  `. scripts/bot`<sup>nix</sup> to start the bot up
+    
+    
+* Run [`scripts/server.bat`](scripts/server.bat)<sup>win</sup> | [`scripts/server`](scripts/server)<sup>nix</sup> and wait for Lavalink to finish starting up
+* Run [`scripts/bot.bat`](scripts/bot.bat)<sup>win</sup> |  [`scripts/bot`](scripts/bot)<sup>nix</sup> to start the bot up
 
-    <sup>**`^`** To run the bot in debug mode, run `. scripts/bot-debug.bat`ʷᶦⁿ | `. scripts/bot-debug`ⁿᶦˣ</sup>
+    <sup>**`^`** To run the bot in debug mode, run [`scripts/bot-debug.bat`](scripts/bot-debug.bat)ʷᶦⁿ | [`scripts/bot-debug`](scripts/bot-debug)ⁿᶦˣ</sup>
 
-### Toggling between dev modes
-*   `python lyra/tggldev.py [OPTIONS]...`
+### Development
+*   Run `pip install -r dev_requirements.txt`
+*   Run `scripts/tggldev [OPTIONS]...` to toggle between dev modes
 
-    <sup>**`^`** If that doesn't work, try `python3` instead</sup>
-
-    Options:
+    #### Options:
     * `--dev`, `-d`: The dev mode. Possible values are `t | T` for On and `f | F` for Off. If this option was not given, the mode will be toggled from the previous state.
