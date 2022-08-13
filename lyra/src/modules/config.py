@@ -144,15 +144,15 @@ async def restrict_list_edit(
     new_u: list[str] = []
 
     for u in uniquify(mentionables):
-        u_in_list = (u_id := u.id) in res_ch_all + res_r_all + res_u_all
+        u_in_list = (u_id := str(u.id)) in res_ch_all + res_r_all + res_u_all
         if u_in_list if mode == '+' else not u_in_list:
             continue
         if isinstance(u, hk.PartialChannel):
-            new_ch.append(str(u_id))
+            new_ch.append(u_id)
         elif isinstance(u, hk.Role):
-            new_r.append(str(u_id))
+            new_r.append(u_id)
         else:
-            new_u.append(str(u_id))
+            new_u.append(u_id)
 
     delta_act = '**`＋`** Added' if mode == '+' else '**`ー`** Removed'
     delta_txt = 'new' if mode == '+' else 'restricted'
