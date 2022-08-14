@@ -17,7 +17,16 @@ from .utils import (
     trigger_thinking,
 )
 from .consts import ADD_TRACKS_WRAP_LIM
-from .extras import NULL, MaybeIterable, Option, Result, lgfmt, url_regex, join_and
+from .extras import (
+    NULL,
+    MaybeIterable,
+    Option,
+    Result,
+    Panic,
+    lgfmt,
+    url_regex,
+    join_and,
+)
 from .errors import (
     Argument,
     IllegalArgument,
@@ -52,7 +61,7 @@ async def to_tracks(
     value: str,
     *,
     source: Option[str] = None,
-) -> Result[tuple[Trackish, ...]]:
+) -> Panic[tuple[Trackish, ...]]:
     if source is None:
         source = 'yt'
     tracks: list[Trackish] = []
@@ -107,7 +116,7 @@ async def add_tracks_(
     respond: bool = False,
     shuffle: bool = False,
     ignore_stop: bool = False,
-):
+) -> Result[tuple[lv.Track, ...]]:
     assert ctx.guild_id
     flttn_t: t.Iterable[lv.Track] = []
     if isinstance(tracks_, Trackish):
@@ -184,7 +193,7 @@ async def add_tracks_(
 
 async def remove_track(
     ctx: tj.abc.Context, track: Option[str], lvc: lv.Lavalink, /
-) -> lv.TrackQueue:
+) -> Result[lv.TrackQueue]:
     from .playback import while_stop, skip
 
     assert ctx.guild_id
@@ -236,7 +245,7 @@ async def remove_track(
 
 async def remove_tracks(
     ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
-) -> list[lv.TrackQueue]:
+) -> Result[list[lv.TrackQueue]]:
     from .playback import while_stop, set_pause
 
     assert ctx.guild_id
@@ -284,7 +293,7 @@ async def shuffle_abs(ctx_: Contextish, lvc: lv.Lavalink):
 
 async def insert_track(
     ctx: tj.abc.Context, insert: int, track: Option[int], lvc: lv.Lavalink, /
-) -> lv.TrackQueue:
+) -> Result[lv.TrackQueue]:
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
@@ -330,7 +339,7 @@ async def repeat_abs(
     ctx_: Contextish,
     mode: Option[RepeatMode],
     lvc: lv.Lavalink,
-) -> None:
+) -> Panic[None]:
     """Select a repeat mode for the queue"""
     async with access_data(ctx_, lvc) as d:
         q = d.queue

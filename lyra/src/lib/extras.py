@@ -13,6 +13,7 @@ from ._extras_types import (
     Decorator,
     _DecoratedT,  # pyright: ignore [reportPrivateUsage]
     Result,
+    Panic,
     NULL,
     VoidCoro,
     RGBTriplet,
@@ -102,7 +103,7 @@ def to_stamp(ms: int, /) -> str:
     )
 
 
-def to_ms(str_: str, /) -> int:
+def to_ms(str_: str, /) -> Result[int]:
     VALID_FORMAT = "00:00.204 1:57 2:00:09 400ms 7m51s 5h2s99ms".split()
     singl_z = ['0']
     if match := time_regex.fullmatch(str_):

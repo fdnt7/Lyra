@@ -5,10 +5,10 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from ..lib.extras import Option
+from ..lib.extras import Option, Panic
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
 from ..lib.musicutils import init_component
-from ..lib.utils import dj_perms_fmt, say, err_say
+from ..lib.utils import JoinableChannelType, dj_perms_fmt, say, err_say
 from ..lib.lavautils import get_data, access_data
 from ..lib.errors import (
     NotInVoice,
@@ -21,9 +21,11 @@ from ..lib.errors import (
 conns = init_component(__name__)
 
 
-async def to_voice_or_stage_channels(value: str, /, ctx: al.Injected[tj.abc.Context]):
+async def to_voice_or_stage_channels(
+    value: str, /, ctx: al.Injected[tj.abc.Context]
+) -> Panic[JoinableChannelType]:
     ch = await tj.to_channel(value, ctx)
-    if not isinstance(ch, hk.GuildVoiceChannel | hk.GuildStageChannel):
+    if not isinstance(ch, JoinableChannelType):
         raise tj.ConversionError(
             "The given channel is a not a voice nor a stage channel", value
         )

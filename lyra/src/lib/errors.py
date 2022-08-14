@@ -63,6 +63,11 @@ class Unauthorized(Forbidden):
     pass
 
 
+@a.frozen(init=False)
+class NotDeveloper(BaseLyraException):
+    pass
+
+
 @a.frozen
 class ChannelMoved(ConnectionSignal):
     old_channel: hk.Snowflakeish
@@ -162,4 +167,14 @@ class NoPlayableTracks(BaseLyraException):
 
 @a.frozen(init=False)
 class VotingTimeout(TimeoutError, BaseLyraException):
+    pass
+
+
+@a.frozen(init=False)
+class ErrorNotRecognized(NotImplementedError, BaseLyraException):
+    pass
+
+
+@a.frozen(init=False)
+class CommandCancelled(BaseLyraException):
     pass
