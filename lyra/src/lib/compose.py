@@ -210,7 +210,7 @@ def with_cb_check(
                     assert isinstance(ctx_, tj.abc.Context)
                     try:
                         await init_confirmation_prompt(ctx_)
-                    except CommandCancelled | asyncio.TimeoutError as exc:
+                    except (CommandCancelled, asyncio.TimeoutError) as exc:
                         await BindErrorExpects(ctx_).expect(exc)
                         return
                 await inj_func(*args, **kwargs)

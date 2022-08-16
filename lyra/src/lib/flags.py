@@ -256,7 +256,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         ) as exc_:
             try:
                 return await ___handles_voting(ctx, exc_, lvc=lvc)
-            except OthersListening | PlaybackChangeRefused | Unauthorized as _exc:
+            except (OthersListening, PlaybackChangeRefused, Unauthorized) as _exc:
                 await CheckErrorExpects(ctx).expect(_exc)
             raise tj.HaltExecution
 
@@ -316,7 +316,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
     async def _as_confirm_bind(ctx: tj.abc.Context, /) -> Panic[bool]:
         try:
             await init_confirmation_prompt(ctx)
-        except CommandCancelled | asyncio.TimeoutError as exc:
+        except (CommandCancelled, asyncio.TimeoutError) as exc:
             await BindErrorExpects(ctx).expect(exc)
             raise tj.HaltExecution
         return True
