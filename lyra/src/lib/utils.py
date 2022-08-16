@@ -12,9 +12,11 @@ from hikari.permissions import Permissions as hkperms
 from hikari.messages import MessageFlag as msgflag
 
 from .consts import TIMEOUT, Q_CHUNK  # pyright: ignore [reportUnusedImport]
-from .errors import BaseLyraException
+from .errors import BaseLyraException, CommandCancelled
 from .extras import (
     Option,
+    Result,
+    Panic,
     VoidCoro,
     format_flags,
     join_and,
@@ -63,6 +65,8 @@ ConnectionInfo = dict[
 SelectMenuBuilderType = hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
 EditableComponentsType = ButtonBuilderType | SelectMenuBuilderType
 MentionableType = hk.GuildChannel | hk.Role | hk.Member
+PartialMentionableType = hk.PartialUser | hk.PartialRole | hk.PartialChannel
+JoinableChannelType = hk.GuildVoiceChannel | hk.GuildStageChannel
 BaseCommandType = tj.abc.ExecutableCommand[tj.abc.Context]
 BindSig = tj.abc.CheckSig
 
@@ -93,7 +97,7 @@ async def err_say(
     del_after: float = 3.5,
     channel: hk.Snowflakeish = ...,
     **kwargs: t.Any,
-) -> hk.Message:
+) -> Panic[hk.Message]:
     ...
 
 
@@ -151,7 +155,7 @@ async def ephim_say(
     *,
     channel: hk.Snowflakeish = ...,
     **kwargs: t.Any,
-) -> hk.Message:
+) -> Panic[hk.Message]:
     ...
 
 
@@ -183,7 +187,7 @@ async def say(
     hidden: bool = False,
     channel: hk.Snowflakeish = ...,
     **kwargs: t.Any,
-) -> hk.Message:
+) -> Panic[hk.Message]:
     ...
 
 
@@ -402,7 +406,7 @@ def extract_content(msg: hk.Message):
     return msg.content
 
 
-async def init_confirmation_prompt(ctx: tj.abc.Context):
+async def init_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
@@ -441,7 +445,8 @@ async def init_confirmation_prompt(ctx: tj.abc.Context):
     inter = event.interaction
     assert isinstance(inter, hk.ComponentInteraction)
     await inter.create_initial_response(hk.ResponseType.DEFERRED_MESSAGE_UPDATE)
-    return inter.custom_id == 'prompt_y'
+    if inter.custom_id != 'prompt_y':
+        raise CommandCancelled
 
 
 _CMD = t.TypeVar('_CMD', bound=BaseCommandType)
@@ -568,7 +573,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
     if isinstance(error, BaseLyraException):
         pass
     elif isinstance(error, hk.ForbiddenError):
-        await say(ctx, content="⛔ Lacked enough permissions to execute the command.")
+        await say(ctx, content="⛔ Not sufficient permissions to execute the command.")
     else:
         # error_tb = f"\n```py\n{''.join(tb.format_exception(type(error), value=error, tb=error.__traceback__))}```"
         error_tb = '`%s`' % error
@@ -619,12 +624,12 @@ def infer_guild(g_r_inf: GuildOrRESTInferable, /) -> hk.Snowflakeish:
     return g_r_inf.guild_id
 
 
-def get_pref(ctx: Contextish, /):
-    if isinstance(ctx, tj.abc.MessageContext):
-        return next(iter(ctx.client.prefixes))
-    if isinstance(ctx, tj.abc.SlashContext):
+def get_pref(ctx_: Contextish, /):
+    if isinstance(ctx_, tj.abc.MessageContext):
+        return next(iter(ctx_.client.prefixes))
+    if isinstance(ctx_, tj.abc.SlashContext):
         return '/'
-    if isinstance(ctx, tj.abc.MenuContext):
+    if isinstance(ctx_, tj.abc.MenuContext):
         return '[>]'
     return ';;'
 

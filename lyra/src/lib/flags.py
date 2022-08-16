@@ -13,17 +13,15 @@ from .utils import (
     BindSig,
     Contextish,
     ConnectionInfo,
-    dj_perms_fmt,
     delete_after,
-    err_say,
     fetch_permissions,
     get_client,
-    get_pref,
     init_confirmation_prompt,
-    say,
 )
 from .errors import (
     AlreadyConnected,
+    CommandCancelled,
+    NotDeveloper,
     NotInVoice,
     NotYetSpeaker,
     OthersInVoice,
@@ -33,7 +31,8 @@ from .errors import (
     Unauthorized,
     VotingTimeout,
 )
-from .extras import AutoDocsFlag, Result, format_flags
+from .expects import BindErrorExpects, CheckErrorExpects
+from .extras import AutoDocsFlag, Result, Panic
 from .lavautils import get_queue
 from .connections import others_not_in_vc_check_impl
 
@@ -60,6 +59,8 @@ class Checks(AutoDocsFlag):
     ADVANCE = STOP = """Check whether the current track had been stopped"""
 
     PLAYBACK = PAUSE = """Checks whether the currently playing track had been paused"""
+
+    DEVELOPER = """Checks whether the command user is a developer"""
 
 
 IN_VC_ALONE = Checks.IN_VC | Checks.OTHERS_NOT_IN_VC
@@ -100,43 +101,61 @@ async def speaker_check(ctx_: Contextish, /) -> Result[bool]:
     return True
 
 
+async def developer_check(ctx: tj.abc.Context, /) -> Result[bool]:
+    from ..lib import consts as c
+
+    if int(ctx.author.id) not in c.__developers__:
+        raise NotDeveloper
+    return True
+
+
+async def as_developer_check(ctx: tj.abc.Context, /) -> Panic[bool]:
+    try:
+        return await developer_check(ctx)
+    except NotDeveloper:
+        await CheckErrorExpects(ctx).expect_not_developer()
+    raise tj.HaltExecution
+
+
 def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     _checks: list[tj.abc.CheckSig] = []
 
     async def _as_conn_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         assert ctx.guild_id
 
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
         if not conn:
-            p = get_pref(ctx)
-            await err_say(
-                ctx,
-                content=f"❌ Not currently connected to any channel. Use `{p}join` or `{p}play` first",
-            )
+            await CheckErrorExpects(ctx).expect_not_connected()
             raise tj.HaltExecution
         return True
 
     async def _as_queue_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         if not await get_queue(ctx, lvc):
-            await err_say(ctx, content="❗ The queue is empty")
+            await CheckErrorExpects(ctx).expect_queue_empty()
             raise tj.HaltExecution
         return True
 
+    async def _as_speaker_check(ctx: tj.abc.Context, /) -> Panic[bool]:
+        try:
+            return await speaker_check(ctx)
+        except NotYetSpeaker as exc:
+            await CheckErrorExpects(ctx).expect_not_yet_speaker(exc)
+        raise tj.HaltExecution
+
     async def _as_playing_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         if not (await get_queue(ctx, lvc)).current:
-            await err_say(ctx, content="❗ Nothing is playing at the moment")
-            raise tj.HaltExecution
+            await CheckErrorExpects(ctx).expect_not_playing()
         return True
 
     async def __check_in_vc(
         ctx: tj.abc.Context, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
-    ):
+    ) -> Result[bool]:
         member = ctx.member
         assert ctx.guild_id
 
@@ -161,7 +180,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 
     async def _as_in_vc_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         assert ctx.guild_id
 
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
@@ -169,10 +188,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         try:
             return await __check_in_vc(ctx, conn)
         except AlreadyConnected as exc:
-            await err_say(
-                ctx,
-                content=f"🚫 Join <#{exc.channel}> first. **You bypass this by having the {dj_perms_fmt} permissions**",
-            )
+            await CheckErrorExpects(ctx).expect_already_connected(exc)
         raise tj.HaltExecution
 
     async def ___as_np_yours_check(
@@ -223,7 +239,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 
     async def __handles_advanced_case(
         ctx: tj.abc.Context, exc: OthersInVoice, /, *, lvc: lv.Lavalink
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         try:
             assert checks
             if Checks.CAN_SEEK_ANY & checks:
@@ -240,26 +256,13 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         ) as exc_:
             try:
                 return await ___handles_voting(ctx, exc_, lvc=lvc)
-            except OthersListening as exc:
-                await err_say(
-                    ctx,
-                    content=f"🚫 You can only do this if you are alone in <#{exc.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
-                )
-            except PlaybackChangeRefused:
-                await err_say(
-                    ctx,
-                    content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
-                )
-            except Unauthorized as _exc:
-                await err_say(
-                    ctx,
-                    content=f"🚫 You lack the `{format_flags(_exc.perms)}` permissions to use this command",
-                )
+            except (OthersListening, PlaybackChangeRefused, Unauthorized) as _exc:
+                await CheckErrorExpects(ctx).expect(_exc)
             raise tj.HaltExecution
 
     async def _as_others_not_in_vc_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         assert ctx.guild_id
 
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
@@ -271,30 +274,28 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 
     async def _as_stop_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         if (await get_queue(ctx, lvc)).is_stopped:
-            p = get_pref(ctx)
-            await err_say(
-                ctx,
-                content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
-            )
+            await CheckErrorExpects(ctx).expect_track_stopped()
             raise tj.HaltExecution
         return True
 
     async def _as_pause_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
-    ) -> Result[bool]:
+    ) -> Panic[bool]:
         if (await get_queue(ctx, lvc)).is_paused:
-            await err_say(ctx, content="❗ The current track is paused")
+            await CheckErrorExpects(ctx).expect_track_paused()
             raise tj.HaltExecution
         return True
 
+    if Checks.DEVELOPER & checks:
+        _checks.append(as_developer_check)
     if Checks.CONN & checks:
         _checks.append(_as_conn_check)
     if Checks.QUEUE & checks:
         _checks.append(_as_queue_check)
     if Checks.SPEAK & checks:
-        _checks.append(speaker_check)
+        _checks.append(_as_speaker_check)
     if Checks.PLAYING & checks:
         _checks.append(_as_playing_check)
     if Checks.IN_VC & checks:
@@ -312,17 +313,17 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
     _binds: list[BindSig] = []
 
-    async def _as_confirm_bind(ctx: tj.abc.Context, /) -> Result[bool]:
+    async def _as_confirm_bind(ctx: tj.abc.Context, /) -> Panic[bool]:
         try:
-            if not await init_confirmation_prompt(ctx):
-                await err_say(ctx, follow_up=False, content="🛑 Cancelled the command")
-                raise tj.HaltExecution
-        except asyncio.TimeoutError:
-            await say(ctx, content="⌛ Timed out. Please reinvoke the command")
+            await init_confirmation_prompt(ctx)
+        except (CommandCancelled, asyncio.TimeoutError) as exc:
+            await BindErrorExpects(ctx).expect(exc)
             raise tj.HaltExecution
         return True
 
-    async def __wait_until_speaker(ctx: tj.abc.Context, sig: RequestedToSpeak, /):
+    async def __wait_until_speaker(
+        ctx: tj.abc.Context, sig: RequestedToSpeak, /
+    ) -> Panic[bool]:
         bot = ctx.client.get_type_dependency(hk.GatewayBot)
         assert bot
 
@@ -360,7 +361,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
         else:
             return True
 
-    async def _as_connect_vc(ctx: tj.abc.Context, /) -> Result[bool]:
+    async def _as_connect_vc(ctx: tj.abc.Context, /) -> Panic[bool]:
         assert ctx.guild_id
 
         ch = ctx.get_channel()
@@ -378,11 +379,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
             except RequestedToSpeak as sig:
                 return await __wait_until_speaker(ctx, sig)
             except NotInVoice:
-                p = get_pref(ctx)
-                await err_say(
-                    ctx,
-                    content=f"❌ Please join a voice channel first. You can also do `{p}join channel:` `[🔊 ...]`",
-                )
+                await BindErrorExpects(ctx).expect_not_in_voice()
                 raise tj.HaltExecution
             else:
                 return bool(vc)

@@ -31,6 +31,7 @@ from .errors import (
     RequestedToSpeak,
     Restricted,
 )
+from .expects import CheckErrorExpects
 from .dataimpl import LyraDBCollectionType
 from .lavautils import access_data, access_queue
 
@@ -47,7 +48,7 @@ async def join(
     channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel],
     lvc: lv.Lavalink,
     /,
-) -> hk.Snowflake:
+) -> Result[hk.Snowflake]:
     """Joins your voice channel."""
     assert ctx.guild_id and ctx.member
 
@@ -152,7 +153,7 @@ async def join(
     return new_ch
 
 
-async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> hk.Snowflakeish:
+async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Result[hk.Snowflakeish]:
     assert ctx.guild_id
 
     if not (conn := lvc.get_guild_gateway_connection_info(ctx.guild_id)):
@@ -219,11 +220,6 @@ async def join_impl_precaught(
         )
     except AlreadyConnected as exc:
         await err_say(ctx, content=f"❗ Already connected to <#{exc.channel}>")
-    except InternalError:
-        await err_say(
-            ctx,
-            content="⁉️ Something internal went wrong. Please try again in few minutes",
-        )
     except Forbidden as exc:
         await err_say(
             ctx,
@@ -234,6 +230,8 @@ async def join_impl_precaught(
             ctx,
             content="⌛ Took too long to join voice. **Please make sure the bot has access to the specified channel**",
         )
+    except InternalError:
+        await CheckErrorExpects(ctx).expect_internal_error()
     else:
         return vc
 

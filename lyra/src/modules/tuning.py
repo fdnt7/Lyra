@@ -6,7 +6,7 @@ import alluka as al
 import lavasnek_rs as lv
 
 from ..lib.musicutils import init_component
-from ..lib.extras import Option
+from ..lib.extras import Option, Panic
 from ..lib.utils import (
     say,
     err_say,
@@ -27,7 +27,7 @@ tuning = init_component(__name__)
 # ~
 
 
-def to_preset(value: str, /):
+def to_preset(value: str, /) -> Panic[str]:
     if value.casefold() not in valid_presets.values():
         valid_presets_fmt = ', '.join(
             ('\"%s\" (%s)' % (j, i) for i, j in valid_presets.items())

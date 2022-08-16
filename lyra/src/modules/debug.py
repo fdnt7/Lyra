@@ -4,14 +4,16 @@ import pathlib as pl
 import hikari as hk
 import tanjun as tj
 import alluka as al
-import src.lib.consts as c
 
+from ..lib.flags import as_developer_check
 from ..lib.musicutils import init_component
 from ..lib.extras import lgfmt
 from ..lib.utils import say, err_say
 
 
-debug = init_component(__name__, guild_check=False, music_hook=False)
+debug = init_component(
+    __name__, guild_check=False, music_hook=False, other_checks={as_developer_check}
+)
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -19,7 +21,7 @@ logger.setLevel(logging.DEBUG)
 
 
 modules = {p.stem: p for p in pl.Path('.').glob('./src/modules/*.py')}
-choices = tuple(modules)
+choices = (*modules,)
 
 
 @tj.with_str_slash_option('module', "The module to target.", choices=choices)
@@ -34,9 +36,6 @@ async def reload_module(
 ):
     """Reload a module in tanjun"""
 
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
     mod = modules[module]
     try:
         client.reload_modules(mod)
@@ -58,9 +57,6 @@ async def unload_module(
 ):
     """Unload a module in tanjun"""
 
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
     mod = modules[module]
     try:
         client.unload_modules(mod)
@@ -72,7 +68,10 @@ async def unload_module(
 
 
 @tj.with_str_slash_option('module', "The module to reload.", choices=choices)
-@tj.as_slash_command('load', "Loads a module.")
+@tj.as_slash_command(
+    'load',
+    "Loads a module.",
+)
 #
 @tj.with_argument('module')
 @tj.as_message_command('load', 'lo')
@@ -83,9 +82,6 @@ async def load_module(
 ):
     """Load a module in tanjun"""
 
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
     mod = modules[module]
     try:
         client.load_modules(mod)
@@ -96,11 +92,9 @@ async def load_module(
     await say(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
 
 
-@tj.as_message_command('delete_all_app_commands')
+@tj.as_message_command('delete_all_global_commands')
 async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.GatewayBot]):
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
+    """Deletes all global commands"""
 
     me = bot.get_me()
     assert me

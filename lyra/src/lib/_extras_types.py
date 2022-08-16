@@ -22,6 +22,7 @@ _E = t.TypeVar('_E', bound=Exception)
 _T_co = t.TypeVar('_T_co', covariant=True)
 Option = _T | None
 Result = t.Annotated[_T | t.NoReturn, ...]
+Panic = Result
 Require = t.Annotated[_T_co, ...]
 MaybeIterable = _T | t.Iterable[_T]
 

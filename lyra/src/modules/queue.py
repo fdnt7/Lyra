@@ -31,7 +31,7 @@ from ..lib.compose import (
     with_cmd_composer,
     with_cmd_checks,
 )
-from ..lib.extras import Option, flatten, fmt_str
+from ..lib.extras import Option, Panic, flatten, fmt_str
 from ..lib.lavautils import (
     RepeatMode,
     get_data,
@@ -58,7 +58,7 @@ valid_sources: t.Final = {
 }
 
 
-def to_source(value: str, /):
+def to_source(value: str, /) -> Panic[str]:
     if value.casefold() not in valid_sources.values():
         valid_sources_fmt = ', '.join(
             ('\"%s\" (%s)' % (j, i) for i, j in valid_sources.items())
@@ -69,7 +69,7 @@ def to_source(value: str, /):
     return value
 
 
-def to_repeat_mode(value: str, /):
+def to_repeat_mode(value: str, /) -> Panic[RepeatMode]:
     from ..lib.lavautils import all_repeat_modes
 
     if value in all_repeat_modes[0]:
@@ -83,7 +83,7 @@ def to_repeat_mode(value: str, /):
     )
 
 
-def concat_audio(msg: hk.Message, /, _song: Option[str]):
+def concat_audio(msg: hk.Message, /, _song: Option[str]) -> Panic[str]:
     audio_files = (
         *filter(
             lambda f: f.media_type and f.media_type.startswith('audio'), msg.attachments
@@ -161,7 +161,7 @@ async def playfile_s(
     audio: hk.Attachment,
     shuffle: bool,
     lvc: al.Injected[lv.Lavalink],
-) -> None:
+) -> Panic[None]:
     """Play a song, or add it to the queue."""
     if not (audio.media_type or '').startswith('audio'):
         raise tj.ConversionError("The attached file is not an audio file", 'audio')
