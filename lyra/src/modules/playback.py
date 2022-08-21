@@ -1,8 +1,10 @@
+import typing as t
 import functools as ft
 
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
+import tanjun.annotations as ja
 
 from ..lib.compose import Binds
 from ..lib.musicutils import init_component
@@ -37,6 +39,7 @@ from ..lib.playback import (
 from ..lib.utils import (
     say,
     err_say,
+    with_annotated_args,
 )
 
 
@@ -137,6 +140,7 @@ async def stop_(
 # Fast-forward
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_activity_cmd_check
 @tj.with_float_slash_option(
     'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
@@ -145,14 +149,13 @@ async def stop_(
 #
 @with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.0)
-@tj.with_parser
 @tj.as_message_command(
     'fast-forward', 'fastforward', 'forward', 'fw', 'fwd', 'ff', '>>'
 )
 async def fastforward_(
     ctx: tj.abc.MessageContext,
-    seconds: float,
     lvc: al.Injected[lv.Lavalink],
+    seconds: float,
 ):
     async with access_queue(ctx, lvc) as q:
         assert not ((q.current is None) or (q.np_position is None))
@@ -178,6 +181,7 @@ async def fastforward_(
 # Rewind
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_activity_cmd_check
 @tj.with_float_slash_option(
     'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
@@ -186,12 +190,11 @@ async def fastforward_(
 #
 @with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.00)
-@tj.with_parser
 @tj.as_message_command('rewind', 'rw', 'rew', '<<')
 async def rewind_(
     ctx: tj.abc.Context,
-    seconds: float,
     lvc: al.Injected[lv.Lavalink],
+    seconds: float,
 ):
     async with access_queue(ctx, lvc) as q:
         assert not ((q.current is None) or (q.np_position is None))
@@ -242,18 +245,16 @@ with_playat_cmd_check_and_voting = with_cmd_composer(
 )
 
 
+@with_annotated_args
 @with_playat_cmd_check_and_voting
-@tj.with_int_slash_option("position", "Play the track at what position?")
 @tj.as_slash_command("play-at", "Plays the track at the specified position")
 #
 @with_playat_cmd_check_and_voting
-@tj.with_argument('position', converters=int)
-@tj.with_parser
 @tj.as_message_command('play-at', 'playat', 'pa', 'i', 'pos', 'skipto', '->', '^')
 async def play_at_(
     ctx: tj.abc.Context,
-    position: int,
     lvc: al.Injected[lv.Lavalink],
+    position: t.Annotated[ja.Int, "Play the track at what position?"],
 ):
     assert ctx.guild_id
 
@@ -352,22 +353,18 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # Seek
 
 
+@with_annotated_args
 @with_activity_cmd_check
-@tj.with_str_slash_option(
-    'timestamp',
-    "Seek to where? (Must be in format such as 2m17s, 4:05)",
-    converters=to_ms,
-)
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")
 #
 @with_activity_cmd_check
-@tj.with_argument('timestamp', to_ms)
-@tj.with_parser
 @tj.as_message_command('seek', 'sk', '-v', '-^')
 async def seek_(
     ctx: tj.abc.Context,
-    timestamp: int,
     lvc: al.Injected[lv.Lavalink],
+    timestamp: t.Annotated[
+        ja.Converted[to_ms], "Seek to where? (Must be in format such as 2m17s, 4:05)"
+    ],
 ):
     async with access_queue(ctx, lvc) as q:
         try:

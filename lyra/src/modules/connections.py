@@ -173,6 +173,7 @@ async def on_voice_state_update(
 # Join
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @tj.with_channel_slash_option(
     'channel',
     "Which channel? (If not given, your currently connected channel)",
@@ -182,12 +183,11 @@ async def on_voice_state_update(
 @tj.as_slash_command('join', "Connects the bot to a voice channel")
 #
 @tj.with_argument('channel', converters=to_voice_or_stage_channels, default=None)
-@tj.with_parser
 @tj.as_message_command('join', 'j', 'connect', 'co', 'con')
 async def join_(
     ctx: tj.abc.Context,
-    channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel],
     lvc: al.Injected[lv.Lavalink],
+    channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel],
 ) -> None:
     """Connect the bot to a voice channel."""
 

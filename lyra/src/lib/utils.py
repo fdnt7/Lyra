@@ -6,6 +6,7 @@ import contextlib as ctxlib
 import hikari as hk
 import tanjun as tj
 import alluka as al
+
 import src.lib.globs as globs
 
 from hikari.permissions import Permissions as hkperms
@@ -71,6 +72,7 @@ base_h = tj.AnyHooks()
 guild_c = tj.checks.GuildCheck(
     error_message="🙅 Commands can only be used in guild channels"
 )
+with_annotated_args = tj.annotations.with_annotated_args(follow_wrapped=True)
 
 RESTRICTOR = hkperms.MANAGE_CHANNELS | hkperms.MANAGE_ROLES
 DJ_PERMS: t.Final = hkperms.MOVE_MEMBERS

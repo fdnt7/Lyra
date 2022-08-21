@@ -4,12 +4,14 @@ import hikari as hk
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
+import tanjun.annotations as ja
 
 from ..lib.musicutils import init_component
 from ..lib.extras import Option
 from ..lib.utils import (
     say,
     err_say,
+    with_annotated_args,
     with_message_command_group_template,
 )
 from ..lib.errors import NotConnected
@@ -107,24 +109,21 @@ async def volume_g_m(_: tj.abc.MessageContext):
 ## Volume Set
 
 
+@with_annotated_args
 @volume_g_s.with_command
 @with_stage_cmd_check
-@tj.with_int_slash_option(
-    'scale',
-    "The volume scale? [Need to be between 0 and 10]",
-    choices={str(i): i for i in range(10, -1, -1)},
-)
 @tj.as_slash_command('set', "Set the volume of the bot from 0-10")
 #
 @volume_g_m.with_command
 @with_stage_cmd_check
-@tj.with_argument('scale', converters=int, min_value=0, max_value=10)
-@tj.with_parser
 @tj.as_message_command('set', '=', '.')
 async def volume_set_(
     ctx: tj.abc.Context,
-    scale: int,
     lvc: al.Injected[lv.Lavalink],
+    scale: t.Annotated[
+        ja.Ranged[0, 11],
+        "The volume scale? [Need to be between 0 and 10]",
+    ],
 ):
     """
     Set the volume of the bot from 0-10
@@ -140,6 +139,7 @@ async def volume_set_(
 ## Volume Up
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @volume_g_s.with_command
 @with_stage_cmd_check
 @tj.with_int_slash_option(
@@ -150,12 +150,11 @@ async def volume_set_(
 @volume_g_m.with_command
 @with_stage_cmd_check
 @tj.with_argument('amount', converters=int, default=1)
-@tj.with_parser
 @tj.as_message_command('up', 'u', '+', '^')
 async def volume_up_(
     ctx: tj.abc.Context,
-    amount: int,
     lvc: al.Injected[lv.Lavalink],
+    amount: int,
 ):
     """
     Increase the bot's volume
@@ -183,6 +182,7 @@ async def volume_up_(
 ## Volume Down
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @volume_g_s.with_command
 @with_stage_cmd_check
 @tj.with_int_slash_option(
@@ -193,7 +193,6 @@ async def volume_up_(
 @volume_g_m.with_command
 @with_stage_cmd_check
 @tj.with_argument('amount', converters=int, default=1)
-@tj.with_parser
 @tj.as_message_command('down', 'd', '-', 'v')
 async def volume_down_(
     ctx: tj.abc.Context,
@@ -292,24 +291,20 @@ valid_presets: t.Final[dict[str, str]] = {
 } | {'Flat': 'flat'}
 
 
+@with_annotated_args
 @equalizer_g_s.with_command
 @with_stage_cmd_check
-@tj.with_str_slash_option(
-    'preset',
-    "Which present?",
-    choices=valid_presets,
-)
 @tj.as_slash_command('preset', "Sets the bot's equalizer to a preset")
 #
 @equalizer_g_m.with_command
 @with_stage_cmd_check
-@tj.with_argument('preset', to_preset)
-@tj.with_parser
 @tj.as_message_command('preset', 'pre', '=')
 async def equalizer_preset_(
     ctx: tj.abc.Context,
-    preset: str,
     lvc: al.Injected[lv.Lavalink],
+    preset: t.Annotated[
+        ja.Converted[to_preset], "Which preset?", ja.Choices(valid_presets)
+    ],
 ):
     """
     Sets the bot's equalizer to a preset

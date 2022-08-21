@@ -64,7 +64,7 @@ emoji_refs = EmojiRefs({})
 @_client.with_prefix_getter
 async def prefix_getter(
     ctx: tj.abc.MessageContext,
-    cfg: al.Injected[al.Injected[LyraDBCollectionType]],
+    cfg: al.Injected[LyraDBCollectionType],
 ) -> t.Iterable[str]:
     g_id = str(ctx.guild_id)
     flt = {'id': g_id}

@@ -3,6 +3,7 @@ import typing as t
 import hikari as hk
 import tanjun as tj
 import alluka as al
+import tanjun.annotations as ja
 
 from hikari.permissions import Permissions as hkperms
 
@@ -14,6 +15,7 @@ from ..lib.utils import (
     RESTRICTOR,
     MentionableType,
     with_message_command_group_template,
+    with_annotated_args,
     say,
     err_say,
 )
@@ -24,9 +26,11 @@ config = init_component(__name__)
 
 # ~
 
+
 valid_mentionables: t.Final = {'Channels': 'ch', 'Roles': 'r', 'Members': 'u'}
 inv_mentionables: t.Final = {v: k for k, v in valid_mentionables.items()}
 BlacklistMode = t.Literal[-1, 0, 1]
+CategoryType = t.Literal['ch', 'r', 'u']
 
 all_mentionable_categories = split_preset(
     'channels|channel|chan|ch|c,roles|role|rle|r,users|user|members|member|usr|mbr|u|m'
@@ -82,11 +86,10 @@ async def restrict_mode_set(
     cfg: LyraDBCollectionType,
     /,
     *,
-    category: str,
+    category: str,  # TODO: change this to `CategoryType` once 3.11 is out
     mode: BlacklistMode = 0,
     wipe: bool = False,
 ):
-    # pyright: reportUnknownMemberType=false
     assert ctx.guild_id
     flt = {'id': str(ctx.guild_id)}
 
@@ -97,19 +100,24 @@ async def restrict_mode_set(
     mode_name = _c(mode)
 
     res: dict[str, t.Any] = g_cfg.setdefault('restricted_%s' % category, {})
+
+    if wipe:
+        res.setdefault('all', []).clear()
+        wipe_msg = " and cleared all %s(s) from the restricted list" % cat_name.lower()
+    else:
+        wipe_msg = ""
+
     if res.get('wl_mode', 0) == mode:
         await say(
             ctx,
             hidden=True,
-            content=f"❕ Already set {cat_name.lower()} restricted mode to *{mode_name}*",
+            content=f"""{'🧹' if wipe else '❕'} Already set {cat_name.lower()} restricted mode to *{mode_name}*{wipe_msg.replace('and', 'but also', 1)}""",
         )
         return
     res['wl_mode'] = mode
-    if wipe:
-        res.setdefault('all', []).clear()
 
     if mode == 0:
-        msg = f"📝{_e(mode)}{'🧹' if wipe else ''} Cleared {cat_name.lower()} restriction mode{' and cleared all channels, roles and members from the restricted list' if wipe else ''}"
+        msg = f"""📝{_e(mode)}{'🧹' if wipe else ''} Cleared {cat_name.lower()} restriction mode{wipe_msg}"""
     else:
         msg = f"📝{_e(mode)} Set *{cat_name.lower()}* restriction mode to **`{mode_name}`**"
 
@@ -264,24 +272,21 @@ async def prefix_list_(
 ### config prefix add
 
 
+@with_annotated_args
 @prefix_sg_s.with_command
 @with_admin_cmd_check
-@tj.with_str_slash_option('prefix', "What prefix?")
 @tj.as_slash_command('add', "Adds a new prefix of the bot for this guild")
 # -
 @prefix_sg_m.with_command
 @with_admin_cmd_check
-@tj.with_argument('prefix')
-@tj.with_parser
 @tj.as_message_command('add', '+', 'a', 'new', 'create', 'n')
 async def prefix_add_(
     ctx: tj.abc.Context,
-    prefix: str,
     cfg: al.Injected[LyraDBCollectionType],
+    prefix: t.Annotated[ja.Str, "What prefix?"],
 ):
     """Adds a new prefix of the bot for this guild"""
 
-    # pyright: reportUnknownMemberType=false
     assert ctx.guild_id
     flt = {'id': str(ctx.guild_id)}
 
@@ -304,24 +309,21 @@ async def prefix_add_(
 ### config prefix remove
 
 
+@with_annotated_args
 @prefix_sg_s.with_command
 @with_admin_cmd_check
-@tj.with_str_slash_option('prefix', "Which prefix?")
 @tj.as_slash_command('remove', "Removes an existing prefix of the bot for this guild")
 #
 @prefix_sg_m.with_command
 @with_admin_cmd_check
-@tj.with_argument('prefix')
-@tj.with_parser
 @tj.as_message_command('remove', '-', 'rem', 'r', 'rm', 'd', 'del', 'delete')
 async def prefix_remove_(
     ctx: tj.abc.Context,
-    prefix: str,
     cfg: al.Injected[LyraDBCollectionType],
+    prefix: t.Annotated[ja.Str, "Which prefix?"],
 ):
     """Removes an existing prefix of the bot for this guild"""
 
-    # pyright: reportUnknownMemberType=false
     assert ctx.guild_id
     flt = {'id': str(ctx.guild_id)}
 
@@ -378,7 +380,6 @@ async def nowplayingmsg_toggle_(
 ):
     """Toggles the now playing messages to be automatically sent or not"""
 
-    # pyright: reportUnknownMemberType=false
     assert ctx.guild_id
     flt = {'id': str(ctx.guild_id)}
 
@@ -465,79 +466,94 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 ### config restricts add
 
 
+@with_annotated_args
 @restrict_sg_m.with_command
 @with_author_permission_check(RESTRICTOR)
-@tj.with_multi_argument('mentionables', (tj.to_user, tj.to_role, tj.to_channel))
-@tj.with_parser
 @tj.as_message_command('add', 'a', '+')
 #
 @restrict_sg_s.with_command
 @with_author_permission_check(RESTRICTOR)
-@tj.with_str_slash_option(
-    'mentionables',
-    "Which channel/role/member ?",
-    converters=to_multi_mentionables,
-)
 @tj.as_slash_command(
     'add', "Adds new channels, roles or members to the restricted list"
 )
+# TODO: Remove pyright ignores when tanjun relaxed converter func sig
 async def restrict_add_(
     ctx: tj.abc.MessageContext,
-    mentionables: t.Collection[MentionableType],
     cfg: al.Injected[LyraDBCollectionType],
+    mentionables: t.Annotated[  # pyright: ignore [reportUnknownParameterType]
+        ja.Greedy[
+            ja.Converted[
+                to_multi_mentionables
+            ]  # pyright: ignore [reportGeneralTypeIssues, reportUnknownArgumentType]
+        ],
+        "Which channel/role/member?",
+    ],
 ):
     """Adds new channels, roles or members to the restricted list"""
-    await restrict_list_edit(ctx, cfg, mentionables=mentionables, mode='+')
+
+    await restrict_list_edit(
+        ctx,
+        cfg,
+        mentionables=mentionables,  # pyright: ignore [reportUnknownArgumentType]
+        mode='+',
+    )
 
 
 ### config restricts remove
 
 
+@with_annotated_args
 @restrict_sg_m.with_command
 @with_restricts_cmd_check
-@tj.with_multi_argument('mentionables', (tj.to_user, tj.to_role, tj.to_channel))
-@tj.with_parser
 @tj.as_message_command('remove', 'rm', 'del', 'r', 'd', '-')
 #
 @restrict_sg_s.with_command
 @with_restricts_cmd_check
-@tj.with_str_slash_option(
-    'mentionables',
-    "Which channel/role/member ?",
-    converters=to_multi_mentionables,
-)
 @tj.as_slash_command(
     'remove', "Removes existing channels, roles or members from the restricted list"
 )
+# TODO: Remove pyright ignores when tanjun relaxed converter func sig
 async def restrict_remove_(
     ctx: tj.abc.MessageContext,
-    mentionables: t.Collection[MentionableType],
     cfg: al.Injected[LyraDBCollectionType],
+    mentionables: t.Annotated[  # pyright: ignore [reportUnknownParameterType]
+        ja.Greedy[
+            ja.Converted[
+                to_multi_mentionables
+            ]  # pyright: ignore [reportGeneralTypeIssues, reportUnknownArgumentType]
+        ],
+        "Which channel/role/member?",
+    ],
 ):
     """Removes existing channels, roles or members from the restricted list"""
 
-    await restrict_list_edit(ctx, cfg, mentionables=mentionables, mode='-')
+    await restrict_list_edit(
+        ctx,
+        cfg,
+        mentionables=mentionables,  # pyright: ignore [reportUnknownArgumentType]
+        mode='-',
+    )
 
 
 ### config restricts blacklist
 
 
+@with_annotated_args
 @restrict_sg_m.with_command
 @with_restricts_cmd_check
-@tj.with_argument('category', to_mentionable_category)
-@tj.with_parser
 @tj.as_message_command('blacklist', 'bl')
 # -
 @restrict_sg_s.with_command
 @with_restricts_cmd_check
-@tj.with_str_slash_option(
-    'category',
-    "Which category?",
-    choices=valid_mentionables,
-)
 @tj.as_slash_command('blacklist', "Sets a category's restriction mode to blacklisting")
 async def restrict_blacklist_(
-    ctx: tj.abc.Context, category: str, cfg: al.Injected[LyraDBCollectionType]
+    ctx: tj.abc.Context,
+    cfg: al.Injected[LyraDBCollectionType],
+    category: t.Annotated[
+        ja.Converted[to_mentionable_category],
+        "Which category?",
+        ja.Choices(valid_mentionables),
+    ],
 ):
     """Sets a category's restriction mode to blacklisting"""
 
@@ -547,51 +563,49 @@ async def restrict_blacklist_(
 ### config restricts blacklist
 
 
+@with_annotated_args
 @restrict_sg_m.with_command
 @with_restricts_cmd_check
-@tj.with_argument('category', to_mentionable_category)
-@tj.with_parser
 @tj.as_message_command('whitelist', 'wl')
 # -
 @restrict_sg_s.with_command
 @with_restricts_cmd_check
-@tj.with_str_slash_option(
-    'category',
-    "Which category?",
-    choices=valid_mentionables,
-)
 @tj.as_slash_command('whitelist', "Sets a category's restriction mode to whitelisting")
 async def restrict_whitelist_(
-    ctx: tj.abc.Context, category: str, cfg: al.Injected[LyraDBCollectionType]
+    ctx: tj.abc.Context,
+    cfg: al.Injected[LyraDBCollectionType],
+    category: t.Annotated[
+        ja.Converted[to_mentionable_category],
+        "Which category?",
+        ja.Choices(valid_mentionables),
+    ],
 ):
     """Sets a category's restriction mode to whitelisting"""
 
     await restrict_mode_set(ctx, cfg, category=category, mode=1)
 
 
+@with_annotated_args
 @restrict_sg_m.with_command
 @with_restricts_cmd_check
-@tj.with_argument('wipe', tj.to_bool, default=True)
-@tj.with_argument('category', to_mentionable_category)
-@tj.with_parser
 @tj.as_message_command('clear', 'clr')
 # -
 @restrict_sg_s.with_command
 @with_restricts_cmd_check
-@tj.with_bool_slash_option(
-    'wipe', "Also wipes the restricted list of that category? (If not given, Yes)"
-)
-@tj.with_str_slash_option(
-    'category',
-    "Which category?",
-    choices=valid_mentionables,
-)
 @tj.as_slash_command('clear', "Clears a category's restriction mode")
 async def restrict_clear_(
     ctx: tj.abc.Context,
-    category: str,
-    wipe: bool,
     cfg: al.Injected[LyraDBCollectionType],
+    category: t.Annotated[
+        ja.Converted[to_mentionable_category],
+        "Which category?",
+        ja.Choices(valid_mentionables),
+    ],
+    wipe: t.Annotated[
+        ja.Bool,
+        "Also wipes the restricted list of that category? (If not given, Yes)",
+        ja.Flag(aliases=('-w',)),
+    ] = True,
 ):
     """Clears a category's restriction mode"""
 

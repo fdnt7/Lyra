@@ -1,14 +1,17 @@
+import typing as t
 import logging
 import pathlib as pl
 
 import hikari as hk
 import tanjun as tj
 import alluka as al
+import tanjun.annotations as ja
+
 import src.lib.consts as c
 
 from ..lib.musicutils import init_component
 from ..lib.extras import lgfmt
-from ..lib.utils import say, err_say
+from ..lib.utils import say, err_say, with_annotated_args
 
 
 debug = init_component(__name__, guild_check=False, music_hook=False)
@@ -19,18 +22,16 @@ logger.setLevel(logging.DEBUG)
 
 
 modules = {p.stem: p for p in pl.Path('.').glob('./src/modules/*.py')}
-choices = tuple(modules)
+modules_tup = tuple(modules)
 
 
-@tj.with_str_slash_option('module', "The module to target.", choices=choices)
+@with_annotated_args
 @tj.as_slash_command('reload', "Reloads a module.")
 #
-@tj.with_argument('module')
 @tj.as_message_command('reload', 'rl')
 async def reload_module(
     ctx: tj.abc.Context,
-    module: str,
-    client: al.Injected[tj.Client],
+    module: t.Annotated[ja.Str, "Which module?", ja.Choices(modules_tup)],
 ):
     """Reload a module in tanjun"""
 
@@ -39,22 +40,20 @@ async def reload_module(
         return
     mod = modules[module]
     try:
-        client.reload_modules(mod)
+        ctx.client.reload_modules(mod)
     except ValueError:
-        client.load_modules(mod)
+        ctx.client.load_modules(mod)
 
     await say(ctx, content=f"⚙️♻️ Reloaded `{mod.stem}`")
 
 
-@tj.with_str_slash_option('module', "The module to target.", choices=choices)
+@with_annotated_args
 @tj.as_slash_command('unload', "Removes a module.")
 #
-@tj.with_argument('module')
 @tj.as_message_command('unload', 'ul')
 async def unload_module(
     ctx: tj.abc.Context,
-    module: str,
-    client: al.Injected[tj.Client],
+    module: t.Annotated[ja.Str, "Which module?", ja.Choices(modules_tup)],
 ):
     """Unload a module in tanjun"""
 
@@ -63,7 +62,7 @@ async def unload_module(
         return
     mod = modules[module]
     try:
-        client.unload_modules(mod)
+        ctx.client.unload_modules(mod)
     except ValueError:
         await err_say(ctx, content=f"❗ Couldn't unload `{mod.stem}`")
         return
@@ -71,15 +70,13 @@ async def unload_module(
     await say(ctx, content=f"⚙️📤 Unloaded `{mod.stem}`")
 
 
-@tj.with_str_slash_option('module', "The module to reload.", choices=choices)
+@with_annotated_args
 @tj.as_slash_command('load', "Loads a module.")
 #
-@tj.with_argument('module')
 @tj.as_message_command('load', 'lo')
 async def load_module(
     ctx: tj.abc.Context,
-    module: str,
-    client: al.Injected[tj.Client],
+    module: t.Annotated[ja.Str, "Which module?", ja.Choices(modules_tup)],
 ):
     """Load a module in tanjun"""
 
@@ -88,7 +85,7 @@ async def load_module(
         return
     mod = modules[module]
     try:
-        client.load_modules(mod)
+        ctx.client.load_modules(mod)
     except ValueError:
         await err_say(ctx, content=f"❗ Couldn't load `{mod.stem}`")
         return
