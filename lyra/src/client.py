@@ -22,7 +22,7 @@ from .lib import (
     inj_glob,
     lgfmt,
 )
-from .lib.dataimpl import init_mongo_client
+from .lib.dataimpl import __init_mongo_client__
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -42,7 +42,7 @@ with open(fn.resolve(), 'r') as f:
     decl_glob_cmds: list[int] | t.Literal[True] = _d['guilds'] if _dev else True
     emoji_guild: int = _d['emoji_guild']
 
-_client = globs.init_client(
+_client = globs.__init_client__(
     tj.Client.from_gateway_bot(
         bot := hk.GatewayBot(token=TOKEN),
         declare_global_commands=(decl_glob_cmds),
@@ -89,7 +89,7 @@ async def on_started(
     emoji_refs.update({e.name: e for e in emojis})
     logger.info("Fetched emojis from Lýra's Emoji Server")
 
-    mongo_client = init_mongo_client()
+    mongo_client = __init_mongo_client__()
 
     prefs_db = mongo_client.get_database('prefs')
     guilds_co = prefs_db.get_collection('guilds')

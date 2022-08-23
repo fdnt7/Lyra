@@ -6,7 +6,7 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.extras import Option
 from ..lib.utils import (
     say,
@@ -23,7 +23,7 @@ from ..lib.compose import (
 from ..lib.lavautils import Bands, access_equalizer
 
 
-tuning = init_component(__name__)
+tuning = __init_component__(__name__)
 
 
 # ~
@@ -91,11 +91,11 @@ async def on_voice_state_update(
         return
 
 
-# Volume
+# /volume
 
 
-volume_g_s = tuning.with_slash_command(
-    tj.slash_command_group('volume', "Manages the volume of this guild's player")
+volume_g_s = tj.slash_command_group(
+    'volume', "Manages the volume of this guild's player"
 )
 
 
@@ -106,7 +106,7 @@ async def volume_g_m(_: tj.abc.MessageContext):
     ...
 
 
-## Volume Set
+## /volume set
 
 
 @with_annotated_args
@@ -136,7 +136,7 @@ async def volume_set_(
         await say(ctx, content=f"🎚️ Volume set to **`{scale}`**")
 
 
-## Volume Up
+## /volume up
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -179,7 +179,7 @@ async def volume_up_(
         )
 
 
-## Volume Down
+## /volume down
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -222,7 +222,7 @@ async def volume_down_(
         )
 
 
-# Mute
+# /mute
 
 
 @with_common_cmd_check
@@ -237,7 +237,7 @@ async def mute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await set_mute(ctx, lvc, mute=True, respond=True)
 
 
-# Unmute
+# /unmute
 
 
 @with_common_cmd_check
@@ -252,7 +252,7 @@ async def unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await set_mute(ctx, lvc, mute=False, respond=True)
 
 
-# Mute-Unmute
+# /mute-unmute
 
 
 @with_common_cmd_check
@@ -267,12 +267,10 @@ async def mute_unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await set_mute(ctx, lvc, mute=None, respond=True)
 
 
-# Equalizer
+# /equalizer
 
 
-equalizer_g_s = tuning.with_slash_command(
-    tj.slash_command_group('equalizer', "Manages the bot's equalizer")
-)
+equalizer_g_s = tj.slash_command_group('equalizer', "Manages the bot's equalizer")
 
 
 @tj.as_message_command_group('equalizer', 'eq', strict=True)
@@ -282,7 +280,7 @@ async def equalizer_g_m(_: tj.abc.MessageContext):
     ...
 
 
-## Equalizer Rreset
+## /equalizer preset
 
 
 valid_presets: t.Final[dict[str, str]] = {

@@ -9,12 +9,26 @@ import tanjun.annotations as ja
 
 import src.lib.consts as c
 
-from ..lib.musicutils import init_component
+from hikari.permissions import Permissions as hkperms
+
+from ..lib.musicutils import __init_component__
 from ..lib.extras import lgfmt
-from ..lib.utils import say, err_say, with_annotated_args
+from ..lib.utils import (
+    say,
+    err_say,
+    with_annotated_args,
+    with_message_command_group_template,
+)
 
 
-debug = init_component(__name__, guild_check=False, music_hook=False)
+debug = (
+    __init_component__(__name__, guild_check=False, music_hook=False)
+    .set_default_app_command_permissions(hkperms.ADMINISTRATOR)
+    .set_dms_enabled_for_app_cmds(True)
+)
+
+
+# ~
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -25,9 +39,56 @@ modules = {p.stem: p for p in pl.Path('.').glob('./src/modules/*.py')}
 modules_tup = tuple(modules)
 
 
+# /debug
+
+
+debug_g_s = tj.slash_command_group('debug', "For debugging purposes only")
+
+
+@tj.as_message_command_group(
+    'debug',
+    'dbg',
+    'bot',
+    'lyra',
+    strict=True,
+)
+@with_message_command_group_template
+async def debug_g_m(_: tj.abc.MessageContext):
+    """For debugging purposes only"""
+    ...
+
+
+## /debug module
+
+
+module_sg_s = debug_g_s.with_command(
+    tj.slash_command_group('module', "Manages the bot's modules")
+)
+
+
+@debug_g_m.with_command
+@tj.as_message_command_group(
+    'module',
+    'modules',
+    'm',
+    'mod',
+    'mods',
+    strict=True,
+)
+@with_message_command_group_template
+async def module_sg_m(_: tj.abc.MessageContext):
+    """Manages the bot's modules"""
+    ...
+
+
+### /debug module reload
+
+
 @with_annotated_args
-@tj.as_slash_command('reload', "Reloads a module.")
+@module_sg_s.with_command
+@tj.as_slash_command('reload', "Reloads a module")
 #
+@module_sg_m.with_command
 @tj.as_message_command('reload', 'rl')
 async def reload_module(
     ctx: tj.abc.Context,
@@ -47,9 +108,14 @@ async def reload_module(
     await say(ctx, content=f"⚙️♻️ Reloaded `{mod.stem}`")
 
 
+### /debug module unload
+
+
 @with_annotated_args
-@tj.as_slash_command('unload', "Removes a module.")
+@module_sg_s.with_command
+@tj.as_slash_command('unload', "Unloads a module")
 #
+@module_sg_m.with_command
 @tj.as_message_command('unload', 'ul')
 async def unload_module(
     ctx: tj.abc.Context,
@@ -70,9 +136,14 @@ async def unload_module(
     await say(ctx, content=f"⚙️📤 Unloaded `{mod.stem}`")
 
 
+### /debug module load
+
+
 @with_annotated_args
-@tj.as_slash_command('load', "Loads a module.")
+@module_sg_s.with_command
+@tj.as_slash_command('load', "Loads a module")
 #
+@module_sg_m.with_command
 @tj.as_message_command('load', 'lo')
 async def load_module(
     ctx: tj.abc.Context,
@@ -93,7 +164,36 @@ async def load_module(
     await say(ctx, content=f"⚙️📥 Loaded `{mod.stem}`")
 
 
-@tj.as_message_command('delete_all_app_commands')
+## /debug command
+
+
+command_sg_s = debug_g_s.with_command(
+    tj.slash_command_group('command', "Manages the bot's commands")
+)
+
+
+@debug_g_m.with_command
+@tj.as_message_command_group(
+    'commands',
+    'command',
+    'cmds',
+    'cmd',
+    strict=True,
+)
+@with_message_command_group_template
+async def command_sg_m(_: tj.abc.MessageContext):
+    """Manages the bot's commands"""
+    ...
+
+
+### /debug command delete-all
+
+
+@command_sg_s.with_command
+@tj.as_slash_command('delete-all-app-commands', "Deletes all application commands")
+#
+@command_sg_m.with_command
+@tj.as_message_command('delete-all-app-commands', 'deleteallappcommands')
 async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.GatewayBot]):
     if ctx.author.id not in c.__developers__:
         await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")

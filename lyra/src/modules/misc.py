@@ -8,7 +8,7 @@ import alluka as al
 
 from colorhash import ColorHash
 
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.compose import Binds
 from ..lib.utils import (
     BaseCommandType,
@@ -20,7 +20,7 @@ from ..lib.utils import (
 from ..lib.extras import groupby
 
 
-misc = init_component(__name__)
+misc = __init_component__(__name__)
 
 
 # ~
@@ -76,7 +76,7 @@ async def on_started(_: hk.StartedEvent, client: al.Injected[tj.Client]):
     )
 
 
-# Ping
+# /ping
 
 
 @tj.as_slash_command('ping', "Shows the bot's latency")
@@ -90,9 +90,10 @@ async def ping_(ctx: tj.abc.Context):
     await say(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
 
 
-# Help
+# /help
 
 
+# TODO: #27 Implement `/help`
 # @tj.with_str_slash_option(
 #     'command',
 #     "Which command?",

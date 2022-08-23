@@ -2,7 +2,7 @@ import hikari as hk
 import alluka as al
 import lavasnek_rs as lv
 
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.errors import NotConnected
 from ..lib.flags import (
     ALONE__SPEAK__CAN_SEEK_ANY,
@@ -16,7 +16,7 @@ from ..lib.compose import (
 from ..lib.lavautils import get_data
 
 
-control = init_component(__name__)
+control = __init_component__(__name__)
 
 
 from .queue import repeat_abs, shuffle_abs

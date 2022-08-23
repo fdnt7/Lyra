@@ -22,17 +22,20 @@ from ..lib.utils import (
     with_annotated_args,
 )
 from ..lib.playback import stop, unstop
-from ..lib.musicutils import generate_queue_embeds, init_component
+from ..lib.musicutils import generate_queue_embeds, __init_component__
 from ..lib.errors import QueryEmpty, LyricsNotFound
 from ..lib.extras import Option, to_stamp, wr, get_lyrics
 from ..lib.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
 from ..lib.lavautils import get_queue, access_queue
 
 
-info = init_component(__name__)
+info = __init_component__(__name__)
 
 
-# Now Playing
+# ~
+
+
+# /now-playing
 
 
 with_np_cmd_check = with_cmd_checks(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
@@ -106,7 +109,7 @@ async def nowplaying_(
     await say(ctx, hidden=True, embed=embed)
 
 
-# Search
+# /search
 
 
 with_se_cmd_check_and_connect_vc = with_cmd_composer(
@@ -338,7 +341,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
             await unstop(ctx, lvc)
 
 
-# Queue
+# /queue
 
 
 with_q_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN)
@@ -460,7 +463,7 @@ async def queue_(
         )
 
 
-# Lyrics
+# /lyrics
 
 
 @with_annotated_args

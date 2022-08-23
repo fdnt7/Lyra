@@ -404,7 +404,7 @@ def extract_content(msg: hk.Message):
     return msg.content
 
 
-async def init_confirmation_prompt(ctx: tj.abc.Context):
+async def start_confirmation_prompt(ctx: tj.abc.Context):
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 

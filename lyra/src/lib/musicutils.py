@@ -112,7 +112,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
     return True
 
 
-def init_component(
+def __init_component__(
     dunder_name: str, /, *, guild_check: bool = True, music_hook: bool = True
 ):
     comp = tj.Component(name=dunder_name.split('.')[-1].capitalize(), strict=True)
@@ -137,7 +137,7 @@ async def post_execution(
         pass
 
 
-async def init_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
+async def start_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
     cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_repr(ctx)))

@@ -7,7 +7,7 @@ import tanjun.annotations as ja
 
 from hikari.permissions import Permissions as hkperms
 
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.dataimpl import LyraDBCollectionType
 from ..lib.compose import Binds, with_author_permission_check, with_cmd_composer
 from ..lib.extras import flatten, fmt_str, join_and, uniquify, split_preset
@@ -21,7 +21,7 @@ from ..lib.utils import (
 )
 
 
-config = init_component(__name__)
+config = __init_component__(__name__)
 
 
 # ~
@@ -198,16 +198,11 @@ async def restrict_list_edit(
     cfg.find_one_and_replace(flt, g_cfg)
 
 
-## config prefix
+# /config
 
 
-config_g_s = config.with_command(
-    tj.slash_command_group('config', "Manage the bot's guild-specific settings")
-)
-
-
-prefix_sg_s = config_g_s.with_command(
-    tj.slash_command_group('prefix', "Manages the bot's prefixes")
+config_g_s = tj.slash_command_group(
+    'config', "Manage the bot's guild-specific settings"
 )
 
 
@@ -230,6 +225,14 @@ async def config_g_m(_: tj.abc.MessageContext):
     ...
 
 
+## /config prefix
+
+
+prefix_sg_s = config_g_s.with_command(
+    tj.slash_command_group('prefix', "Manages the bot's prefixes")
+)
+
+
 @config_g_m.with_command
 @tj.as_message_command_group('prefix', 'pfx', '/', strict=True)
 @with_message_command_group_template
@@ -238,7 +241,7 @@ async def prefix_sg_m(_: tj.abc.MessageContext):
     ...
 
 
-### config prefix list
+### /config prefix list
 
 
 @prefix_sg_s.with_command
@@ -269,7 +272,7 @@ async def prefix_list_(
     await say(ctx, embed=embed)
 
 
-### config prefix add
+### /config prefix add
 
 
 @with_annotated_args
@@ -306,7 +309,7 @@ async def prefix_add_(
     cfg.find_one_and_replace(flt, g_cfg)
 
 
-### config prefix remove
+### /config prefix remove
 
 
 @with_annotated_args
@@ -345,7 +348,7 @@ async def prefix_remove_(
     cfg.find_one_and_replace(flt, g_cfg)
 
 
-## config nowplayingmsg
+## /config nowplayingmsg
 
 
 nowplayingmsg_sg_s = config_g_s.with_command(
@@ -363,7 +366,7 @@ async def nowplayingmsg_sg_m(_: tj.abc.MessageContext):
     ...
 
 
-### config nowplayingmsg toggle
+### /config nowplayingmsg toggle
 
 
 @nowplayingmsg_sg_s.with_command
@@ -398,7 +401,7 @@ async def nowplayingmsg_toggle_(
     cfg.find_one_and_replace(flt, g_cfg)
 
 
-## config restricts
+## /config restrict
 
 
 restrict_sg_s = config_g_s.with_command(
@@ -416,7 +419,7 @@ async def restrict_sg_m(_: tj.abc.MessageContext):
     ...
 
 
-### config restricts list
+### /config restrict list
 
 
 @restrict_sg_s.with_command
@@ -463,7 +466,7 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
     await say(ctx, embed=embed)
 
 
-### config restricts add
+### /config restrict add
 
 
 @with_annotated_args
@@ -499,7 +502,7 @@ async def restrict_add_(
     )
 
 
-### config restricts remove
+### /config restrict remove
 
 
 @with_annotated_args
@@ -535,7 +538,7 @@ async def restrict_remove_(
     )
 
 
-### config restricts blacklist
+### /config restrict blacklist
 
 
 @with_annotated_args
@@ -560,7 +563,7 @@ async def restrict_blacklist_(
     await restrict_mode_set(ctx, cfg, category=category, mode=-1)
 
 
-### config restricts blacklist
+### /config restrict blacklist
 
 
 @with_annotated_args
@@ -612,7 +615,7 @@ async def restrict_clear_(
     await restrict_mode_set(ctx, cfg, category=category, wipe=wipe)
 
 
-## config restricts wipe
+### /config restrict wipe
 
 
 @restrict_sg_s.with_command

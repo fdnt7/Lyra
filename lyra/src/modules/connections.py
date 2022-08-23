@@ -5,11 +5,11 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from ..lib.extras import Option
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
-from ..lib.musicutils import init_component
-from ..lib.utils import dj_perms_fmt, say, err_say
+from ..lib.musicutils import __init_component__
 from ..lib.lavautils import get_data, access_data
+from ..lib.utils import dj_perms_fmt, say, err_say
+from ..lib.extras import Option
 from ..lib.errors import (
     NotInVoice,
     OthersInVoice,
@@ -18,7 +18,10 @@ from ..lib.errors import (
 )
 
 
-conns = init_component(__name__)
+conns = __init_component__(__name__)
+
+
+# ~
 
 
 async def to_voice_or_stage_channels(value: str, /, ctx: al.Injected[tj.abc.Context]):
@@ -170,7 +173,7 @@ async def on_voice_state_update(
             )
 
 
-# Join
+# /join
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -205,7 +208,7 @@ async def join_(
         )
 
 
-# Leave
+# /leave
 
 
 @tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")

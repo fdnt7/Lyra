@@ -19,7 +19,7 @@ from .utils import (
     fetch_permissions,
     get_client,
     get_pref,
-    init_confirmation_prompt,
+    start_confirmation_prompt,
     say,
 )
 from .errors import (
@@ -211,9 +211,9 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     ) -> Result[bool]:
         if (cmd := ctx.command) and Binds.VOTE in cmd.metadata.get('binds', set()):
             try:
-                from .musicutils import init_listeners_voting
+                from .musicutils import start_listeners_voting
 
-                await init_listeners_voting(ctx, lvc)
+                await start_listeners_voting(ctx, lvc)
             except VotingTimeout:
                 raise exc_
             else:
@@ -314,7 +314,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
 
     async def _as_confirm_bind(ctx: tj.abc.Context, /) -> Result[bool]:
         try:
-            if not await init_confirmation_prompt(ctx):
+            if not await start_confirmation_prompt(ctx):
                 await err_say(ctx, follow_up=False, content="🛑 Cancelled the command")
                 raise tj.HaltExecution
         except asyncio.TimeoutError:

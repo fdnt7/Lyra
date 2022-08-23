@@ -8,7 +8,7 @@ import tanjun.annotations as ja
 
 from ..lib.compose import Binds
 from ..lib.playback import while_stop
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.queue import (
     RepeatMode,
     to_tracks,
@@ -47,7 +47,7 @@ from ..lib.errors import (
 )
 
 
-queue = init_component(__name__)
+queue = __init_component__(__name__)
 
 
 # ~
@@ -116,7 +116,7 @@ with_stage_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN | Checks.SPEAK
 with_strict_stage_cmd_check = with_cmd_checks(COMMON_CHECKS | Checks.SPEAK)
 
 
-# Play
+# /play
 
 
 with_play_cmd_check_and_connect_vc = with_cmd_composer(
@@ -216,12 +216,10 @@ async def _play(
     await play(ctx, lvc, tracks, respond=True, shuffle=shuffle)
 
 
-## Remove
+# /remove
 
 
-remove_g_s = queue.with_slash_command(
-    tj.slash_command_group('remove', "Removes tracks from the queue")
-)
+remove_g_s = tj.slash_command_group('remove', "Removes tracks from the queue")
 
 
 @tj.as_message_command_group('remove', 'rem', 'rm', 'rmv', 'del', 'd', '-', strict=True)
@@ -231,7 +229,7 @@ async def remove_g_m(_: tj.abc.MessageContext):
     ...
 
 
-## Remove One
+## /remove one
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -276,7 +274,7 @@ async def remove_one_(
         )
 
 
-## Remove Bulk
+## /remove bulk
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -331,7 +329,7 @@ async def remove_bulk_(
             )
 
 
-# Clear
+# /clear
 
 
 @with_common_cmd_check
@@ -348,7 +346,7 @@ async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
         await say(ctx, content=f"💥 Cleared the queue `({l} tracks)`")
 
 
-# Shuffle
+# /shuffle
 
 
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
@@ -358,12 +356,10 @@ async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await shuffle_abs(ctx, lvc)
 
 
-# Move
+# /move
 
 
-move_g_s = queue.with_slash_command(
-    tj.slash_command_group('move', "Moves the track in the queue")
-)
+move_g_s = tj.slash_command_group('move', "Moves the track in the queue")
 
 
 @tj.as_message_command_group('move', 'mv', '=>', strict=True)
@@ -373,7 +369,7 @@ async def move_g_m(_: tj.abc.MessageContext):
     ...
 
 
-## Move Last
+## /move last
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -424,7 +420,7 @@ async def move_last_(
         )
 
 
-## move swap
+## /move swap
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -497,7 +493,7 @@ async def move_swap_(
     )
 
 
-## Move Insert
+## /move insert
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
@@ -552,7 +548,7 @@ async def move_insert_(
         )
 
 
-# Repeat
+# /repeat
 
 
 with_common_cmd_check_with_vote = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)

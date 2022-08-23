@@ -53,6 +53,6 @@ LyraDBCollectionType = mg_co.Collection[LyraDBDocumentType]
 _client: LyraDBClientType = mg_cl.MongoClient(conn_str % pwd)
 
 
-def init_mongo_client():
+def __init_mongo_client__():
     logger.info("Connected to MongoDB Database")
-    return globs.init_mongo_client(_client)
+    return globs.__init_mongo_client__(_client)
