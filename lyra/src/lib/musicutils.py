@@ -33,7 +33,7 @@ async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
     return await expect.expect(error)
 
 
-def init_component(
+def __init_component__(
     dunder_name: str,
     /,
     *,
@@ -67,7 +67,7 @@ async def post_execution(
         pass
 
 
-async def init_listeners_voting(
+async def start_listeners_voting(
     ctx: tj.abc.Context, lvc: lv.Lavalink, /
 ) -> Result[None]:
     assert ctx.member and ctx.guild_id and ctx.client.cache

@@ -14,7 +14,7 @@ from .utils import (
     Contextish,
     get_client,
     fetch_permissions,
-    init_confirmation_prompt,
+    start_confirmation_prompt,
 )
 from .flags import (
     Binds,
@@ -65,7 +65,7 @@ def with_cb_check(
     prompt: bool = False,
 ):
     from .extras import VoidCoro
-    from .musicutils import init_listeners_voting
+    from .musicutils import start_listeners_voting
 
     P = t.ParamSpec('P')
 
@@ -195,7 +195,7 @@ def with_cb_check(
                             if vote:
                                 assert isinstance(ctx_, tj.abc.Context)
                                 try:
-                                    await init_listeners_voting(ctx_, lvc)
+                                    await start_listeners_voting(ctx_, lvc)
                                 except VotingTimeout:
                                     raise exc_
                             else:
@@ -209,7 +209,7 @@ def with_cb_check(
                 if prompt:
                     assert isinstance(ctx_, tj.abc.Context)
                     try:
-                        await init_confirmation_prompt(ctx_)
+                        await start_confirmation_prompt(ctx_)
                     except (CommandCancelled, asyncio.TimeoutError) as exc:
                         await BindErrorExpects(ctx_).expect(exc)
                         return

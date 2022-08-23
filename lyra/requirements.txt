@@ -2,8 +2,8 @@ colorhash
 alluka==0.1.1
 attrs
 black
-hikari==2.0.0.dev109
-hikari-tanjun==2.5.3a1
+hikari==2.0.0.dev110
+hikari-tanjun==2.5.4a1
 lyricsgenius==3.0.1
 PyYAML
 requests

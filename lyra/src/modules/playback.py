@@ -1,11 +1,13 @@
+import typing as t
 import functools as ft
 
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
+import tanjun.annotations as ja
 
 from ..lib.compose import Binds
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.extras import to_stamp, to_ms
 from ..lib.compose import (
     with_cmd_composer,
@@ -37,10 +39,11 @@ from ..lib.playback import (
 from ..lib.utils import (
     say,
     err_say,
+    with_annotated_args,
 )
 
 
-playback = init_component(__name__)
+playback = __init_component__(__name__)
 
 
 # ~
@@ -63,7 +66,7 @@ with_common_cmd_check = with_cmd_checks(COMMON_CHECKS)
 with_activity_cmd_check = with_cmd_checks(COMMON_CHECKS | Checks.PAUSE)
 
 
-# Play-Pause
+# /play-pause
 
 
 @with_common_cmd_check
@@ -81,7 +84,7 @@ async def play_pause_(
     await play_pause_abs(ctx, lvc)
 
 
-# Pause
+# /pause
 
 
 @with_common_cmd_check
@@ -99,7 +102,7 @@ async def pause_(
     await set_pause_part(ctx, lvc, pause=True)
 
 
-# Resume
+# /resume
 
 
 @with_common_cmd_check
@@ -117,7 +120,7 @@ async def resume_(
     await set_pause_part(ctx, lvc, pause=False)
 
 
-# Stop
+# /stop
 
 
 @with_common_cmd_check
@@ -134,9 +137,10 @@ async def stop_(
     await say(ctx, content="⏹️ Stopped")
 
 
-# Fast-forward
+# /fast-forward
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_activity_cmd_check
 @tj.with_float_slash_option(
     'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
@@ -145,14 +149,13 @@ async def stop_(
 #
 @with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.0)
-@tj.with_parser
 @tj.as_message_command(
     'fast-forward', 'fastforward', 'forward', 'fw', 'fwd', 'ff', '>>'
 )
 async def fastforward_(
     ctx: tj.abc.MessageContext,
-    seconds: float,
     lvc: al.Injected[lv.Lavalink],
+    seconds: float,
 ):
     async with access_queue(ctx, lvc) as q:
         assert not ((q.current is None) or (q.np_position is None))
@@ -175,9 +178,10 @@ async def fastforward_(
         )
 
 
-# Rewind
+# /rewind
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_activity_cmd_check
 @tj.with_float_slash_option(
     'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
@@ -186,12 +190,11 @@ async def fastforward_(
 #
 @with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.00)
-@tj.with_parser
 @tj.as_message_command('rewind', 'rw', 'rew', '<<')
 async def rewind_(
     ctx: tj.abc.Context,
-    seconds: float,
     lvc: al.Injected[lv.Lavalink],
+    seconds: float,
 ):
     async with access_queue(ctx, lvc) as q:
         assert not ((q.current is None) or (q.np_position is None))
@@ -213,7 +216,7 @@ async def rewind_(
         )
 
 
-# Skip
+# /skip
 
 
 with_skip_cmd_check_and_voting = with_cmd_composer(
@@ -234,7 +237,7 @@ async def skip_(
     await skip_abs(ctx, lvc)
 
 
-# Play at
+# /play-at
 
 
 with_playat_cmd_check_and_voting = with_cmd_composer(
@@ -242,18 +245,16 @@ with_playat_cmd_check_and_voting = with_cmd_composer(
 )
 
 
+@with_annotated_args
 @with_playat_cmd_check_and_voting
-@tj.with_int_slash_option("position", "Play the track at what position?")
 @tj.as_slash_command("play-at", "Plays the track at the specified position")
 #
 @with_playat_cmd_check_and_voting
-@tj.with_argument('position', converters=int)
-@tj.with_parser
 @tj.as_message_command('play-at', 'playat', 'pa', 'i', 'pos', 'skipto', '->', '^')
 async def play_at_(
     ctx: tj.abc.Context,
-    position: int,
     lvc: al.Injected[lv.Lavalink],
+    position: t.Annotated[ja.Int, "Play the track at what position?"],
 ):
     assert ctx.guild_id
 
@@ -280,7 +281,7 @@ async def play_at_(
     await set_data(ctx.guild_id, lvc, d)
 
 
-# Next
+# /next
 
 
 with_next_cmd_check = with_cmd_checks(
@@ -304,7 +305,7 @@ async def next_(
     await say(ctx, content=f"⏭️ **`{up.track.info.title}`**")
 
 
-# Previous
+# /previous
 
 
 with_prev_cmd_check_and_voting = with_cmd_composer(
@@ -324,7 +325,7 @@ async def previous_(
     await previous_abs(ctx, lvc)
 
 
-# Restart
+# /restart
 
 
 with_re_cmd_check_and_voting = with_cmd_composer(
@@ -349,25 +350,21 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await say(ctx, content=f"◀️ Restarted")
 
 
-# Seek
+# /seek
 
 
+@with_annotated_args
 @with_activity_cmd_check
-@tj.with_str_slash_option(
-    'timestamp',
-    "Seek to where? (Must be in format such as 2m17s, 4:05)",
-    converters=to_ms,
-)
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")
 #
 @with_activity_cmd_check
-@tj.with_argument('timestamp', to_ms)
-@tj.with_parser
 @tj.as_message_command('seek', 'sk', '-v', '-^')
 async def seek_(
     ctx: tj.abc.Context,
-    timestamp: int,
     lvc: al.Injected[lv.Lavalink],
+    timestamp: t.Annotated[
+        ja.Converted[to_ms], "Seek to where? (Must be in format such as 2m17s, 4:05)"
+    ],
 ):
     async with access_queue(ctx, lvc) as q:
         try:

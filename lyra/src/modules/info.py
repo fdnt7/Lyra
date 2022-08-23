@@ -1,7 +1,10 @@
+import typing as t
+
 import hikari as hk
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
+import tanjun.annotations as ja
 
 from ..lib.utils import (
     Q_CHUNK,
@@ -16,19 +19,23 @@ from ..lib.utils import (
     trigger_thinking,
     disable_components,
     with_metadata,
+    with_annotated_args,
 )
 from ..lib.playback import stop, unstop
-from ..lib.musicutils import generate_queue_embeds, init_component
+from ..lib.musicutils import generate_queue_embeds, __init_component__
 from ..lib.errors import QueryEmpty, LyricsNotFound
 from ..lib.extras import Option, Result, to_stamp, wr, get_lyrics
 from ..lib.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
 from ..lib.lavautils import get_queue, access_queue
 
 
-info = init_component(__name__)
+info = __init_component__(__name__)
 
 
-# Now Playing
+# ~
+
+
+# /now-playing
 
 
 with_np_cmd_check = with_cmd_checks(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
@@ -102,7 +109,7 @@ async def nowplaying_(
     await say(ctx, hidden=True, embed=embed)
 
 
-# Search
+# /search
 
 
 with_se_cmd_check_and_connect_vc = with_cmd_composer(
@@ -110,21 +117,19 @@ with_se_cmd_check_and_connect_vc = with_cmd_composer(
 )
 
 
+@with_annotated_args
 @with_se_cmd_check_and_connect_vc
-@tj.with_greedy_argument('query')
-@tj.with_parser
 @tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
 #
 @with_se_cmd_check_and_connect_vc
-@tj.with_str_slash_option('query', "What to be queried?")
 @tj.as_slash_command(
     'search',
     "Searches for tracks on youtube from your query and lets you hear a part of it",
 )
 async def search_(
     ctx: EitherContext,
-    query: str,
     lvc: al.Injected[lv.Lavalink],
+    query: t.Annotated[ja.Greedy[ja.Str], "What to be queried?"],
 ):
     """Searches for tracks on youtube from your query and lets you hear a part of it"""
 
@@ -136,8 +141,8 @@ async def search_(
 @tj.as_message_menu('Search this song up')
 async def search_c(
     ctx: tj.abc.MenuContext,
-    msg: hk.Message,
     lvc: al.Injected[lv.Lavalink],
+    msg: hk.Message,
 ) -> None:
     if not (cnt := extract_content(msg)):
         await err_say(ctx, content="❌ Cannot process an empty message")
@@ -336,7 +341,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
             await unstop(ctx, lvc)
 
 
-# Queue
+# /queue
 
 
 with_q_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN)
@@ -401,7 +406,7 @@ async def queue_(
         )
 
     embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
-    msg = await say(
+    msg: hk.Message = await say(
         ctx,
         ensure_result=True,
         embed=embed,
@@ -413,7 +418,6 @@ async def queue_(
     )
 
     with bot.stream(hk.InteractionCreateEvent, timeout=TIMEOUT).filter(
-        # pyright: reportUnknownLambdaType=false
         lambda e: isinstance(e.interaction, hk.ComponentInteraction)
         and e.interaction.message == msg
         and e.interaction.user.id == ctx.author.id
@@ -459,21 +463,19 @@ async def queue_(
         )
 
 
-# Lyrics
+# /lyrics
 
 
-@tj.with_str_slash_option(
-    'song', "What song? (If not given, the current song)", default=None
-)
+@with_annotated_args
 @tj.as_slash_command('lyrics', 'Attempts to find the lyrics of the current song')
 #
-@tj.with_greedy_argument('song', default=None)
-@tj.with_parser
 @tj.as_message_command('lyrics', 'ly')
 async def lyrics_(
     ctx: EitherContext,
-    song: Option[str],
     lvc: al.Injected[lv.Lavalink],
+    song: t.Annotated[
+        Option[ja.Greedy[ja.Str]], "What song? (If not given, the current song)"
+    ] = None,
 ):
     """Attempts to find the lyrics of the current song"""
 

@@ -7,9 +7,11 @@ import lavasnek_rs as lv
 
 from ..lib.extras import Option, Panic
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
-from ..lib.musicutils import init_component
+from ..lib.musicutils import __init_component__
 from ..lib.utils import JoinableChannelType, dj_perms_fmt, say, err_say
 from ..lib.lavautils import get_data, access_data
+from ..lib.utils import dj_perms_fmt, say, err_say
+from ..lib.extras import Option
 from ..lib.errors import (
     NotInVoice,
     OthersInVoice,
@@ -18,7 +20,10 @@ from ..lib.errors import (
 )
 
 
-conns = init_component(__name__)
+conns = __init_component__(__name__)
+
+
+# ~
 
 
 async def to_voice_or_stage_channels(
@@ -172,9 +177,10 @@ async def on_voice_state_update(
             )
 
 
-# Join
+# /join
 
 
+# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @tj.with_channel_slash_option(
     'channel',
     "Which channel? (If not given, your currently connected channel)",
@@ -184,12 +190,11 @@ async def on_voice_state_update(
 @tj.as_slash_command('join', "Connects the bot to a voice channel")
 #
 @tj.with_argument('channel', converters=to_voice_or_stage_channels, default=None)
-@tj.with_parser
 @tj.as_message_command('join', 'j', 'connect', 'co', 'con')
 async def join_(
     ctx: tj.abc.Context,
-    channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel],
     lvc: al.Injected[lv.Lavalink],
+    channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel],
 ) -> None:
     """Connect the bot to a voice channel."""
 
@@ -207,7 +212,7 @@ async def join_(
         )
 
 
-# Leave
+# /leave
 
 
 @tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")
