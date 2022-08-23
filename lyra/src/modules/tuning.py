@@ -121,7 +121,7 @@ async def volume_set_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
     scale: t.Annotated[
-        ja.Ranged[0, 11],
+        ja.Ranged[0, 10],
         "The volume scale? [Need to be between 0 and 10]",
     ],
 ):
@@ -196,8 +196,8 @@ async def volume_up_(
 @tj.as_message_command('down', 'd', '-', 'v')
 async def volume_down_(
     ctx: tj.abc.Context,
-    amount: int,
     lvc: al.Injected[lv.Lavalink],
+    amount: int,
 ):
     """
     Decrease the bot's volume"

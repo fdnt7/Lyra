@@ -103,11 +103,11 @@ async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.Gatew
     assert me
     cmds = await bot.rest.fetch_application_commands(me.id)
     L = len(cmds)
-    await ctx.respond("...")
+    await say(ctx, content="⏳⚙️🗑️ Deleting all app commands...")
     for i, cmd in enumerate(cmds, 1):
         await cmd.delete()
         logger.debug(f"Deleting global application commands {i}/{L} ({cmd.name})")
-    await ctx.respond("Done")
+    await say(ctx, follow_up=True, content="⚙️🗑️ Done")
 
 
 # -
