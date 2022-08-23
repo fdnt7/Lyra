@@ -6,7 +6,7 @@ import tanjun as tj
 import lavasnek_rs as lv
 
 from .consts import STOP_REFRESH
-from .extras import Option
+from .extras import Option, Result, Panic
 from .utils import (
     ButtonBuilderType,
     Contextish,
@@ -85,7 +85,7 @@ async def set_pause(
     respond: bool = False,
     strict: bool = False,
     update_controller: bool = False,
-) -> None:
+) -> Panic[None]:
     g = infer_guild(g_r_inf)
 
     try:
@@ -241,7 +241,7 @@ async def previous_abs(ctx_: Contextish, lvc: lv.Lavalink):
     await say(ctx_, show_author=True, content=f"⏮️ **`{prev.track.info.title}`**")
 
 
-async def seek(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /):
+async def seek(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /) -> Result[int]:
     assert ctx.guild_id
     if total_ms < 0:
         raise IllegalArgument(Argument(total_ms, 0))

@@ -7,10 +7,9 @@ import tanjun as tj
 import alluka as al
 import tanjun.annotations as ja
 
-import src.lib.consts as c
-
 from hikari.permissions import Permissions as hkperms
 
+from ..lib.flags import as_developer_check
 from ..lib.musicutils import __init_component__
 from ..lib.extras import lgfmt
 from ..lib.utils import (
@@ -22,7 +21,9 @@ from ..lib.utils import (
 
 
 debug = (
-    __init_component__(__name__, guild_check=False, music_hook=False)
+    __init_component__(
+        __name__, guild_check=False, music_hook=False, other_checks={as_developer_check}
+    )
     .set_default_app_command_permissions(hkperms.ADMINISTRATOR)
     .set_dms_enabled_for_app_cmds(True)
 )
@@ -36,7 +37,7 @@ logger.setLevel(logging.DEBUG)
 
 
 modules = {p.stem: p for p in pl.Path('.').glob('./src/modules/*.py')}
-modules_tup = tuple(modules)
+modules_tup = (*modules,)
 
 
 # /debug
@@ -96,9 +97,6 @@ async def reload_module(
 ):
     """Reload a module in tanjun"""
 
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
     mod = modules[module]
     try:
         ctx.client.reload_modules(mod)
@@ -123,9 +121,6 @@ async def unload_module(
 ):
     """Unload a module in tanjun"""
 
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
     mod = modules[module]
     try:
         ctx.client.unload_modules(mod)
@@ -151,9 +146,6 @@ async def load_module(
 ):
     """Load a module in tanjun"""
 
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
     mod = modules[module]
     try:
         ctx.client.load_modules(mod)
@@ -190,14 +182,12 @@ async def command_sg_m(_: tj.abc.MessageContext):
 
 
 @command_sg_s.with_command
-@tj.as_slash_command('delete-all-app-commands', "Deletes all application commands")
+@tj.as_slash_command('delete-all', "Deletes all application commands")
 #
 @command_sg_m.with_command
-@tj.as_message_command('delete-all-app-commands', 'deleteallappcommands')
+@tj.as_message_command('delete-all', 'deleteall', 'delall', 'wipe', 'wp')
 async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.GatewayBot]):
-    if ctx.author.id not in c.__developers__:
-        await err_say(ctx, content="🚫⚙️ Reserved for bot's developers only")
-        return
+    """Deletes all global commands"""
 
     me = bot.get_me()
     assert me

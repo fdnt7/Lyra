@@ -10,10 +10,11 @@ from hikari.permissions import Permissions as hkperms
 from ..lib.musicutils import __init_component__
 from ..lib.dataimpl import LyraDBCollectionType
 from ..lib.compose import Binds, with_author_permission_check, with_cmd_composer
-from ..lib.extras import flatten, fmt_str, join_and, uniquify, split_preset
+from ..lib.extras import Panic, flatten, fmt_str, join_and, uniquify, split_preset
 from ..lib.utils import (
     RESTRICTOR,
     MentionableType,
+    PartialMentionableType,
     with_message_command_group_template,
     with_annotated_args,
     say,
@@ -49,7 +50,7 @@ def _e(b: BlacklistMode):
     return '✅' if b == 1 else ('❌' if b == -1 else '❔')
 
 
-def to_mentionable_category(value: str):
+def to_mentionable_category(value: str) -> Panic[str]:
     str_ = value.casefold()
     if str_ in all_mentionable_categories[0]:
         return 'ch'
@@ -62,11 +63,11 @@ def to_mentionable_category(value: str):
     )
 
 
-async def to_multi_mentionables(value: str, /, ctx: al.Injected[tj.abc.Context]):
+async def to_multi_mentionables(
+    value: str, /, ctx: al.Injected[tj.abc.Context]
+) -> Panic[frozenset[PartialMentionableType]]:
     _split = value.split()
-    mentionables: t.Collection[
-        hk.PartialUser | hk.PartialRole | hk.PartialChannel
-    ] = set()
+    mentionables: t.Collection[PartialMentionableType] = set()
 
     for _m in _split:
         for conv in (tj.to_user, tj.to_role, tj.to_channel):
@@ -152,15 +153,15 @@ async def restrict_list_edit(
     new_u: list[str] = []
 
     for u in uniquify(mentionables):
-        u_in_list = (u_id := u.id) in res_ch_all + res_r_all + res_u_all
+        u_in_list = (u_id := str(u.id)) in res_ch_all + res_r_all + res_u_all
         if u_in_list if mode == '+' else not u_in_list:
             continue
         if isinstance(u, hk.PartialChannel):
-            new_ch.append(str(u_id))
+            new_ch.append(u_id)
         elif isinstance(u, hk.Role):
-            new_r.append(str(u_id))
+            new_r.append(u_id)
         else:
-            new_u.append(str(u_id))
+            new_u.append(u_id)
 
     delta_act = '**`＋`** Added' if mode == '+' else '**`ー`** Removed'
     delta_txt = 'new' if mode == '+' else 'restricted'

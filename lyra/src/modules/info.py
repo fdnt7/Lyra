@@ -24,7 +24,7 @@ from ..lib.utils import (
 from ..lib.playback import stop, unstop
 from ..lib.musicutils import generate_queue_embeds, __init_component__
 from ..lib.errors import QueryEmpty, LyricsNotFound
-from ..lib.extras import Option, to_stamp, wr, get_lyrics
+from ..lib.extras import Option, Result, to_stamp, wr, get_lyrics
 from ..lib.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
 from ..lib.lavautils import get_queue, access_queue
 
@@ -150,7 +150,7 @@ async def search_c(
     await _search(ctx, cnt, lvc)
 
 
-async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> None:
+async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[None]:
     from ..lib.music import play, add_tracks_
 
     erf = ctx.client.get_type_dependency(EmojiRefs)

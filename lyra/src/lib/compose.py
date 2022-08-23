@@ -6,16 +6,14 @@ import tanjun as tj
 import lavasnek_rs as lv
 
 from hikari.permissions import Permissions as hkperms
+
+from .expects import BindErrorExpects, CheckErrorExpects
 from .utils import (
     BindSig,
     BaseCommandType,
     Contextish,
     get_client,
-    get_pref,
-    get_rest,
     fetch_permissions,
-    say,
-    err_say,
     start_confirmation_prompt,
 )
 from .flags import (
@@ -23,7 +21,6 @@ from .flags import (
     Checks,
     DJ_PERMS,
     ConnectionInfo,
-    dj_perms_fmt,
     others_not_in_vc_check_impl,
     parse_binds,
     parse_checks,
@@ -31,7 +28,8 @@ from .flags import (
 )
 from .errors import (
     AlreadyConnected,
-    NotYetSpeaker,
+    BaseLyraException,
+    CommandCancelled,
     OthersInVoice,
     PlaybackChangeRefused,
     TrackStopped,
@@ -41,10 +39,9 @@ from .errors import (
     QueueEmpty,
     TrackPaused,
     OthersListening,
-    QueryEmpty,
     VotingTimeout,
 )
-from .extras import NULL, Decorator, Option, Result, format_flags
+from .extras import NULL, Decorator, Option, Result, Panic
 from .lavautils import get_queue
 
 
@@ -155,7 +152,6 @@ def with_cb_check(
 
             assert ctx_, "Missing a Contextish object"
             assert ctx_.guild_id
-            p = get_pref(ctx_)
             client = get_client(ctx_)
 
             lvc = client.get_type_dependency(lv.Lavalink)
@@ -213,70 +209,13 @@ def with_cb_check(
                 if prompt:
                     assert isinstance(ctx_, tj.abc.Context)
                     try:
-                        if not await start_confirmation_prompt(ctx_):
-                            await err_say(
-                                ctx_, follow_up=False, content="🛑 Cancelled the command"
-                            )
-                            return
-                    except asyncio.TimeoutError:
-                        await say(
-                            ctx_,
-                            content="⌛ Timed out. Please reinvoke the command",
-                        )
+                        await start_confirmation_prompt(ctx_)
+                    except (CommandCancelled, asyncio.TimeoutError) as exc:
+                        await BindErrorExpects(ctx_).expect(exc)
                         return
                 await inj_func(*args, **kwargs)
-            except Unauthorized as exc:
-                await err_say(
-                    ctx_,
-                    content=f"🚫 You lack the `{format_flags(exc.perms)}` permissions to use this command",
-                )
-            except OthersListening as exc:
-                await err_say(
-                    ctx_,
-                    content=f"🚫 You can only do this if you are alone in <#{exc.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
-                )
-            except OthersInVoice as exc:
-                await err_say(
-                    ctx_,
-                    content=f"🚫 Someone else is already in <#{exc.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
-                )
-            except AlreadyConnected as exc:
-                await err_say(
-                    ctx_,
-                    content=f"🚫 Join <#{exc.channel}> first. **You bypass this by having the {dj_perms_fmt} permissions**",
-                )
-            except NotConnected:
-                await err_say(
-                    ctx_,
-                    content=f"❌ Not currently connected to any channel. Use `{p}join` or `{p}play` first",
-                )
-            except QueueEmpty:
-                await err_say(ctx_, content="❗ The queue is empty")
-            except NotYetSpeaker as exc:
-                rest = get_rest(ctx_)
-                await err_say(
-                    ctx_,
-                    content="❗👥 Not yet a speaker in the current stage. Sending a request to speak...",
-                )
-                await rest.edit_my_voice_state(
-                    ctx_.guild_id, exc.channel, request_to_speak=True
-                )
-            except NotPlaying:
-                await err_say(ctx_, content="❗ Nothing is playing at the moment")
-            except PlaybackChangeRefused:
-                await err_say(
-                    ctx_,
-                    content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
-                )
-            except TrackPaused:
-                await err_say(ctx_, content="❗ The current track is paused")
-            except TrackStopped:
-                await err_say(
-                    ctx_,
-                    content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
-                )
-            except QueryEmpty as exc:
-                await err_say(ctx_, content=f"❓ No tracks found for `{exc.query_str}`")
+            except BaseLyraException as exc:
+                await CheckErrorExpects(ctx_).expect(exc)
 
         return inner
 
@@ -288,14 +227,11 @@ _CMD = t.TypeVar('_CMD', bound=BaseCommandType)
 
 async def _as_author_permission_check(
     ctx: tj.abc.Context, perms: hkperms | int
-) -> Result[bool]:
+) -> Panic[bool]:
     assert perms
     check = tj.checks.AuthorPermissionCheck(perms, error_message=None)
     if not await check(ctx):
-        await err_say(
-            ctx,
-            content=f"🚫 You lack the `{format_flags(hkperms(perms))}` permissions to use this command",
-        )
+        await CheckErrorExpects(ctx).expect_unauthorized(Unauthorized(hkperms(perms)))
         raise tj.HaltExecution
     return True
 
@@ -352,6 +288,11 @@ def with_cmd_checks(checks: Checks, /) -> Decorator[_CMD]:
 
 
 def with_author_permission_check(permissions: hkperms | int, /) -> Decorator[_CMD]:
-    return lambda c: c.add_check(
-        ft.partial(_as_author_permission_check, perms=permissions)
-    )
+    def _with_author_permission_check(cmd: _CMD, /) -> _CMD:
+        cmd.metadata['perms'] = permissions
+        return cmd.add_check(ft.partial(_as_author_permission_check, perms=permissions))
+
+    return _with_author_permission_check
+
+
+with_developer_permission_check = with_cmd_checks(Checks.DEVELOPER)

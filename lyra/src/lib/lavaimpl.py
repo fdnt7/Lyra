@@ -5,7 +5,7 @@ import hikari as hk
 import alluka as al
 import lavasnek_rs as lv
 
-from .extras import lgfmt
+from .extras import Panic, lgfmt
 from .utils import EmojiRefs, get_client
 from .playback import while_stop
 from .errors import QueueEmpty
@@ -152,7 +152,7 @@ class EventHandler(BaseEventHandler):
 
     async def track_exception(
         self, lvc: lv.Lavalink, event: lv.TrackException, /
-    ) -> None:
+    ) -> Panic[None]:
         t_info = await lvc.decode_track(event.track)
         d = await get_data(event.guild_id, lvc)
         l = len(d.queue)

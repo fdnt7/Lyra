@@ -16,6 +16,8 @@ from .utils import GuildOrInferable, infer_guild, limit_img_size_by_guild
 from .errors import NotConnected, QueueEmpty
 from .extras import (
     Option,
+    Result,
+    Panic,
     RGBTriplet,
     get_img_pallete,
     get_thumbnail,
@@ -96,7 +98,7 @@ class QueueList(list[lv.TrackQueue]):
         return curr_time_ms() - self._curr_t_started
 
     @property
-    def current(self) -> Option[lv.TrackQueue]:
+    def current(self) -> Result[Option[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
@@ -110,14 +112,14 @@ class QueueList(list[lv.TrackQueue]):
         return not (self.is_paused or self.is_stopped) and bool(self.current)
 
     @property
-    def upcoming(self) -> list[lv.TrackQueue]:
+    def upcoming(self) -> Result[list[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
         return self[self.pos + 1 :]
 
     @property
-    def history(self) -> list[lv.TrackQueue]:
+    def history(self) -> Result[list[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
@@ -147,7 +149,7 @@ class QueueList(list[lv.TrackQueue]):
         self.pos -= 1
 
     @property
-    def next(self) -> Option[lv.TrackQueue]:
+    def next(self) -> Result[Option[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
@@ -168,7 +170,7 @@ class QueueList(list[lv.TrackQueue]):
 
         return self[pos]
 
-    def shuffle(self) -> None:
+    def shuffle(self) -> Result[None]:
         if not self:
             raise QueueEmpty
 
@@ -327,21 +329,23 @@ class BaseEventHandler(abc.ABC):
         lvc: lv.Lavalink,
         event: lv.TrackStart,
         /,
-    ) -> None:
+    ) -> Panic[None]:
         ...
 
     @abc.abstractmethod
-    async def track_finish(self, lvc: lv.Lavalink, event: lv.TrackFinish, /) -> None:
+    async def track_finish(
+        self, lvc: lv.Lavalink, event: lv.TrackFinish, /
+    ) -> Panic[None]:
         ...
 
     @abc.abstractmethod
     async def track_exception(
         self, lvc: lv.Lavalink, event: lv.TrackException, /
-    ) -> None:
+    ) -> Panic[None]:
         ...
 
 
-async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, /) -> NodeData:
+async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, /) -> Panic[NodeData]:
     node = await lvc.get_guild_node(guild)
     if not node:
         raise NotConnected
@@ -350,7 +354,9 @@ async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, /) -> NodeData:
     return data
 
 
-async def set_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData, /) -> None:
+async def set_data(
+    guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData, /
+) -> Panic[None]:
     node = await lvc.get_guild_node(guild)
     if not node:
         raise NotConnected
@@ -384,7 +390,7 @@ async def access_data(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
         await set_data(g, lvc, data)
 
 
-async def get_queue(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> QueueList:
+async def get_queue(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> Panic[QueueList]:
     return (await get_data(infer_guild(g_inf), lvc)).queue
 
 

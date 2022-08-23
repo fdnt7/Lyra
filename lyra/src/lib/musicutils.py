@@ -9,29 +9,16 @@ from .utils import (
     Q_CHUNK,
     TIMEOUT,
     guild_c,
-    dj_perms_fmt,
     disable_components,
     err_say,
     get_cmd_repr,
     get_pref,
-    get_rest,
     say,
 )
-from .extras import chunk, chunk_b, format_flags, to_stamp, wr
+from .extras import Result, chunk, chunk_b, to_stamp, wr
+from .expects import CheckErrorExpects
 from .errors import (
-    AlreadyConnected,
-    NoPlayableTracks,
     NotConnected,
-    NotPlaying,
-    NotYetSpeaker,
-    OthersInVoice,
-    OthersListening,
-    PlaybackChangeRefused,
-    QueryEmpty,
-    QueueEmpty,
-    TrackPaused,
-    TrackStopped,
-    Unauthorized,
     VotingTimeout,
 )
 from .lavautils import RepeatMode, access_data, get_queue
@@ -42,84 +29,27 @@ music_h = tj.AnyHooks()
 
 @music_h.with_on_error
 async def on_error(ctx: tj.abc.Context, error: Exception) -> bool:
-    assert ctx.guild_id
-    match error:
-        case lv.NetworkError():
-            await err_say(ctx, content="⁉️ A network error has occurred")
-        case lv.NoSessionPresent():
-            await err_say(
-                ctx,
-                content="⁉️ Something internal went wrong. Please try again in few minutes",
-            )
-        case PlaybackChangeRefused():
-            await err_say(
-                ctx,
-                content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
-            )
-        case Unauthorized():
-            await err_say(
-                ctx,
-                content=f"🚫 You lack the `{format_flags(error.perms)}` permissions to use this command",
-            )
-        case OthersListening():
-            await err_say(
-                ctx,
-                content=f"🚫 You can only do this if you are alone in <#{error.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
-            )
-        case OthersInVoice():
-            await err_say(
-                ctx,
-                content=f"🚫 Someone else is already in <#{error.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
-            )
-        case AlreadyConnected():
-            await err_say(
-                ctx,
-                content=f"🚫 Join <#{error.channel}> first. **You bypass this by having the {dj_perms_fmt} permissions**",
-            )
-        case NotConnected():
-            p = get_pref(ctx)
-            await err_say(
-                ctx,
-                content=f"❌ Not currently connected to any channel. Use `{p}join` or `{p}play` first",
-            )
-        case QueueEmpty():
-            await err_say(ctx, content="❗ The queue is empty")
-        case NotYetSpeaker():
-            rest = get_rest(ctx)
-            await err_say(
-                ctx,
-                content="❗👥 Not yet a speaker in the current stage. Sending a request to speak...",
-            )
-            await rest.edit_my_voice_state(
-                ctx.guild_id, error.channel, request_to_speak=True
-            )
-        case NotPlaying():
-            await err_say(ctx, content="❗ Nothing is playing at the moment")
-        case TrackPaused():
-            await err_say(ctx, content="❗ The current track is paused")
-        case TrackStopped():
-            p = get_pref(ctx)
-            await err_say(
-                ctx,
-                content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
-            )
-        case QueryEmpty():
-            await err_say(ctx, content=f"❓ No tracks found for `{error.query_str}`")
-        case NoPlayableTracks():
-            await err_say(ctx, content="💔 Cannot play any given track(s)")
-        case _:
-            return False
-    return True
+    expect = CheckErrorExpects(ctx)
+    return await expect.expect(error)
 
 
 def __init_component__(
-    dunder_name: str, /, *, guild_check: bool = True, music_hook: bool = True
+    dunder_name: str,
+    /,
+    *,
+    guild_check: bool = True,
+    music_hook: bool = True,
+    other_checks: t.Iterable[tj.abc.CheckSig] = (),
+    other_hooks: t.Iterable[tj.abc.Hooks[tj.abc.Context]] = (),
 ):
     comp = tj.Component(name=dunder_name.split('.')[-1].capitalize(), strict=True)
     if guild_check:
         comp.add_check(guild_c)
     if music_hook:
         comp.set_hooks(music_h)
+    *(comp.add_check(c) for c in other_checks),
+    *(comp.set_hooks(h) for h in other_hooks),
+
     return comp
 
 
@@ -137,7 +67,9 @@ async def post_execution(
         pass
 
 
-async def start_listeners_voting(ctx: tj.abc.Context, lvc: lv.Lavalink, /):
+async def start_listeners_voting(
+    ctx: tj.abc.Context, lvc: lv.Lavalink, /
+) -> Result[None]:
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
     cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_repr(ctx)))

@@ -7,7 +7,7 @@ import lavasnek_rs as lv
 import tanjun.annotations as ja
 
 from ..lib.musicutils import __init_component__
-from ..lib.extras import Option
+from ..lib.extras import Option, Panic
 from ..lib.utils import (
     say,
     err_say,
@@ -29,7 +29,7 @@ tuning = __init_component__(__name__)
 # ~
 
 
-def to_preset(value: str, /):
+def to_preset(value: str, /) -> Panic[str]:
     if value.casefold() not in valid_presets.values():
         valid_presets_fmt = ', '.join(
             ('\"%s\" (%s)' % (j, i) for i, j in valid_presets.items())
