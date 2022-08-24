@@ -118,9 +118,9 @@ async def restrict_mode_set(
     res['wl_mode'] = mode
 
     if mode == 0:
-        msg = f"""📝{_e(mode)}{'🧹' if wipe else ''} Cleared {cat_name.lower()} restriction mode{wipe_msg}"""
+        msg = f"""🔐{_e(mode)}{'🧹' if wipe else ''} Cleared {cat_name.lower()} restriction mode{wipe_msg}"""
     else:
-        msg = f"📝{_e(mode)} Set *{cat_name.lower()}* restriction mode to **`{mode_name}`**"
+        msg = f"🔐{_e(mode)} Set *{cat_name.lower()}* restriction mode to **`{mode_name}`**"
 
     await say(ctx, content=msg)
     cfg.find_one_and_replace(flt, g_cfg)
@@ -166,9 +166,9 @@ async def restrict_list_edit(
     delta_act = '**`＋`** Added' if mode == '+' else '**`ー`** Removed'
     delta_txt = 'new' if mode == '+' else 'restricted'
     delta_txt_skipped = (
-        "❕📝 No new restricted channels, roles or members were added as they've already been assigned"
+        "❕🔐 No new restricted channels, roles or members were added as they've already been assigned"
         if mode == '+'
-        else "❕📝 No existing restricted channels, roles or members were removed as they weren't in the list"
+        else "❕🔐 No existing restricted channels, roles or members were removed as they weren't in the list"
     )
     deltas_msg = join_and(
         (
@@ -193,7 +193,7 @@ async def restrict_list_edit(
         *(res_r_all.remove(r) for r in new_r),
         *(res_u_all.remove(u) for u in new_u),
 
-    msg = f"📝 {delta_act} {deltas_msg}" if deltas_msg else delta_txt_skipped
+    msg = f"🔐 {delta_act} {deltas_msg}" if deltas_msg else delta_txt_skipped
 
     await say(ctx, content=msg)
     cfg.find_one_and_replace(flt, g_cfg)
@@ -448,7 +448,7 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 
     embed = (
         hk.Embed(
-            title=f"📝✅❌ All restricted channels, roles and members",
+            title=f"🔐✅❌ All restricted channels, roles and members",
         )
         .add_field(
             f"Channels *({_c(ch_wl)})*",
@@ -641,7 +641,7 @@ async def restrict_wipe_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 
     await say(
         ctx,
-        content="📝🧹 Wiped all restricted channels, roles and members list and cleared the restriction modes",
+        content="🔐🧹 Wiped all restricted channels, roles and members list and cleared the restriction modes",
     )
     cfg.find_one_and_replace(flt, g_cfg)
 
