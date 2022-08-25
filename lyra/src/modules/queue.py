@@ -349,8 +349,13 @@ async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /shuffle
 
 
+with_common_cmd_check_with_vote = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)
+
+
+@with_common_cmd_check_with_vote
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
 #
+@with_common_cmd_check_with_vote
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
 async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await shuffle_abs(ctx, lvc)
@@ -549,9 +554,6 @@ async def move_insert_(
 
 
 # /repeat
-
-
-with_common_cmd_check_with_vote = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
