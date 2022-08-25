@@ -23,8 +23,8 @@ from .extras import (
     Option,
     Result,
     Panic,
-    lgfmt,
     url_regex,
+    lgfmt,
     join_and,
 )
 from .errors import (
