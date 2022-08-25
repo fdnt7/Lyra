@@ -190,7 +190,7 @@ class QueueList(list[lv.TrackQueue]):
 
     def reset_repeat(self) -> None:
         if self.repeat_mode is RepeatMode.ONE or self.repeat_mode is RepeatMode.ALL:
-            self.repeat_mode = RepeatMode.NONE if len(self) == 1 else RepeatMode.ALL
+            self.repeat_mode = RepeatMode.NONE if len(self) <= 1 else RepeatMode.ALL
 
     def update_curr_t_started(self, delta_ms: int = 0):
         self._curr_t_started = curr_time_ms() + delta_ms
