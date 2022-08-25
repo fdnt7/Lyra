@@ -87,7 +87,7 @@ async def ping_(ctx: tj.abc.Context):
     Shows the bot's latency
     """
     assert ctx.shards
-    await say(ctx, content=f"📶 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
+    await say(ctx, content=f"🏓 **{int(ctx.shards.heartbeat_latency*1000)}** ms")
 
 
 # /help
