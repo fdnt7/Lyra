@@ -6,13 +6,12 @@ import hikari as hk
 import tanjun as tj
 import alluka as al
 
-from colorhash import ColorHash
-
 from ..lib.musicutils import __init_component__
 from ..lib.compose import Binds
 from ..lib.utils import (
     BaseCommandType,
     EmojiRefs,
+    color_hash_obj,
     get_cmd_handle,
     get_cmd_trigger,
     say,
@@ -130,9 +129,7 @@ async def help_(
 
     desc = f"{' '.join(map(str, avail_in))}\n```{docs}```\n**Command Category**: `{component.name}`"
 
-    color: tuple[float, float, float] = ColorHash(
-        component.name
-    ).rgb  # pyright: ignore [reportUnknownMemberType]
+    color = color_hash_obj(component)
     embed = (
         hk.Embed(
             title=f"📖 Manual for command `{handle}`", description=desc, color=color
