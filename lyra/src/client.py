@@ -80,7 +80,7 @@ async def prefix_getter(
     return prefixes
 
 
-@_client.with_listener(hk.StartedEvent)
+@_client.with_listener()
 async def on_started(
     _: hk.StartedEvent,
     client: al.Injected[tj.Client],
@@ -103,7 +103,7 @@ async def on_started(
     repeat_emojis.extend(emoji_refs[f'repeat{n}_b'] for n in range(3))
 
 
-@_client.with_listener(hk.ShardReadyEvent)
+@_client.with_listener()
 async def on_shard_ready(
     event: hk.ShardReadyEvent,
     client: al.Injected[tj.Client],
@@ -129,7 +129,7 @@ async def on_shard_ready(
     client.set_type_dependency(lv.Lavalink, lvc)
 
 
-@_client.with_listener(hk.VoiceStateUpdateEvent)
+@_client.with_listener()
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
     lvc: al.Injected[lv.Lavalink],
@@ -147,7 +147,7 @@ async def on_voice_state_update(
     )
 
 
-@_client.with_listener(hk.VoiceServerUpdateEvent)
+@_client.with_listener()
 async def on_voice_server_update(
     event: hk.VoiceServerUpdateEvent,
     lvc: al.Injected[lv.Lavalink],

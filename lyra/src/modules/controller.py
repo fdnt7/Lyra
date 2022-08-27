@@ -4,6 +4,7 @@ import lavasnek_rs as lv
 
 from ..lib.musicutils import __init_component__
 from ..lib.errors import NotConnected
+from ..lib.extras import void
 from ..lib.flags import (
     ALONE__SPEAK__CAN_SEEK_ANY,
     ALONE__SPEAK__NP_YOURS,
@@ -28,7 +29,7 @@ play_pause_impl = with_cb_check(
     | Checks.CONN
     | Checks.QUEUE
     | ALONE__SPEAK__NP_YOURS
-)(play_pause_abs)
+)(void(play_pause_abs))
 skip_impl = with_cb_check(
     Checks.PLAYING | Checks.CONN | Checks.QUEUE | ALONE__SPEAK__NP_YOURS,
 )(skip_abs)
@@ -42,7 +43,7 @@ shuffle_impl = with_cb_check(Checks.QUEUE | Checks.CONN | IN_VC_ALONE)(shuffle_a
 # ~
 
 
-@control.with_listener(hk.InteractionCreateEvent)
+@control.with_listener()
 async def on_interaction_create(
     event: hk.InteractionCreateEvent, lvc: al.Injected[lv.Lavalink]
 ):

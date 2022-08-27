@@ -308,7 +308,7 @@ class NodeData:
         default=None, init=False
     )
     track_stopped_fired: bool = a.field(factory=bool, init=False)
-    dc_on_purpose: bool = a.field(factory=bool, init=False)
+    vc_change_intended: bool = a.field(factory=bool, init=False)
     ...
 
     async def edit_now_playing_components(

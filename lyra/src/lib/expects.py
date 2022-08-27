@@ -6,7 +6,7 @@ import attr as a
 import lavasnek_rs as lv
 
 from .utils import Contextish, dj_perms_fmt, err_say, get_pref, get_rest, say
-from .extras import Result, VoidCoro, format_flags
+from .extras import Result, format_flags
 from .errors import (
     CommandCancelled,
     ErrorNotRecognized,
@@ -34,7 +34,9 @@ class BaseErrorExpects(abc.ABC):
     context: Contextish
 
     @abc.abstractmethod
-    def match_expect(self, error: Exception, /) -> Result[t.Callable[[], VoidCoro]]:
+    def match_expect(
+        self, error: Exception, /
+    ) -> Result[t.Callable[[], t.Awaitable[None]]]:
         ...
 
     @abc.abstractmethod
@@ -135,7 +137,9 @@ class CheckErrorExpects(BaseErrorExpects):
     async def expect_not_developer(self):
         await err_say(self.context, content="🚫⚙️ Reserved for bot's developers only")
 
-    def match_expect(self, error: Exception, /) -> Result[t.Callable[[], VoidCoro]]:
+    def match_expect(
+        self, error: Exception, /
+    ) -> Result[t.Callable[[], t.Awaitable[None]]]:
         match error:
             case lv.NetworkError():
                 return lambda: self.expect_network_error()
@@ -196,7 +200,9 @@ class BindErrorExpects(BaseErrorExpects):
             content=f"❌ Please join a voice channel first. You can also do `{p}join channel:` `[🔊 ...]`",
         )
 
-    def match_expect(self, error: Exception, /) -> Result[t.Callable[[], VoidCoro]]:
+    def match_expect(
+        self, error: Exception, /
+    ) -> Result[t.Callable[[], t.Awaitable[None]]]:
         match error:
             case NotInVoice():
                 return lambda: self.expect_not_in_voice()

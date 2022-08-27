@@ -19,7 +19,6 @@ from .extras import (
     Option,
     Result,
     Panic,
-    VoidCoro,
     URLstr,
     format_flags,
     join_and,
@@ -466,7 +465,7 @@ def with_metadata(**kwargs: t.Any) -> t.Callable[[_CMD], _CMD]:
 _P_mgT = t.ParamSpec('_P_mgT')
 
 
-def with_message_command_group_template(func: t.Callable[_P_mgT, VoidCoro], /):
+def with_message_command_group_template(func: t.Callable[_P_mgT, t.Awaitable[None]], /):
     @ft.wraps(func)
     async def inner(*args: _P_mgT.args, **kwargs: _P_mgT.kwargs):
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)

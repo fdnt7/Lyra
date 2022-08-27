@@ -140,8 +140,10 @@ async def join(
         await ctx.rest.edit_my_voice_state(ctx.guild_id, new_ch, request_to_speak=True)
 
     if old_conn and old_ch:
+        async with access_data(ctx, lvc) as d:
+            d.vc_change_intended = True
         logger.info(
-            f"In guild {ctx.guild_id} moved   from    {old_ch} > {ch_type: <7} {new_ch}"
+            f"In guild {ctx.guild_id} moved   from    {old_ch} > {ch_type: <7} {new_ch} gracefully"
         )
         raise ChannelMoved(old_ch, new_ch, to_stage=is_stage)
 
@@ -166,7 +168,7 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Result[hk.Snowflake
     await others_not_in_vc_check_impl(ctx, conn)
 
     async with access_data(ctx, lvc) as d:
-        d.dc_on_purpose = True
+        d.vc_change_intended = True
 
     await cleanup(ctx.guild_id, ctx.client.shards, lvc)
 
