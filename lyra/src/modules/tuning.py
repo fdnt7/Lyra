@@ -80,7 +80,7 @@ with_stage_cmd_check = with_cmd_composer(
 )
 
 
-@tuning.with_listener(hk.VoiceStateUpdateEvent)
+@tuning.with_listener()
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent, lvc: al.Injected[lv.Lavalink]
 ):

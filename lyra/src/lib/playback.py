@@ -85,7 +85,7 @@ async def set_pause(
     respond: bool = False,
     strict: bool = False,
     update_controller: bool = False,
-) -> Panic[None]:
+) -> Panic[bool]:
     g = infer_guild(g_r_inf)
 
     try:
@@ -98,16 +98,17 @@ async def set_pause(
         if q.is_stopped:
             if strict:
                 raise TrackStopped
-            return
+            return False
         if pause is None:
             pause = not q.is_paused
-        if respond:
-            if pause and q.is_paused:
+        if pause and q.is_paused:
+            if respond:
                 await err_say(g_r_inf, content="❗ Already paused")
-                return
-            if not (pause or q.is_paused):
+            return False
+        if not (pause or q.is_paused):
+            if respond:
                 await err_say(g_r_inf, content="❗ Already resumed")
-                return
+            return False
 
         np_pos = q.np_position
         if np_pos is None:
@@ -160,7 +161,8 @@ async def set_pause(
     except (QueueEmpty, NotPlaying):
         if strict:
             raise
-        pass
+        return False
+    return True
 
 
 async def skip(

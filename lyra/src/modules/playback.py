@@ -1,6 +1,7 @@
 import typing as t
 import functools as ft
 
+import hikari as hk
 import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
@@ -82,6 +83,106 @@ async def play_pause_(
 ) -> None:
     """Pauses the current song."""
     await play_pause_abs(ctx, lvc)
+
+
+@playback.with_listener()
+async def on_voice_state_update(
+    event: hk.VoiceStateUpdateEvent,
+    client: al.Injected[tj.Client],
+    lvc: al.Injected[lv.Lavalink],
+    bot: al.Injected[hk.GatewayBot],
+):
+    def conn():
+        return lvc.get_guild_gateway_connection_info(event.guild_id)
+
+    new = event.state
+    old = event.old_state
+
+    if not await lvc.get_guild_node(event.guild_id):
+        return
+
+    bot_u = bot.get_me()
+    assert bot_u
+
+    def users_in_vc() -> frozenset[hk.VoiceState]:
+        _conn = conn()
+        cache = bot.cache
+        if not _conn:
+            return frozenset()
+        assert isinstance(_conn, dict) and cache
+        ch_id: int = _conn['channel_id']
+        return frozenset(
+            filter(
+                lambda v: not v.member.is_bot,
+                cache.get_voice_states_view_for_channel(event.guild_id, ch_id).values(),
+            )
+        )
+
+    new_vc_id = new.channel_id
+    out_ch = (await get_data(event.guild_id, lvc)).out_channel_id
+    assert out_ch
+
+    if not (_conn := conn()):
+        return
+    assert isinstance(_conn, dict)
+
+    from .playback import set_pause
+
+    old_is_stage = (
+        None
+        if not (old and old.channel_id)
+        else isinstance(
+            bot.cache.get_guild_channel(old.channel_id), hk.GuildStageChannel
+        )
+    )
+
+    if (
+        new_vc_id
+        and isinstance(bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel)
+        and new.user_id == bot_u.id
+    ):
+        old_suppressed = old.is_suppressed if old else True
+        old_requested = old.requested_to_speak_at if old else None
+
+        if (
+            not old_suppressed
+            and new.is_suppressed
+            and old_is_stage
+            and await set_pause(event, lvc, pause=True, update_controller=True)
+        ):
+            await client.rest.create_message(
+                out_ch,
+                f"👥▶️ Paused as the bot was moved to audience",
+            )
+        elif old_suppressed and not new.is_suppressed:
+            await client.rest.create_message(
+                out_ch,
+                f"🎭🗣️ Became a speaker",
+            )
+        elif not new.requested_to_speak_at and old_requested:
+            await client.rest.create_message(
+                out_ch, f"❕🎭 Bot's request to speak was dismissed"
+            )
+
+    in_voice = users_in_vc()
+    node_vc_id: int = _conn['channel_id']
+    # if new.channel_id == vc and len(in_voice) == 1 and new.user_id != bot_u.id:
+    #     # Someone rejoined
+    #     try:
+    #         await set_pause__(event.guild_id, lvc, pause=False)
+    #         await client.rest.create_message(ch, f"✨⏸️ Resumed")
+    #     except NotConnected:
+    #         pass
+
+    if (
+        new_vc_id != node_vc_id
+        and not in_voice
+        and old
+        and old.channel_id == node_vc_id
+        and await set_pause(event, lvc, pause=True, update_controller=True)
+    ):
+        # Everyone left
+        await client.rest.create_message(out_ch, f"🕊️▶️ Paused as no one is listening")
 
 
 # /pause

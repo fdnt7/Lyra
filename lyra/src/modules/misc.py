@@ -53,7 +53,7 @@ async def commands_autocomplete(ctx: tj.abc.AutocompleteContext, value: str, /):
     await ctx.set_choices({v: v for v in matches[:25]})
 
 
-@misc.with_listener(hk.StartedEvent)
+@misc.with_listener()
 async def on_started(_: hk.StartedEvent, client: al.Injected[tj.Client]):
     _all_cmds_iter = tuple(client.iter_commands())
     _all_cmds_sep = groupby(_all_cmds_iter, key=lambda cmd: get_cmd_handle(cmd))

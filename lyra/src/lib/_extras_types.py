@@ -26,7 +26,6 @@ Panic = Result
 Require = t.Annotated[_T_co, ...]
 MaybeIterable = _T | t.Iterable[_T]
 
-VoidCoro = t.Awaitable[None]
 OptionResult = Option[Result[_T]]
 
 _DecoratedT = t.TypeVar('_DecoratedT')

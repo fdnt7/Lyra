@@ -2,6 +2,7 @@ import os
 import time
 import enum as e
 import typing as t
+import inspect
 import pathlib as pl
 import functools as ft
 import itertools as it
@@ -15,7 +16,6 @@ from ._extras_types import (
     Result,
     Panic,
     NULL,
-    VoidCoro,
     RGBTriplet,
     MaybeIterable,
     URLstr,
@@ -223,3 +223,28 @@ def groupby(
 
 def lgfmt(dunder_name: str, /) -> str:
     return f"{'.'.join(dunder_name.split('.')[1:]):<{LOG_PAD}}"
+
+
+_P = t.ParamSpec('_P')
+
+
+@t.overload
+def void(f: t.Callable[_P, int]) -> t.Callable[_P, None]:
+    ...
+
+
+@t.overload
+def void(f: t.Callable[_P, t.Awaitable[int]]) -> t.Callable[_P, t.Awaitable[None]]:
+    ...
+
+
+def void(f: t.Callable[_P, t.Any]) -> t.Callable[_P, None | t.Awaitable[None]]:
+    def inner(*args: _P.args, **kwargs: _P.kwargs):
+        f(*args, **kwargs)
+
+    async def coro_inner(*args: _P.args, **kwargs: _P.kwargs):
+        await f(*args, **kwargs)
+
+    if inspect.iscoroutinefunction(f):
+        return coro_inner
+    return inner

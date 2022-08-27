@@ -64,7 +64,6 @@ def with_cb_check(
     vote: bool = False,
     prompt: bool = False,
 ):
-    from .extras import VoidCoro
     from .musicutils import start_listeners_voting
 
     P = t.ParamSpec('P')
@@ -144,7 +143,9 @@ def with_cb_check(
         if (await get_queue(ctx_, lvc)).is_paused:
             raise TrackPaused
 
-    def callback(func: t.Callable[P, VoidCoro]) -> t.Callable[P, VoidCoro]:
+    def callback(
+        func: t.Callable[P, t.Awaitable[None]]
+    ) -> t.Callable[P, t.Awaitable[None]]:
         @ft.wraps(func)
         async def inner(*args: P.args, **kwargs: P.kwargs) -> None:
 
