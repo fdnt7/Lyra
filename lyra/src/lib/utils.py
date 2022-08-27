@@ -1,5 +1,6 @@
 import typing as t
 import asyncio
+import hashlib as hl
 import functools as ft
 import contextlib as ctxlib
 
@@ -19,9 +20,9 @@ from .extras import (
     Result,
     Panic,
     VoidCoro,
+    URLstr,
     format_flags,
     join_and,
-    URLstr,
     limit_bytes_img_size,
     url_to_bytesio,
 )
@@ -726,3 +727,15 @@ def limit_img_size_by_guild(
     guild = cache.get_guild(infer_guild(g_inf))
     assert guild
     return limit_bytes_img_size(img_url_b, get_guild_upload_limit(guild))
+
+
+def color_hash_obj(any_: t.Any) -> hk.Color:
+    _r = repr(any_)
+    h = hl.sha256(bytes(_r))
+    h_d = int(h.hexdigest(), 16)
+
+    r = (h_d & 0xFF0000) >> 16
+    g = (h_d & 0x00FF00) >> 8
+    b = h_d & 0x0000FF
+
+    return hk.Color.from_rgb(r, g, b)
