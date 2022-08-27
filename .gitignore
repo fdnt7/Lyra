@@ -14,6 +14,7 @@ lyra/typings
 lavalink-local/jdk-13.0.2
 lavalink-local/Lavalink.jar
 lavalink-local/application.yml
+lavalink-local/logs
 
 .env
 headers_auth.json
