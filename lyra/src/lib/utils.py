@@ -297,7 +297,7 @@ async def say(
             else:
                 assert isinstance(g_r_inf, hk.ComponentInteraction)
                 if show_author and (cnt := kwargs.get('content')):
-                    kwargs['content'] = f"{cnt} *by {g_r_inf.user.mention}*"
+                    kwargs['content'] = f"{cnt} *(📨 __{g_r_inf.user.mention}__)*"
                 msg = await g_r_inf.create_initial_response(
                     hk.ResponseType.MESSAGE_CREATE, **kwargs, flags=flags
                 )
