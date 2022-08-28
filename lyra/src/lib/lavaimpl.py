@@ -104,9 +104,9 @@ class EventHandler(BaseEventHandler):
             # await skip__(event.guild_id, lvc)
 
     async def track_finish(self, lvc: lv.Lavalink, event: lv.TrackFinish, /) -> None:
+        t = (await lvc.decode_track(event.track)).title
         if not await lvc.get_guild_node(event.guild_id):
             return
-        t = (await lvc.decode_track(event.track)).title
         async with access_data(event.guild_id, lvc) as d:
             q = d.queue
             l = len(q)
