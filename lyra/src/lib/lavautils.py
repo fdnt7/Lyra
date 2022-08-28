@@ -224,7 +224,7 @@ class Bands(tuple[float]):
     @property
     def key(self) -> Option[str]:
         if self.key_ is None:
-            return getattr(self.name, 'lower', lambda: None)()
+            return self.name.lower() if self.name else None
         return self.key_
 
     @classmethod

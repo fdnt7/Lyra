@@ -20,6 +20,7 @@ from .extras import (
     Result,
     Panic,
     URLstr,
+    AsyncVoidFunction,
     format_flags,
     join_and,
     limit_bytes_img_size,
@@ -69,6 +70,9 @@ MentionableType = hk.GuildChannel | hk.Role | hk.Member
 PartialMentionableType = hk.PartialUser | hk.PartialRole | hk.PartialChannel
 JoinableChannelType = hk.GuildVoiceChannel | hk.GuildStageChannel
 BaseCommandType = tj.abc.ExecutableCommand[tj.abc.Context]
+ParentCommandType: tj.abc.SlashCommandGroup | tj.abc.MessageCommandGroup[
+    AsyncVoidFunction
+]
 BindSig = tj.abc.CheckSig
 
 EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
@@ -412,12 +416,21 @@ async def start_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
-    cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_repr(ctx)))
-    callback = getattr(ctx.command, 'callback', None)
-    if callback:
-        docs = callback.__doc__
-    else:
-        docs = None
+    cmd_n = ''.join((get_pref(ctx), get_cmd_repr(ctx)))
+    cmd = ctx.command
+    if t.TYPE_CHECKING:
+        match cmd.type:
+            case hk.CommandType.SLASH:
+                cmd: tj.SlashCommand[AsyncVoidFunction]
+            case hk.CommandType.MESSAGE:
+                cmd: tj.MenuCommand[AsyncVoidFunction, hk.CommandType.MESSAGE]
+            case hk.CommandType.USER:
+                cmd: tj.MenuCommand[AsyncVoidFunction, hk.CommandType.USER]
+            case _:
+                cmd: tj.MessageCommand[AsyncVoidFunction]
+
+    callback: Option[AsyncVoidFunction] = cmd.callback
+    docs = callback.__doc__
 
     row = (
         ctx.rest.build_action_row()
@@ -474,14 +487,15 @@ def with_message_command_group_template(func: t.Callable[_P_mgT, t.Awaitable[Non
         cmd = ctx.command
         assert isinstance(cmd, tj.abc.MessageCommandGroup)
         p = next(iter(ctx.client.prefixes))
-        cmd_n = next(iter(cmd.names))
+        cmd_n = get_cmd_repr(ctx)
         sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
         valid_cmds = ', '.join(
-            f"`{p}~ {cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n
+            f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n
         )
         await err_say(
             ctx,
-            content=f"❌ This is a command group. Use the following instead:\n{valid_cmds}",
+            del_after=6.5,
+            content=f"❌ This is a command group. Use the following subcommands instead:\n{valid_cmds}",
         )
 
         await func(*args, **kwargs)
@@ -558,7 +572,8 @@ async def restricts_c(
 @base_h.with_on_parser_error
 async def on_parser_error(ctx: tj.abc.Context, error: tj.errors.ParserError) -> None:
     msg = f"❌ You've given an invalid input: `{error}` "
-    if related_errs := getattr(error, 'errors', None):
+
+    if related_errs := error.errors if isinstance(error, tj.ConversionError) else None:
         err_msg = '\n'.join(
             f'Cause-{i}: {next(iter(e.args))}' for i, e in enumerate(related_errs, 1)
         )
@@ -691,7 +706,9 @@ def get_cmd_repr(ctx: tj.abc.Context, /):
     def _recurse(_cmd: BaseCommandType, _names: list[str]) -> list[str]:
         if isinstance(_cmd, tj.abc.MessageCommand):
             _names.append(next(iter(_cmd.names)))
-        elif isinstance(_cmd, tj.abc.SlashCommand | tj.abc.MenuCommand):
+        elif isinstance(
+            _cmd, tj.abc.SlashCommand | tj.abc.SlashCommandGroup | tj.abc.MenuCommand
+        ):
             _names.append(_cmd.name)
 
         if not (
@@ -703,7 +720,7 @@ def get_cmd_repr(ctx: tj.abc.Context, /):
         return _recurse(parent_cmd, _names)
 
     assert cmd
-    return ''.join(_recurse(cmd, []))
+    return ' '.join(_recurse(cmd, [])[::-1])
 
 
 def get_guild_upload_limit(guild: hk.Guild, /) -> int:
