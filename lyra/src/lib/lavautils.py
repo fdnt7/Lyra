@@ -433,7 +433,7 @@ async def generate_nowplaying_embed(
         .set_author(name="Currently playing")
         .set_footer(
             f"Requested by: {req.display_name}",
-            icon=req.avatar_url or req.default_avatar_url,
+            icon=req.display_avatar_url,
         )
         .set_thumbnail(thumb)
     )

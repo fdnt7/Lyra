@@ -101,7 +101,7 @@ async def nowplaying_(
         .set_author(name="Now playing")
         .set_footer(
             f"Requested by: {req.display_name}",
-            icon=req.avatar_url or ctx.author.default_avatar_url,
+            icon=req.display_avatar_url,
         )
         .set_thumbnail(thumb)
     )
