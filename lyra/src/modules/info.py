@@ -80,7 +80,7 @@ async def nowplaying_(
     )
 
     desc = (
-        f'📀 **{t_info.author}**',
+        f'👤 **{t_info.author}**',
         f"{e} `{np_pos:─<{padding}}{song_len:─>12}`".replace('─', ' ', 1)[::-1]
         .replace('─', ' ', 1)[::-1]
         .replace('─', '▬', progress),
@@ -92,7 +92,7 @@ async def nowplaying_(
         thumb = limit_img_size_by_guild(thumb, ctx, ctx.cache)
     embed = (
         hk.Embed(
-            title=f"{'🎶 ' if not q.is_paused else ''}{t_info.title}",
+            title=f"{'🎶 ' if not q.is_paused else ''}__**`#{q.pos + 1}`**__  {t_info.title}",
             description="%s\n\n%s" % desc,
             url=t_info.uri,
             color=color,
@@ -100,7 +100,7 @@ async def nowplaying_(
         )
         .set_author(name="Now playing")
         .set_footer(
-            f"Requested by: {req.display_name}",
+            f"📨 {req.display_name}",
             icon=req.display_avatar_url,
         )
         .set_thumbnail(thumb)

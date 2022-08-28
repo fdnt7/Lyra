@@ -134,9 +134,9 @@ def wr(
     replace_with: str = '…',
     /,
     *,
-    block_friendly: bool = True,
+    escape_markdown: bool = True,
 ) -> str:
-    str_ = str_.replace("'", '′').replace('"', '″') if block_friendly else str_
+    str_ = str_.replace('\'', '′').replace('"', '″') if escape_markdown else str_
     return (
         str_ if len(str_) <= limit else str_[: limit - len(replace_with)] + replace_with
     )

@@ -424,15 +424,15 @@ async def generate_nowplaying_embed(
         thumb = limit_img_size_by_guild(thumb, guild_id, cache)
     embed = (
         hk.Embed(
-            title=f"🎧 {t_info.title}",
-            description=f'📀 **{t_info.author}** ({song_len})',
+            title=f"🎧 __**`#{q.pos + 1}`**__  {t_info.title}",
+            description=f'👤 **{t_info.author}** ({song_len})',
             url=t_info.uri,
             color=q.curr_t_palette[0],
             timestamp=dt.datetime.now().astimezone(),
         )
         .set_author(name="Currently playing")
         .set_footer(
-            f"Requested by: {req.display_name}",
+            f"📨 {req.display_name}",
             icon=req.display_avatar_url,
         )
         .set_thumbnail(thumb)

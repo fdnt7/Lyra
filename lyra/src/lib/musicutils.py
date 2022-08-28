@@ -170,7 +170,7 @@ async def generate_queue_embeds(
         np_info = np.track.info
         req = ctx.cache.get_member(ctx.guild_id, np.requester)
         assert req is not None
-        np_text = f"```arm\n{q.pos+1: >2}. {to_stamp(np_info.length):>6} | {wr(np_info.title, 50)} |\n````Requested by:` {req.mention}"
+        np_text = f"```arm\n{q.pos+1: >2}. {to_stamp(np_info.length):>6} | {wr(np_info.title, 50)} |\n```📨 {req.mention}"
     else:
         np_text = f"```yaml\n{'---':^63}\n```"
 
@@ -194,8 +194,8 @@ async def generate_queue_embeds(
 
     color = None if q.is_paused or not q.current else q.curr_t_palette[2]
 
-    _base_embed = hk.Embed(title="💿 Queue", description=desc, color=color,).set_footer(
-        f"Queue Duration: {to_stamp(queue_elapsed)} / {to_stamp(queue_durr)} ({to_stamp(queue_eta)} Left)"
+    _base_embed = hk.Embed(title="≡♪ Queue", description=desc, color=color,).set_footer(
+        f"⌛ {to_stamp(queue_elapsed)} (-{to_stamp(queue_eta)}) / {to_stamp(queue_durr)}ㅤ•ㅤ{q.pos+1} (-{len(q)-q.pos-1}) / {len(q)}"
     )
 
     _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
