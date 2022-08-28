@@ -18,6 +18,7 @@ from ._extras_types import (
     NULL,
     RGBTriplet,
     MaybeIterable,
+    AsyncVoidFunction,
     URLstr,
 )
 from ._extras_vars import time_regex, time_regex_2, url_regex, loop
