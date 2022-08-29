@@ -349,13 +349,13 @@ async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /shuffle
 
 
-with_common_cmd_check_with_vote = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)
+with_common_cmd_check_and_voting = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)
 
 
-@with_common_cmd_check_with_vote
+@with_common_cmd_check_and_voting
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
 #
-@with_common_cmd_check_with_vote
+@with_common_cmd_check_and_voting
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
 async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await shuffle_abs(ctx, lvc)
@@ -557,7 +557,7 @@ async def move_insert_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_common_cmd_check_with_vote
+@with_common_cmd_check_and_voting
 @tj.with_str_slash_option(
     'mode',
     "Which mode? (If not given, will cycle between: All > One > Off)",
@@ -567,7 +567,7 @@ async def move_insert_(
 )
 @tj.as_slash_command('repeat', "Select a repeat mode for the queue")
 #
-@with_common_cmd_check_with_vote
+@with_common_cmd_check_and_voting
 @tj.with_argument('mode', to_repeat_mode, default=None)
 @tj.as_message_command('repeat', 'r', 'rep', 'lp', 'rp', 'loop')
 async def repeat_(
