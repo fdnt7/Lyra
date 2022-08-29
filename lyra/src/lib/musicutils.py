@@ -72,7 +72,7 @@ async def start_listeners_voting(
 ) -> Result[None]:
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
-    cmd_n = ''.join((get_pref(ctx), '~ ', get_cmd_repr(ctx)))
+    cmd_n = ''.join((get_pref(ctx), get_cmd_repr(ctx)))
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
