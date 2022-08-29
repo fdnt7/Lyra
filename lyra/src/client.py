@@ -54,6 +54,7 @@ _client = globs.__init_client__(
     .load_modules(
         *('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py'))
     )
+    .set_dms_enabled_for_app_cmds(False)
 )
 
 activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)

@@ -506,7 +506,8 @@ def with_message_command_group_template(func: t.Callable[_P_mgT, t.Awaitable[Non
 async def restricts_c(
     ctx: tj.abc.Context, /, *, cfg: al.Injected[LyraDBCollectionType]
 ) -> bool:
-    assert ctx.guild_id and ctx.member
+    if not (ctx.guild_id and ctx.member):
+        return True
 
     g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
     assert g_cfg

@@ -19,7 +19,7 @@ from ..lib.utils import (
 from ..lib.extras import groupby
 
 
-misc = __init_component__(__name__)
+misc = __init_component__(__name__, guild_check=False)
 
 
 # ~
@@ -78,7 +78,7 @@ async def on_started(_: hk.StartedEvent, client: al.Injected[tj.Client]):
 # /ping
 
 
-@tj.as_slash_command('ping', "Shows the bot's latency")
+@tj.as_slash_command('ping', "Shows the bot's latency", dm_enabled=True)
 #
 @tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
 async def ping_(ctx: tj.abc.Context):
