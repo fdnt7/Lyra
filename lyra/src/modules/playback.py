@@ -71,11 +71,10 @@ with_activity_cmd_check = with_cmd_checks(COMMON_CHECKS | Checks.PAUSE)
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command(
     'play-pause', "Toggles the playback of the current song between play and pause"
 )
-#
-@with_common_cmd_check
 @tj.as_message_command('play-pause', 'playpause', 'pp', '>||')
 async def play_pause_(
     ctx: tj.abc.MessageContext,
@@ -189,9 +188,8 @@ async def on_voice_state_update(
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command('pause', "Pauses the current song")
-#
-@with_common_cmd_check
 @tj.as_message_command('pause', '>', 'ps')
 async def pause_(
     ctx: tj.abc.Context,
@@ -207,9 +205,8 @@ async def pause_(
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command("resume", "Resumes the current track")
-#
-@with_common_cmd_check
 @tj.as_message_command('resume', 'res', 'rs', '||')
 async def resume_(
     ctx: tj.abc.Context,
@@ -225,9 +222,8 @@ async def resume_(
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command('stop', "Stops the current track; skip to play again")
-#
-@with_common_cmd_check
 @tj.as_message_command('stop', 'st', '[]')
 async def stop_(
     ctx: tj.abc.MessageContext,
@@ -243,12 +239,11 @@ async def stop_(
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_activity_cmd_check
+# -
 @tj.with_float_slash_option(
     'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
 )
 @tj.as_slash_command('fast-forward', "Fast-forwards the current track")
-#
-@with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.0)
 @tj.as_message_command(
     'fast-forward', 'fastforward', 'forward', 'fw', 'fwd', 'ff', '>>'
@@ -284,12 +279,11 @@ async def fastforward_(
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_activity_cmd_check
+# -
 @tj.with_float_slash_option(
     'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
 )
 @tj.as_slash_command('rewind', "Rewinds the current track")
-#
-@with_activity_cmd_check
 @tj.with_argument('seconds', converters=float, default=10.00)
 @tj.as_message_command('rewind', 'rw', 'rew', '<<')
 async def rewind_(
@@ -326,9 +320,8 @@ with_skip_cmd_check_and_voting = with_cmd_composer(
 
 
 @with_skip_cmd_check_and_voting
+# -
 @tj.as_slash_command('skip', "Skips the current track")
-#
-@with_skip_cmd_check_and_voting
 @tj.as_message_command('skip', 's', '>>|')
 async def skip_(
     ctx: tj.abc.Context,
@@ -348,9 +341,8 @@ with_playat_cmd_check_and_voting = with_cmd_composer(
 
 @with_annotated_args
 @with_playat_cmd_check_and_voting
+# -
 @tj.as_slash_command("play-at", "Plays the track at the specified position")
-#
-@with_playat_cmd_check_and_voting
 @tj.as_message_command('play-at', 'playat', 'pa', 'i', 'pos', 'skipto', '->', '^')
 async def play_at_(
     ctx: tj.abc.Context,
@@ -391,9 +383,8 @@ with_next_cmd_check = with_cmd_checks(
 
 
 @with_next_cmd_check
+# -
 @tj.as_slash_command('next', "Plays the next track in the queue")
-#
-@with_next_cmd_check
 @tj.as_message_command('next', 'n')
 async def next_(
     ctx: tj.abc.Context,
@@ -415,9 +406,8 @@ with_prev_cmd_check_and_voting = with_cmd_composer(
 
 
 @with_prev_cmd_check_and_voting
+# -
 @tj.as_slash_command('previous', "Plays the previous track in the queue")
-#
-@with_prev_cmd_check_and_voting
 @tj.as_message_command('previous', 'prev', 'pr', 'prv', 'pre', 'b', 'back', '|<<')
 async def previous_(
     ctx: tj.abc.Context,
@@ -456,9 +446,8 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 
 @with_annotated_args
 @with_activity_cmd_check
+# -
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")
-#
-@with_activity_cmd_check
 @tj.as_message_command('seek', 'sk', '-v', '-^')
 async def seek_(
     ctx: tj.abc.Context,

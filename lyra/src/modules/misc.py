@@ -79,7 +79,6 @@ async def on_started(_: hk.StartedEvent, client: al.Injected[tj.Client]):
 
 
 @tj.as_slash_command('ping', "Shows the bot's latency", dm_enabled=True)
-#
 @tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
 async def ping_(ctx: tj.abc.Context):
     """

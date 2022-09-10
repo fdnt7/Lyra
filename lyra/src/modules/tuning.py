@@ -110,12 +110,11 @@ async def volume_g_m(_: tj.abc.MessageContext):
 
 
 @with_annotated_args
+@with_stage_cmd_check
+# -
 @volume_g_s.with_command
-@with_stage_cmd_check
 @tj.as_slash_command('set', "Set the volume of the bot from 0-10")
-#
 @volume_g_m.with_command
-@with_stage_cmd_check
 @tj.as_message_command('set', '=', '.')
 async def volume_set_(
     ctx: tj.abc.Context,
@@ -140,15 +139,15 @@ async def volume_set_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@volume_g_s.with_command
 @with_stage_cmd_check
+# -
+@volume_g_s.with_command
 @tj.with_int_slash_option(
     'amount', "Increase by how much (If not given, by 1)", default=1
 )
 @tj.as_slash_command('up', "Increase the bot's volume")
 #
 @volume_g_m.with_command
-@with_stage_cmd_check
 @tj.with_argument('amount', converters=int, default=1)
 @tj.as_message_command('up', 'u', '+', '^')
 async def volume_up_(
@@ -183,15 +182,15 @@ async def volume_up_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@volume_g_s.with_command
 @with_stage_cmd_check
+# -
+@volume_g_s.with_command
 @tj.with_int_slash_option(
     'amount', "Decrease by how much? (If not given, by 1)", default=1
 )
 @tj.as_slash_command('down', "Decrease the bot's volume")
 #
 @volume_g_m.with_command
-@with_stage_cmd_check
 @tj.with_argument('amount', converters=int, default=1)
 @tj.as_message_command('down', 'd', '-', 'v')
 async def volume_down_(
@@ -226,9 +225,8 @@ async def volume_down_(
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command('mute', 'Server mutes the bot')
-#
-@with_common_cmd_check
 @tj.as_message_command('mute', 'm')
 async def mute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     """
@@ -241,9 +239,8 @@ async def mute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command('unmute', 'Server unmutes the bot')
-#
-@with_common_cmd_check
 @tj.as_message_command('unmute', 'u', 'um')
 async def unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     """
@@ -256,9 +253,8 @@ async def unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 
 
 @with_common_cmd_check
+# -
 @tj.as_slash_command('mute-unmute', 'Toggles between server mute and unmuting the bot')
-#
-@with_common_cmd_check
 @tj.as_message_command('mute-unmute', 'muteunmute', 'mm', 'mu', 'tm', 'togglemute')
 async def mute_unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     """
@@ -290,12 +286,11 @@ valid_presets: t.Final[dict[str, str]] = {
 
 
 @with_annotated_args
+@with_stage_cmd_check
+# -
 @equalizer_g_s.with_command
-@with_stage_cmd_check
 @tj.as_slash_command('preset', "Sets the bot's equalizer to a preset")
-#
 @equalizer_g_m.with_command
-@with_stage_cmd_check
 @tj.as_message_command('preset', 'pre', '=')
 async def equalizer_preset_(
     ctx: tj.abc.Context,

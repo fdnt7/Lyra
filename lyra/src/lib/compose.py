@@ -259,7 +259,7 @@ def with_cmd_composer(
         cmd.metadata['checks'] = checks
         cmd.metadata['binds'] = binds
         cmd.metadata['perms'] = perms
-        return tj.with_all_checks(*_binds, *_checks)(cmd)
+        return tj.with_all_checks(*_binds, *_checks, follow_wrapped=True)(cmd)
 
     return _with_checks_and_binds
 
@@ -282,7 +282,7 @@ def with_cmd_checks(checks: Checks, /) -> Decorator[_CMD]:
 
     def _with_checks(cmd: _CMD, /) -> _CMD:
         cmd.metadata['checks'] = checks
-        return tj.with_all_checks(*_checks)(cmd)
+        return tj.with_all_checks(*_checks, follow_wrapped=True)(cmd)
 
     return _with_checks
 
@@ -290,7 +290,10 @@ def with_cmd_checks(checks: Checks, /) -> Decorator[_CMD]:
 def with_author_permission_check(permissions: hkperms | int, /) -> Decorator[_CMD]:
     def _with_author_permission_check(cmd: _CMD, /) -> _CMD:
         cmd.metadata['perms'] = permissions
-        return cmd.add_check(ft.partial(_as_author_permission_check, perms=permissions))
+        return tj.with_check(
+            ft.partial(_as_author_permission_check, perms=permissions),
+            follow_wrapped=True,
+        )(cmd)
 
     return _with_author_permission_check
 
