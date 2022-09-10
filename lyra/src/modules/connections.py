@@ -1,3 +1,4 @@
+import typing as t
 import asyncio
 
 import hikari as hk
@@ -56,18 +57,18 @@ async def on_voice_state_update(
     bot_u = bot.get_me()
     assert bot_u
 
-    def users_in_vc() -> frozenset[hk.VoiceState]:
+    async def users_in_vc() -> t.Collection[hk.VoiceState]:
         _conn = conn()
         cache = client.cache
         if not _conn:
             return frozenset()
         assert isinstance(_conn, dict) and cache
         ch_id: int = _conn['channel_id']
-        return frozenset(
-            filter(
-                lambda v: not v.member.is_bot,
-                cache.get_voice_states_view_for_channel(event.guild_id, ch_id).values(),
-            )
+        return (
+            await cache.get_voice_states_view_for_channel(event.guild_id, ch_id)
+            .iterator()
+            .filter(lambda v: not v.member.is_bot)
+            .collect(frozenset)
         )
 
     new_vc_id = new.channel_id
@@ -111,7 +112,7 @@ async def on_voice_state_update(
             f"In guild {event.guild_id} started channel {_conn['channel_id']} inactivity timeout"
         )
         for _ in range(10):
-            if len(users_in_vc()) >= 1 or not conn():
+            if len(await users_in_vc()) >= 1 or not conn():
                 logger.debug(
                     f"In guild {event.guild_id} stopped channel {_conn['channel_id']} inactivity timeout"
                 )
@@ -134,7 +135,7 @@ async def on_voice_state_update(
 
         return True
 
-    in_voice = users_in_vc()
+    in_voice = await users_in_vc()
     node_vc_id: int = _conn['channel_id']
 
     if (

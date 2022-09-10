@@ -15,6 +15,7 @@ from .consts import STOP_REFRESH
 from .utils import GuildOrInferable, infer_guild, limit_img_size_by_guild
 from .errors import NotConnected, QueueEmpty
 from .extras import (
+    List,
     Option,
     Result,
     Panic,
@@ -68,7 +69,7 @@ class RepeatMode(e.Enum):
 
 
 @a.s(auto_attribs=False, auto_detect=True)
-class QueueList(list[lv.TrackQueue]):
+class QueueList(List[lv.TrackQueue]):
     pos: int = 0
     repeat_mode: RepeatMode = RepeatMode.NONE
     is_paused: bool = a.field(factory=bool, kw_only=True)
@@ -81,12 +82,6 @@ class QueueList(list[lv.TrackQueue]):
             f'{i} {t.track.info.title}{" <<" if i == self.pos else ""}'
             for i, t in enumerate(self)
         )
-
-    @classmethod
-    def from_seq(cls, l: t.Sequence[lv.TrackQueue]):
-        obj = cls()
-        obj.extend(l)
-        return obj
 
     @property
     def np_position(self) -> Option[int]:
@@ -124,20 +119,6 @@ class QueueList(list[lv.TrackQueue]):
             raise QueueEmpty
 
         return self[: self.pos]
-
-    @property
-    def length(self) -> int:
-        return len(self)
-
-    def ext(self, *tracks: lv.TrackQueue) -> None:
-        self.extend(tracks)
-
-    def sub(self, *tracks: lv.TrackQueue) -> None:
-        for t in tracks:
-            self.remove(t)
-
-    def filter_rm(self, predicate: t.Callable[[lv.TrackQueue], bool]):
-        *(self.remove(t) for t in self if predicate(t)),
 
     def adv(self) -> None:
         self.pos += 1

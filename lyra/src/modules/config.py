@@ -10,7 +10,15 @@ from hikari.permissions import Permissions as hkperms
 from ..lib.musicutils import __init_component__
 from ..lib.dataimpl import LyraDBCollectionType
 from ..lib.compose import Binds, with_author_permission_check, with_cmd_composer
-from ..lib.extras import Panic, flatten, fmt_str, join_and, uniquify, split_preset
+from ..lib.extras import (
+    Panic,
+    flatten,
+    fmt_str,
+    join_and,
+    map_in_place,
+    uniquify,
+    split_preset,
+)
 from ..lib.utils import (
     RESTRICTOR,
     MentionableType,
@@ -189,9 +197,9 @@ async def restrict_list_edit(
         res_r_all.extend(new_r)
         res_u_all.extend(new_u)
     else:
-        *(res_ch_all.remove(ch) for ch in new_ch),
-        *(res_r_all.remove(r) for r in new_r),
-        *(res_u_all.remove(u) for u in new_u),
+        map_in_place(lambda ch: res_ch_all.remove(ch), new_ch)
+        map_in_place(lambda r: res_r_all.remove(r), new_r)
+        map_in_place(lambda u: res_u_all.remove(u), new_u)
 
     msg = f"🔐 {delta_act} {deltas_msg}" if deltas_msg else delta_txt_skipped
 

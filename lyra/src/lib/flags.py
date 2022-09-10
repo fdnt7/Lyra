@@ -151,6 +151,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     ) -> Panic[bool]:
         if not (await get_queue(ctx, lvc)).current:
             await CheckErrorExpects(ctx).expect_not_playing()
+            raise tj.HaltExecution
         return True
 
     async def __check_in_vc(
@@ -160,19 +161,19 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         assert ctx.guild_id
 
         client = get_client(ctx)
-        assert client.cache
+        assert client.cache and member
         auth_perms = await fetch_permissions(ctx)
 
         channel: int = conn['channel_id']
         voice_states = client.cache.get_voice_states_view_for_channel(
             ctx.guild_id, channel
         )
-        author_in_voice = {
-            *filter(
-                lambda v: member and v.member.id == member.id,
-                voice_states.values(),
-            )
-        }
+
+        author_in_voice = (
+            await voice_states.iterator()
+            .filter(lambda v: v.member.id == member.id)
+            .collect(frozenset)
+        )
 
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
             raise AlreadyConnected(channel)

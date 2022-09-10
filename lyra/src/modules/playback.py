@@ -104,18 +104,18 @@ async def on_voice_state_update(
     bot_u = bot.get_me()
     assert bot_u
 
-    def users_in_vc() -> frozenset[hk.VoiceState]:
+    async def users_in_vc() -> t.Collection[hk.VoiceState]:
         _conn = conn()
-        cache = bot.cache
+        cache = client.cache
         if not _conn:
             return frozenset()
         assert isinstance(_conn, dict) and cache
         ch_id: int = _conn['channel_id']
-        return frozenset(
-            filter(
-                lambda v: not v.member.is_bot,
-                cache.get_voice_states_view_for_channel(event.guild_id, ch_id).values(),
-            )
+        return (
+            await cache.get_voice_states_view_for_channel(event.guild_id, ch_id)
+            .iterator()
+            .filter(lambda v: not v.member.is_bot)
+            .collect(frozenset)
         )
 
     new_vc_id = new.channel_id
@@ -164,7 +164,7 @@ async def on_voice_state_update(
                 out_ch, f"❕🎭 Bot's request to speak was dismissed"
             )
 
-    in_voice = users_in_vc()
+    in_voice = await users_in_vc()
     node_vc_id: int = _conn['channel_id']
     # if new.channel_id == vc and len(in_voice) == 1 and new.user_id != bot_u.id:
     #     # Someone rejoined

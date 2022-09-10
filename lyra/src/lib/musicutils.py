@@ -15,7 +15,7 @@ from .utils import (
     get_pref,
     say,
 )
-from .extras import Result, chunk, chunk_b, to_stamp, wr
+from .extras import Result, chunk, chunk_b, map_in_place, to_stamp, wr
 from .expects import CheckErrorExpects
 from .errors import (
     NotConnected,
@@ -47,8 +47,8 @@ def __init_component__(
         comp.add_check(guild_c)
     if music_hook:
         comp.set_hooks(music_h)
-    *(comp.add_check(c) for c in other_checks),
-    *(comp.set_hooks(h) for h in other_hooks),
+    map_in_place(lambda c: comp.add_check(c), other_checks)
+    map_in_place(lambda h: comp.set_hooks(h), other_hooks)
 
     return comp
 
@@ -90,11 +90,8 @@ async def start_listeners_voting(
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
         ctx.guild_id, channel
     )
-    listeners = (
-        *filter(
-            lambda v: not v.member.is_bot,
-            voice_states.values(),
-        ),
+    listeners = await (
+        voice_states.iterator().filter(lambda v: not v.member.is_bot).collect(frozenset)
     )
 
     voted = {ctx.author.id}

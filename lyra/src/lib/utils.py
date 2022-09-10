@@ -325,7 +325,7 @@ def disable_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    predicates: t.Callable[[_C_d], bool] = lambda _: True,
+    predicates: Option[t.Callable[[_C_d], bool]] = None,
 ) -> tuple[hk.api.ActionRowBuilder, ...]:
     edits: t.Callable[[_C_d], _C_d] = lambda x: x.set_is_disabled(True)
     reverts: t.Callable[[_C_d], _C_d] = lambda x: x.set_is_disabled(False)
@@ -351,9 +351,12 @@ def edit_components(
     /,
     *action_rows: hk.api.ActionRowBuilder,
     edits: t.Callable[[_C_contra], _C_contra],
-    reverts: t.Callable[[_C_contra], _C_contra] = lambda _: _,
-    predicates: t.Callable[[_C_contra], bool] = lambda _: True,
+    reverts: Option[t.Callable[[_C_contra], _C_contra]] = None,
+    predicates: Option[t.Callable[[_C_contra], bool]] = None,
 ) -> tuple[hk.api.ActionRowBuilder]:
+    reverts = reverts or (lambda _: _)
+    predicates = predicates or (lambda _: True)
+
     action_rows_ = [*action_rows]
     for ar in action_rows_:
         components = ar.components

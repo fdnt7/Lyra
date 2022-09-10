@@ -111,6 +111,8 @@ def get_url_audio_album_art(url: URLstr, /) -> Option[bytes]:
             if not file.pictures:
                 return None
             return file.pictures[0].data
+        if not file:
+            return None
         tags = file.tags
         if not tags:
             return None
@@ -169,9 +171,9 @@ def get_img_pallete(
     codes = kmeans.cluster_centers_
 
     ## assign codes
-    vecs, _dist = sp_cls.vq.vq(ar, codes)
+    vecs, _ = sp_cls.vq.vq(ar, codes)
     ## count occurrences
-    counts, _bins = np.histogram(vecs, len(codes))
+    counts, _ = np.histogram(vecs, len(codes))
 
     return (
         *((*(int(code) for code in codes[i]),) for i in np.argsort(counts)[::-1]),
