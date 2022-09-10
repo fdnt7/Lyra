@@ -89,6 +89,40 @@ class AutoDocsEnum(e.Enum):
         self.__doc__ = doc
 
 
+_E = t.TypeVar('_E')
+
+
+class List(list[_E]):
+    @classmethod
+    def from_seq(cls, seq: t.Sequence[_E]):
+        obj = cls()
+        obj.extend(seq)
+        return obj
+
+    def map_in_place(
+        self,
+        func: t.Callable[[_E], t.Any],
+        /,
+        *,
+        predicate: Option[t.Callable[[_E], bool]] = None,
+    ):
+        map_in_place(func, self, predicate=predicate)
+
+    def filter_sub(self, predicate: Option[t.Callable[[_E], bool]] = None):
+        self.map_in_place(lambda e: self.remove(e), predicate=predicate)
+
+    @property
+    def length(self) -> int:
+        return len(self)
+
+    def ext(self, *elements: _E) -> None:
+        self.extend(elements)
+
+    def sub(self, *elements: _E) -> None:
+        for e in elements:
+            self.remove(e)
+
+
 def curr_time_ms() -> int:
     return time.time_ns() // 1_000_000
 
@@ -216,10 +250,14 @@ _KE = t.TypeVar('_KE')
 
 
 def groupby(
-    seq: t.Iterable[__E], /, *, key: t.Callable[[__E], _KE] = lambda e: e
+    seq: t.Iterable[__E], /, *, key: Option[t.Callable[[__E], _KE]] = None
 ) -> dict[_KE, list[__E]]:
-    d: dict[_KE, list[__E]] = cl.defaultdict(list)
-    return ft.reduce(lambda grp, val: grp[key(val)].append(val) or grp, seq, d)
+    key = key or (lambda _: t.cast(_KE, _))
+    return ft.reduce(
+        lambda grp, val: grp[key(val)].append(val) or grp,
+        seq,
+        t.cast(dict[_KE, list[__E]], cl.defaultdict(list)),
+    )
 
 
 def lgfmt(dunder_name: str, /) -> str:
@@ -249,3 +287,16 @@ def void(f: t.Callable[_P, t.Any]) -> t.Callable[_P, None | t.Awaitable[None]]:
     if inspect.iscoroutinefunction(f):
         return coro_inner
     return inner
+
+
+def map_in_place(
+    func: t.Callable[[_E], t.Any],
+    iter_: t.Iterable[_E],
+    /,
+    *,
+    predicate: Option[t.Callable[[_E], bool]] = None,
+):
+    predicate = predicate or (lambda _: True)
+    for e in iter_:
+        if predicate(e):
+            func(e)

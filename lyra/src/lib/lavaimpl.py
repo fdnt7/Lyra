@@ -195,7 +195,7 @@ class EventHandler(BaseEventHandler):
                 f = asyncio.Task(wait_until_current_track_valid(event.guild_id, lvc))
                 await asyncio.wait_for(f, None)
 
-            d.queue.filter_rm(lambda t: t.track.info.identifier == t_info.identifier)
+            d.queue.filter_sub(lambda t: t.track.info.identifier == t_info.identifier)
             if not upt.find_one(flt):
                 upt.insert_one(flt)  # pyright: ignore [reportUnknownMemberType]
 

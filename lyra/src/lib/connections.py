@@ -244,17 +244,16 @@ async def others_not_in_vc_check_impl(
     auth_perms = await fetch_permissions(ctx_)
     member = ctx_.member
     client = get_client(ctx_)
-    assert client.cache and ctx_.guild_id
+    assert client.cache and ctx_.guild_id and member
     channel = conn['channel_id']
 
     voice_states = client.cache.get_voice_states_view_for_channel(
         ctx_.guild_id, channel
     )
-    others_in_voice = frozenset(
-        filter(
-            lambda v: member and not v.member.is_bot and v.member.id != member.id,
-            voice_states.values(),
-        )
+    others_in_voice = (
+        await voice_states.iterator()
+        .filter(lambda v: not v.member.is_bot and v.member.id != member.id)
+        .collect(frozenset)
     )
 
     if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and others_in_voice:
