@@ -15,4 +15,4 @@ RUN apt update -y && apt upgrade -y
 RUN apt install git curl -y
 RUN curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN pip3 install -Ur requirements.txt
-CMD ["python3", "main.py", "-OO"]
+CMD ["python3", "__main__.py", "-OO"]
