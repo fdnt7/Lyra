@@ -233,8 +233,9 @@ async def remove_g_m(_: tj.abc.MessageContext):
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@remove_g_s.with_command
 @with_stage_cmd_check
+# -
+@remove_g_s.with_command
 @tj.with_str_slash_option(
     'track',
     "The track by the name/position what? (If not given, the current track)",
@@ -243,7 +244,7 @@ async def remove_g_m(_: tj.abc.MessageContext):
 @tj.as_slash_command(
     'one', "Removes a track from the queue by queue position or track name"
 )
-# -
+#
 @remove_g_m.with_command
 @with_stage_cmd_check
 @tj.with_greedy_argument('track', default=None)
@@ -278,8 +279,9 @@ async def remove_one_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@remove_g_s.with_command
 @with_strict_stage_cmd_check
+# -
+@remove_g_s.with_command
 @tj.with_int_slash_option(
     'end',
     "To what position? (If not given, the end of the queue)",
@@ -291,7 +293,6 @@ async def remove_one_(
 )
 #
 @remove_g_m.with_command
-@with_strict_stage_cmd_check
 @tj.with_argument('end', converters=int, default=None)
 @tj.with_argument('start', converters=int)
 @tj.as_message_command('bulk', 'b', 'm', 'r', '<>')
@@ -353,9 +354,8 @@ with_common_cmd_check_and_voting = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)
 
 
 @with_common_cmd_check_and_voting
+# -
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
-#
-@with_common_cmd_check_and_voting
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
 async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     await shuffle_abs(ctx, lvc)
@@ -378,8 +378,9 @@ async def move_g_m(_: tj.abc.MessageContext):
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@move_g_s.with_command
 @with_stage_cmd_check
+# -
+@move_g_s.with_command
 @tj.with_int_slash_option(
     'track',
     "Position of the track? (If not given, the current position)",
@@ -388,7 +389,6 @@ async def move_g_m(_: tj.abc.MessageContext):
 @tj.as_slash_command('last', "Moves the selected track to the end of the queue")
 #
 @move_g_m.with_command
-@with_stage_cmd_check
 @tj.with_argument('track', converters=int, default=None)
 @tj.as_message_command('last', 'l', '>>')
 async def move_last_(
@@ -429,8 +429,9 @@ async def move_last_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@move_g_s.with_command
 @with_strict_stage_cmd_check
+# -
+@move_g_s.with_command
 @tj.with_int_slash_option(
     'second',
     "Position of the second track? (If not given, the current track)",
@@ -440,7 +441,6 @@ async def move_last_(
 @tj.as_slash_command('swap', "Swaps positions of two tracks in a queue")
 #
 @move_g_m.with_command
-@with_strict_stage_cmd_check
 @tj.with_argument('first', converters=int)
 @tj.with_argument('second', converters=int, default=None)
 @tj.as_message_command('swap', 'sw', '<>', '<->', '<=>')
@@ -502,8 +502,9 @@ async def move_swap_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@move_g_s.with_command
 @with_strict_stage_cmd_check
+# -
+@move_g_s.with_command
 @tj.with_int_slash_option(
     'track', "Position of the track? (If not given, the current position)", default=None
 )
@@ -511,10 +512,8 @@ async def move_swap_(
 @tj.as_slash_command('insert', "Inserts a track in the queue after a new position")
 #
 @move_g_m.with_command
-@with_strict_stage_cmd_check
 @tj.with_argument('track', converters=int, default=None)
 @tj.with_argument('position', converters=int)
-@tj.with_parser
 @tj.as_message_command('insert', 'ins', 'i', 'v', '^')
 async def move_insert_(
     ctx: tj.abc.Context,
@@ -558,6 +557,7 @@ async def move_insert_(
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
 @with_common_cmd_check_and_voting
+# -
 @tj.with_str_slash_option(
     'mode',
     "Which mode? (If not given, will cycle between: All > One > Off)",
@@ -567,7 +567,6 @@ async def move_insert_(
 )
 @tj.as_slash_command('repeat', "Select a repeat mode for the queue")
 #
-@with_common_cmd_check_and_voting
 @tj.with_argument('mode', to_repeat_mode, default=None)
 @tj.as_message_command('repeat', 'r', 'rep', 'lp', 'rp', 'loop')
 async def repeat_(

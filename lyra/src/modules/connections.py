@@ -190,7 +190,6 @@ async def join_(
 
 
 @tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")
-#
 @tj.as_message_command(
     'leave', 'l', 'lv', 'dc', 'disconnect', 'discon', 'eddisntheregoaway'
 )

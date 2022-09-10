@@ -42,9 +42,8 @@ with_np_cmd_check = with_cmd_checks(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
 
 
 @with_np_cmd_check
+# -
 @tj.as_slash_command('now-playing', "Displays info of the current track")
-#
-@with_np_cmd_check
 @tj.as_message_command(
     'now-playing', 'nowplaying', 'np', 'now', 'curr', 'current', 'crr'
 )
@@ -119,9 +118,8 @@ with_se_cmd_check_and_connect_vc = with_cmd_composer(
 
 @with_annotated_args
 @with_se_cmd_check_and_connect_vc
+# -
 @tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
-#
-@with_se_cmd_check_and_connect_vc
 @tj.as_slash_command(
     'search',
     "Searches for tracks on youtube from your query and lets you hear a part of it",
@@ -348,9 +346,8 @@ with_q_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN)
 
 
 @with_q_cmd_check
+# -
 @tj.as_slash_command('queue', "Lists out the entire queue")
-#
-@with_q_cmd_check
 @tj.as_message_command('queue', 'q', 'all')
 async def queue_(
     ctx: tj.abc.Context,
@@ -467,8 +464,8 @@ async def queue_(
 
 
 @with_annotated_args
+# -
 @tj.as_slash_command('lyrics', 'Attempts to find the lyrics of the current song')
-#
 @tj.as_message_command('lyrics', 'ly')
 async def lyrics_(
     ctx: EitherContext,

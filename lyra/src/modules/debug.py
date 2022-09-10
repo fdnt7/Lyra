@@ -86,9 +86,9 @@ async def module_sg_m(_: tj.abc.MessageContext):
 
 
 @with_annotated_args
+# -
 @module_sg_s.with_command
 @tj.as_slash_command('reload', "Reloads a module")
-#
 @module_sg_m.with_command
 @tj.as_message_command('reload', 'rl')
 async def reload_module(
@@ -110,9 +110,9 @@ async def reload_module(
 
 
 @with_annotated_args
+# -
 @module_sg_s.with_command
 @tj.as_slash_command('unload', "Unloads a module")
-#
 @module_sg_m.with_command
 @tj.as_message_command('unload', 'ul')
 async def unload_module(
@@ -135,9 +135,9 @@ async def unload_module(
 
 
 @with_annotated_args
+# -
 @module_sg_s.with_command
 @tj.as_slash_command('load', "Loads a module")
-#
 @module_sg_m.with_command
 @tj.as_message_command('load', 'lo')
 async def load_module(
@@ -183,7 +183,6 @@ async def command_sg_m(_: tj.abc.MessageContext):
 
 @command_sg_s.with_command
 @tj.as_slash_command('delete-all', "Deletes all application commands")
-#
 @command_sg_m.with_command
 @tj.as_message_command('delete-all', 'deleteall', 'delall', 'wipe', 'wp')
 async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.GatewayBot]):
