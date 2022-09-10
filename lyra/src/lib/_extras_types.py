@@ -20,6 +20,7 @@ URLstr = str
 _T = t.TypeVar('_T')
 _E = t.TypeVar('_E', bound=Exception)
 _T_co = t.TypeVar('_T_co', covariant=True)
+Coro = t.Coroutine[t.Any, t.Any, _T]
 Option = _T | None
 Result = t.Annotated[_T | t.NoReturn, ...]
 Panic = t.Annotated[_T | t.NoReturn, ...]

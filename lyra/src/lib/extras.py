@@ -13,6 +13,7 @@ from ._extras_types import (
     Option,
     Decorator,
     _DecoratedT,  # pyright: ignore [reportPrivateUsage]
+    Coro,
     Result,
     Panic,
     NULL,
