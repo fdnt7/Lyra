@@ -19,6 +19,7 @@ from .extras import (
     Option,
     Result,
     Panic,
+    Coro,
     URLstr,
     AsyncVoidFunction,
     format_flags,
@@ -28,8 +29,6 @@ from .extras import (
 )
 from .dataimpl import LyraDBCollectionType
 
-
-_T = t.TypeVar('_T')
 
 EitherContext = tj.abc.MessageContext | tj.abc.AppCommandContext
 Contextish = tj.abc.Context | hk.ComponentInteraction
@@ -73,7 +72,7 @@ BaseCommandType = tj.abc.ExecutableCommand[tj.abc.Context]
 ParentCommandType: tj.abc.SlashCommandGroup | tj.abc.MessageCommandGroup[
     AsyncVoidFunction
 ]
-BindSig = tj.abc.CheckSig
+BindSig = t.Callable[..., Coro[bool]] | t.Callable[..., bool]
 
 EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
 base_h = tj.AnyHooks()

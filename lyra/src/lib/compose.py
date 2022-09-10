@@ -243,23 +243,22 @@ def with_cmd_composer(
     perms: Option[hkperms] = None,
 ) -> Decorator[_CMD]:
 
-    _checks: list[tj.abc.CheckSig] = []
-    _binds: list[BindSig] = []
+    _checks_binds: list[tj.abc.CheckSig | BindSig] = []
 
     if binds:
-        _binds.extend(parse_binds(binds))
+        _checks_binds.extend(parse_binds(binds))
 
     if checks:
-        _checks.extend(parse_checks(checks))
+        _checks_binds.extend(parse_checks(checks))
 
     if perms:
-        _checks.insert(0, ft.partial(_as_author_permission_check, perms=perms))
+        _checks_binds.insert(0, ft.partial(_as_author_permission_check, perms=perms))
 
     def _with_checks_and_binds(cmd: _CMD, /) -> _CMD:
         cmd.metadata['checks'] = checks
         cmd.metadata['binds'] = binds
         cmd.metadata['perms'] = perms
-        return tj.with_all_checks(*_binds, *_checks, follow_wrapped=True)(cmd)
+        return tj.with_all_checks(*_checks_binds, follow_wrapped=True)(cmd)
 
     return _with_checks_and_binds
 
