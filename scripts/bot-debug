@@ -1,4 +1,4 @@
 #!/bin/sh
 # For starting the bot (Linux)
 
-(python3 lyra/tggldev.py -d t && cd lyra && python3 -O main.py)
+(python3 lyra/tggldev.py -d t && cd lyra && python3 -O __main__.py)
