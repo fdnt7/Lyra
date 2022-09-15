@@ -5,23 +5,25 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
+from .extras.types import MaybeIterable
+
 from .utils import (
     Q_CHUNK,
     TIMEOUT,
+    ConnectionInfo,
     guild_c,
+    get_full_cmd_repr,
     disable_components,
     err_say,
-    get_cmd_repr,
-    get_pref,
     say,
 )
-from .extras import Result, chunk, chunk_b, map_in_place, to_stamp, wr
-from .expects import CheckErrorExpects
+from .extras import Result, Option, MapSig, chunk, chunk_b, map_in_place, to_stamp, wr
 from .errors import (
     NotConnected,
     VotingTimeout,
 )
-from .lavautils import RepeatMode, access_data, get_queue
+from .errors.expects import CheckErrorExpects
+from .lava.utils import RepeatMode, access_data, get_queue
 
 
 music_h = tj.AnyHooks()
@@ -39,14 +41,21 @@ def __init_component__(
     *,
     guild_check: bool = True,
     music_hook: bool = True,
-    other_checks: t.Iterable[tj.abc.CheckSig] = (),
-    other_hooks: t.Iterable[tj.abc.Hooks[tj.abc.Context]] = (),
+    other_checks: MaybeIterable[tj.abc.CheckSig] = (),
+    other_hooks: MaybeIterable[tj.abc.Hooks[tj.abc.Context]] = (),
 ):
     comp = tj.Component(name=dunder_name.split('.')[-1].capitalize(), strict=True)
     if guild_check:
         comp.add_check(guild_c)
     if music_hook:
         comp.set_hooks(music_h)
+
+    other_hooks = (
+        (other_hooks,) if isinstance(other_hooks, tj.abc.Hooks) else other_hooks
+    )
+    other_checks = (
+        other_checks if isinstance(other_checks, t.Iterable) else (other_checks,)
+    )
     map_in_place(lambda c: comp.add_check(c), other_checks)
     map_in_place(lambda h: comp.set_hooks(h), other_hooks)
 
@@ -72,7 +81,7 @@ async def start_listeners_voting(
 ) -> Result[None]:
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
-    cmd_n = ''.join((get_pref(ctx), get_cmd_repr(ctx)))
+    cmd_r = get_full_cmd_repr(ctx)
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
@@ -83,8 +92,10 @@ async def start_listeners_voting(
         .add_to_container()
     )
 
-    conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
-    assert isinstance(conn, dict)
+    conn = t.cast(
+        Option[ConnectionInfo], lvc.get_guild_gateway_connection_info(ctx.guild_id)
+    )
+    assert conn is not None
 
     channel: int = conn['channel_id']
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
@@ -97,7 +108,7 @@ async def start_listeners_voting(
     voted = {ctx.author.id}
     threshold = round((len(listeners) + 1) / 2)
 
-    pad_f: t.Callable[[int], int] = lambda x: int(38 * x / 31 + 861 / 31)
+    pad_f: MapSig[int] = lambda x: int(38 * x / 31 + 861 / 31)
 
     m = ctx.member
 
@@ -108,8 +119,8 @@ async def start_listeners_voting(
             '─', '▬', pad_n * vote_n // threshold
         )
         return hk.Embed(
-            title=f"🎫 Voting for command `{cmd_n}`",
-            description=f"{m.mention} wanted to use the command `{cmd_n}`\n\n`{vote_b}` **{vote_n}/{threshold}**{' 🎉' if vote_n==threshold else ''}",
+            title=f"🎫 Voting for command {cmd_r}",
+            description=f"{m.mention} wanted to use the command {cmd_r}\n\n`{vote_b}` **{vote_n}/{threshold}**{' 🎉' if vote_n==threshold else ''}",
             color=0xC2CED5,
         ).set_footer("Press the green button below to cast a vote!")
 
@@ -130,8 +141,7 @@ async def start_listeners_voting(
     ) as stream:
 
         async for event in stream:
-            inter = event.interaction
-            assert isinstance(inter, hk.ComponentInteraction)
+            inter = t.cast(hk.ComponentInteraction, event.interaction)
 
             key = inter.custom_id
             if key == 'vote':

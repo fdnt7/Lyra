@@ -1,4 +1,3 @@
-import typing as t
 import asyncio
 import contextlib as ctxlib
 
@@ -6,7 +5,7 @@ import tanjun as tj
 import lavasnek_rs as lv
 
 from .consts import STOP_REFRESH
-from .extras import Option, Result, Panic
+from .extras import Option, Result, Panic, MapSig, PredicateSig
 from .utils import (
     ButtonBuilderType,
     Contextish,
@@ -22,7 +21,7 @@ from .utils import (
     say,
 )
 from .errors import Argument, IllegalArgument, NotPlaying, QueueEmpty, TrackStopped
-from .lavautils import (
+from .lava.utils import (
     NodeData,
     RepeatMode,
     access_data,
@@ -142,10 +141,10 @@ async def set_pause(
             rest = get_rest(g_r_inf)
 
             assert d.nowplaying_components
-            edits: t.Callable[
-                [ButtonBuilderType], ButtonBuilderType
-            ] = lambda x: x.set_emoji(erf[f"{msg[:-1].casefold()}_b"])
-            predicates: t.Callable[[ButtonBuilderType], bool] = lambda x: x.emoji in {
+            edits: MapSig[ButtonBuilderType] = lambda x: x.set_emoji(
+                erf[f"{msg[:-1].casefold()}_b"]
+            )
+            predicates: PredicateSig[ButtonBuilderType] = lambda x: x.emoji in {
                 erf["pause_b"],
                 erf["resume_b"],
             }

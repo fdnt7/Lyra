@@ -5,11 +5,7 @@ import hikari as hk
 import alluka as al
 import lavasnek_rs as lv
 
-from .extras import Panic, lgfmt
-from .utils import EmojiRefs, get_client
-from .playback import while_stop
-from .errors import QueueEmpty
-from .lavautils import (
+from .utils import (
     BaseEventHandler,
     RepeatMode,
     access_data,
@@ -18,7 +14,11 @@ from .lavautils import (
     get_repeat_emoji,
     wait_until_current_track_valid,
 )
-from .dataimpl import LyraDBClientType, LyraDBCollectionType
+from ..utils import EmojiRefs, get_client
+from ..extras import Panic, lgfmt
+from ..errors import QueueEmpty
+from ..playback import while_stop
+from ..dataimpl import LyraDBClientType, LyraDBCollectionType
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -182,7 +182,7 @@ class EventHandler(BaseEventHandler):
         if not await lvc.get_guild_node(event.guild_id):
             return
         async with access_data(event.guild_id, lvc) as d:
-            from .playback import skip
+            from ..playback import skip
 
             async with while_stop(event.guild_id, lvc, d):
                 await skip(

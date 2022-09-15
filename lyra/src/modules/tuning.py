@@ -6,6 +6,13 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.compose import (
+    DJ_PERMS,
+    Checks,
+    with_cmd_composer,
+    with_identifier,
+)
 from ..lib.musicutils import __init_component__
 from ..lib.extras import Option, Panic
 from ..lib.utils import (
@@ -15,12 +22,7 @@ from ..lib.utils import (
     with_message_command_group_template,
 )
 from ..lib.errors import NotConnected
-from ..lib.compose import (
-    DJ_PERMS,
-    Checks,
-    with_cmd_composer,
-)
-from ..lib.lavautils import Bands, access_equalizer
+from ..lib.lava.utils import Bands, access_equalizer
 
 
 tuning = __init_component__(__name__)
@@ -94,11 +96,13 @@ async def on_voice_state_update(
 # /volume
 
 
-volume_g_s = tj.slash_command_group(
-    'volume', "Manages the volume of this guild's player"
+volume_g_s = with_identifier(C.VOLUME)(
+    tj.slash_command_group('volume', "Manages the volume of this guild's player")
 )
 
 
+@with_identifier(C.VOLUME)
+# -
 @tj.as_message_command_group('volume', 'v', 'vol', strict=True)
 @with_message_command_group_template
 async def volume_g_m(_: tj.abc.MessageContext):
@@ -110,7 +114,7 @@ async def volume_g_m(_: tj.abc.MessageContext):
 
 
 @with_annotated_args
-@with_stage_cmd_check
+@with_stage_cmd_check(C.VOLUME_SET)
 # -
 @volume_g_s.with_command
 @tj.as_slash_command('set', "Set the volume of the bot from 0-10")
@@ -139,7 +143,7 @@ async def volume_set_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_stage_cmd_check
+@with_stage_cmd_check(C.VOLUME_UP)
 # -
 @volume_g_s.with_command
 @tj.with_int_slash_option(
@@ -182,7 +186,7 @@ async def volume_up_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_stage_cmd_check
+@with_stage_cmd_check(C.VOLUME_DOWN)
 # -
 @volume_g_s.with_command
 @tj.with_int_slash_option(
@@ -224,7 +228,7 @@ async def volume_down_(
 # /mute
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.MUTE)
 # -
 @tj.as_slash_command('mute', 'Server mutes the bot')
 @tj.as_message_command('mute', 'm')
@@ -238,7 +242,7 @@ async def mute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /unmute
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.UNMUTE)
 # -
 @tj.as_slash_command('unmute', 'Server unmutes the bot')
 @tj.as_message_command('unmute', 'u', 'um')
@@ -252,7 +256,7 @@ async def unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /mute-unmute
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.MUTEUNMMUTE)
 # -
 @tj.as_slash_command('mute-unmute', 'Toggles between server mute and unmuting the bot')
 @tj.as_message_command('mute-unmute', 'muteunmute', 'mm', 'mu', 'tm', 'togglemute')
@@ -266,9 +270,13 @@ async def mute_unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /equalizer
 
 
-equalizer_g_s = tj.slash_command_group('equalizer', "Manages the bot's equalizer")
+equalizer_g_s = with_identifier(C.EQUALIZER)(
+    tj.slash_command_group('equalizer', "Manages the bot's equalizer")
+)
 
 
+@with_identifier(C.EQUALIZER)
+# -
 @tj.as_message_command_group('equalizer', 'eq', strict=True)
 @with_message_command_group_template
 async def equalizer_g_m(_: tj.abc.MessageContext):
@@ -279,14 +287,17 @@ async def equalizer_g_m(_: tj.abc.MessageContext):
 ## /equalizer preset
 
 
-valid_presets: t.Final[dict[str, str]] = {
-    j['name']: i
-    for i, j in Bands._load_bands().items()  # pyright: ignore [reportPrivateUsage, reportGeneralTypeIssues]
-} | {'Flat': 'flat'}
+valid_presets: t.Final[dict[str, str]] = t.cast(
+    dict[str, str],
+    {
+        j['name']: i
+        for i, j in Bands._load_bands().items()  # pyright: ignore [reportPrivateUsage]
+    },
+) | {'Flat': 'flat'}
 
 
 @with_annotated_args
-@with_stage_cmd_check
+@with_stage_cmd_check(C.EQUALIZER_PRESET)
 # -
 @equalizer_g_s.with_command
 @tj.as_slash_command('preset', "Sets the bot's equalizer to a preset")

@@ -7,15 +7,7 @@ import lavasnek_rs as lv
 
 from hikari.permissions import Permissions as hkperms
 
-from .expects import BindErrorExpects, CheckErrorExpects
-from .utils import (
-    BindSig,
-    BaseCommandType,
-    Contextish,
-    get_client,
-    fetch_permissions,
-    start_confirmation_prompt,
-)
+from .ids import CommandIdentifier
 from .flags import (
     Binds,
     Checks,
@@ -26,7 +18,16 @@ from .flags import (
     parse_checks,
     speaker_check,
 )
-from .errors import (
+from ..utils import (
+    BindSig,
+    GenericCommandType,
+    Contextish,
+    get_client,
+    fetch_permissions,
+    start_confirmation_prompt,
+)
+from ..extras import NULL, DecorateSig, ArgsDecorateSig, Option, Result, Panic
+from ..errors import (
     AlreadyConnected,
     BaseLyraException,
     CommandCancelled,
@@ -41,15 +42,17 @@ from .errors import (
     OthersListening,
     VotingTimeout,
 )
-from .extras import NULL, Decorator, Option, Result, Panic
-from .lavautils import get_queue
+from ..errors.expects import BindErrorExpects, CheckErrorExpects
+from ..lava.utils import get_queue
 
 
 async def others_not_in_vc_check(ctx_: Contextish, lvc: lv.Lavalink, /) -> Result[bool]:
     assert ctx_.guild_id
 
-    conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
-    assert isinstance(conn, dict)
+    conn = t.cast(
+        Option[ConnectionInfo], lvc.get_guild_gateway_connection_info(ctx_.guild_id)
+    )
+    assert conn is not None
     return await others_not_in_vc_check_impl(ctx_, conn, perms=DJ_PERMS)
 
 
@@ -64,7 +67,7 @@ def with_cb_check(
     vote: bool = False,
     prompt: bool = False,
 ):
-    from .musicutils import start_listeners_voting
+    from ..musicutils import start_listeners_voting
 
     P = t.ParamSpec('P')
 
@@ -94,8 +97,10 @@ def with_cb_check(
     async def check_in_vc(ctx_: Contextish, lvc: lv.Lavalink):
         assert ctx_.guild_id
 
-        conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
-        assert isinstance(conn, dict)
+        conn = t.cast(
+            Option[ConnectionInfo], lvc.get_guild_gateway_connection_info(ctx_.guild_id)
+        )
+        assert conn is not None
         await _check_in_vc(ctx_, conn)
 
     async def check_np_yours(ctx_: Contextish, lvc: lv.Lavalink):
@@ -201,7 +206,7 @@ def with_cb_check(
                             else:
                                 raise
 
-                if Checks.STOP & checks:
+                if Checks.ADVANCE & checks:
                     await check_stop(ctx_, lvc)
                 if Checks.PAUSE & checks:
                     await check_pause(ctx_, lvc)
@@ -222,7 +227,9 @@ def with_cb_check(
     return callback
 
 
-_CMD = t.TypeVar('_CMD', bound=BaseCommandType)
+_CMD = t.TypeVar('_CMD', bound=GenericCommandType)
+CommandDecorateSig = ArgsDecorateSig[[CommandIdentifier], _CMD]
+IdentifiedCommandDecorateSig = DecorateSig[_CMD]
 
 
 async def _as_author_permission_check(
@@ -236,12 +243,25 @@ async def _as_author_permission_check(
     return True
 
 
+def with_identifier(
+    identifier: CommandIdentifier, /
+) -> IdentifiedCommandDecorateSig[_CMD]:
+    def __set_metadata(ctx: tj.abc.Context, /):
+        cmd = ctx.command
+        assert cmd
+
+        cmd.metadata.setdefault('identifier', identifier)
+        return True
+
+    return tj.with_check(__set_metadata, follow_wrapped=True)
+
+
 def with_cmd_composer(
     binds: Option[Binds] = None,
     checks: Option[Checks] = None,
     *,
     perms: Option[hkperms] = None,
-) -> Decorator[_CMD]:
+) -> CommandDecorateSig[_CMD]:
 
     _checks_binds: list[tj.abc.CheckSig | BindSig] = []
 
@@ -254,45 +274,60 @@ def with_cmd_composer(
     if perms:
         _checks_binds.insert(0, ft.partial(_as_author_permission_check, perms=perms))
 
-    def _with_checks_and_binds(cmd: _CMD, /) -> _CMD:
-        cmd.metadata['checks'] = checks
-        cmd.metadata['binds'] = binds
-        cmd.metadata['perms'] = perms
-        return tj.with_all_checks(*_checks_binds, follow_wrapped=True)(cmd)
+    def _with_checks_and_binds(
+        identifier: CommandIdentifier, /
+    ) -> IdentifiedCommandDecorateSig[_CMD]:
+        def __set_metadata(ctx: tj.abc.Context, /):
+            cmd = ctx.command
+            assert cmd
+
+            cmd.metadata.setdefault('checks', checks)
+            cmd.metadata.setdefault('binds', binds)
+            cmd.metadata.setdefault('perms', perms)
+            cmd.metadata.setdefault('identifier', identifier)
+            return True
+
+        return tj.with_all_checks(__set_metadata, *_checks_binds, follow_wrapped=True)
 
     return _with_checks_and_binds
 
 
-def with_cmd_checks(checks: Checks, /) -> Decorator[_CMD]:
-    """Bind an implementation of tanjun's "all check" to a command from the given check flags through a decorator call
-
-
-
-    Args
-    ---
-        checks (`Checks`): The check flags
-
-    Returns
-    ---
-        `t.Callable[[_CMD], _CMD]`: The bound command for method chaining
-    """
-
+def with_cmd_checks(checks: Checks, /) -> CommandDecorateSig[_CMD]:
     _checks = parse_checks(checks)
 
-    def _with_checks(cmd: _CMD, /) -> _CMD:
-        cmd.metadata['checks'] = checks
-        return tj.with_all_checks(*_checks, follow_wrapped=True)(cmd)
+    def _with_checks(
+        identifier: CommandIdentifier, /
+    ) -> IdentifiedCommandDecorateSig[_CMD]:
+        def __set_metadata(ctx: tj.abc.Context, /):
+            cmd = ctx.command
+            assert cmd
+
+            cmd.metadata.setdefault('checks', checks)
+            cmd.metadata.setdefault('identifier', identifier)
+            return True
+
+        return tj.with_all_checks(__set_metadata, *_checks, follow_wrapped=True)
 
     return _with_checks
 
 
-def with_author_permission_check(permissions: hkperms | int, /) -> Decorator[_CMD]:
-    def _with_author_permission_check(cmd: _CMD, /) -> _CMD:
-        cmd.metadata['perms'] = permissions
-        return tj.with_check(
-            ft.partial(_as_author_permission_check, perms=permissions),
+def with_author_permission_check(perms: hkperms | int, /) -> CommandDecorateSig[_CMD]:
+    def _with_author_permission_check(
+        identifier: CommandIdentifier, /
+    ) -> IdentifiedCommandDecorateSig[_CMD]:
+        def __set_metadata(ctx: tj.abc.Context, /):
+            cmd = ctx.command
+            assert cmd
+
+            cmd.metadata.setdefault('perms', perms)
+            cmd.metadata.setdefault('identifier', identifier)
+            return True
+
+        return tj.with_all_checks(
+            __set_metadata,
+            ft.partial(_as_author_permission_check, perms=perms),
             follow_wrapped=True,
-        )(cmd)
+        )
 
     return _with_author_permission_check
 

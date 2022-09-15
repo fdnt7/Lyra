@@ -18,17 +18,26 @@ URLstr = str
 
 
 _T = t.TypeVar('_T')
+_P = t.ParamSpec('_P')
 _E = t.TypeVar('_E', bound=Exception)
 _T_co = t.TypeVar('_T_co', covariant=True)
+__E = t.TypeVar('__E')
+_KE = t.TypeVar('_KE')
+
 Coro = t.Coroutine[t.Any, t.Any, _T]
 Option = _T | None
 Result = t.Annotated[_T | t.NoReturn, ...]
+OptionResult = Option[Result[_T]]
 Panic = t.Annotated[_T | t.NoReturn, ...]
 Require = t.Annotated[_T_co, ...]
 MaybeIterable = _T | t.Iterable[_T]
-AsyncVoidFunction = t.Callable[..., t.Awaitable[None]]
 
-OptionResult = Option[Result[_T]]
-
-_DecoratedT = t.TypeVar('_DecoratedT')
-Decorator = t.Callable[[_DecoratedT], _DecoratedT]
+KeySig = t.Callable[[__E], _KE]
+MapSig = t.Callable[[_T], _T]
+VoidSig = t.Callable[[_T], None]
+VoidAnySig = t.Callable[..., None]
+PredicateSig = t.Callable[[_T], bool]
+AsyncVoidSig = t.Callable[[_T], Coro[None]]
+AsyncVoidAnySig = t.Callable[..., Coro[None]]
+DecorateSig = t.Callable[[_T], _T]
+ArgsDecorateSig = t.Callable[_P, DecorateSig[_T]]

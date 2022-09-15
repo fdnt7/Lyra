@@ -5,16 +5,16 @@ import lavasnek_rs as lv
 from ..lib.musicutils import __init_component__
 from ..lib.errors import NotConnected
 from ..lib.extras import void
-from ..lib.flags import (
+from ..lib.cmd.flags import (
     ALONE__SPEAK__CAN_SEEK_ANY,
     ALONE__SPEAK__NP_YOURS,
     IN_VC_ALONE,
 )
-from ..lib.compose import (
+from ..lib.cmd.compose import (
     Checks,
     with_cb_check,
 )
-from ..lib.lavautils import get_data
+from ..lib.lava.utils import get_data
 
 
 control = __init_component__(__name__)

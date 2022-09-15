@@ -5,8 +5,9 @@ import tanjun as tj
 from .extras import Panic
 from .dataimpl import LyraDBClientType
 
-
 # pyright: reportGeneralTypeIssues=false
+
+
 this = sys.modules[__name__]
 this.client = None
 this.mongo_client = None

@@ -1,8 +1,7 @@
 import os
 import dotenv
 
-# pyright: reportUnknownMemberType=false
-dotenv.load_dotenv('../.env')
+dotenv.load_dotenv('../.env')  # pyright: ignore [reportUnknownMemberType]
 
 from src import bot, activity
 

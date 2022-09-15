@@ -7,9 +7,15 @@ import tanjun.annotations as ja
 
 from hikari.permissions import Permissions as hkperms
 
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.compose import (
+    Binds,
+    with_author_permission_check,
+    with_cmd_composer,
+    with_identifier,
+)
 from ..lib.musicutils import __init_component__
 from ..lib.dataimpl import LyraDBCollectionType
-from ..lib.compose import Binds, with_author_permission_check, with_cmd_composer
 from ..lib.extras import (
     Panic,
     flatten,
@@ -139,7 +145,7 @@ async def restrict_list_edit(
     cfg: LyraDBCollectionType,
     /,
     *,
-    mentionables: t.Collection[MentionableType],
+    mentionables: t.Collection[PartialMentionableType],
     mode: t.Literal['+', '-'],
 ):
     assert ctx.guild_id
@@ -210,11 +216,12 @@ async def restrict_list_edit(
 # /config
 
 
-config_g_s = tj.slash_command_group(
-    'config', "Manage the bot's guild-specific settings"
+config_g_s = with_identifier(C.CONFIG)(
+    tj.slash_command_group('config', "Manage the bot's guild-specific settings")
 )
 
 
+@with_identifier(C.CONFIG)
 @tj.as_message_command_group(
     'config',
     'con',
@@ -237,11 +244,15 @@ async def config_g_m(_: tj.abc.MessageContext):
 ## /config prefix
 
 
-prefix_sg_s = config_g_s.with_command(
-    tj.slash_command_group('prefix', "Manages the bot's prefixes")
+prefix_sg_s = with_identifier(C.CONFIG_PREFIX)(
+    config_g_s.with_command(
+        (tj.slash_command_group('prefix', "Manages the bot's prefixes"))
+    )
 )
 
 
+@with_identifier(C.CONFIG_PREFIX)
+# -
 @config_g_m.with_command
 @tj.as_message_command_group('prefix', 'pfx', '/', strict=True)
 @with_message_command_group_template
@@ -253,6 +264,8 @@ async def prefix_sg_m(_: tj.abc.MessageContext):
 ### /config prefix list
 
 
+@with_identifier(C.CONFIG_PREFIX_LIST)
+# -
 @prefix_sg_s.with_command
 @tj.as_slash_command('list', "Lists all usable prefixes of the bot")
 @prefix_sg_m.with_command
@@ -284,7 +297,7 @@ async def prefix_list_(
 
 
 @with_annotated_args
-@with_admin_cmd_check
+@with_admin_cmd_check(C.CONFIG_PREFIX_ADD)
 # -
 @prefix_sg_s.with_command
 @tj.as_slash_command('add', "Adds a new prefix of the bot for this guild")
@@ -320,7 +333,7 @@ async def prefix_add_(
 
 
 @with_annotated_args
-@with_admin_cmd_check
+@with_admin_cmd_check(C.CONFIG_PREFIX_REMOVE)
 # -
 @prefix_sg_s.with_command
 @tj.as_slash_command('remove', "Removes an existing prefix of the bot for this guild")
@@ -357,11 +370,17 @@ async def prefix_remove_(
 ## /config nowplayingmsg
 
 
-nowplayingmsg_sg_s = config_g_s.with_command(
-    tj.slash_command_group('now-playing-msg', "Manages the bot's now playing messages")
+nowplayingmsg_sg_s = with_identifier(C.CONFIG_NOWPLAYINGMSG)(
+    config_g_s.with_command(
+        tj.slash_command_group(
+            'now-playing-msg', "Manages the bot's now playing messages"
+        )
+    )
 )
 
 
+@with_identifier(C.CONFIG_NOWPLAYINGMSG)
+# -
 @config_g_m.with_command
 @tj.as_message_command_group(
     'nowplayingmsg', 'now-playing-msg', 'npmsg', 'np', strict=True
@@ -375,7 +394,7 @@ async def nowplayingmsg_sg_m(_: tj.abc.MessageContext):
 ### /config nowplayingmsg toggle
 
 
-@with_author_permission_check(hkperms.MANAGE_GUILD)
+@with_author_permission_check(hkperms.MANAGE_GUILD)(C.CONFIG_NOWPLAYINGMSG_TOGGLE)
 # -
 @nowplayingmsg_sg_s.with_command
 @tj.as_slash_command(
@@ -409,13 +428,17 @@ async def nowplayingmsg_toggle_(
 ## /config restrict
 
 
-restrict_sg_s = config_g_s.with_command(
-    tj.slash_command_group(
-        'restrict', "Manages the bot's restricted channels, roles and members"
+restrict_sg_s = with_identifier(C.CONFIG_RESTRICT)(
+    config_g_s.with_command(
+        tj.slash_command_group(
+            'restrict', "Manages the bot's restricted channels, roles and members"
+        )
     )
 )
 
 
+@with_identifier(C.CONFIG_RESTRICT)
+# -
 @config_g_m.with_command
 @tj.as_message_command_group('restrict', 'restr', 'rest', 'rst', 'r', strict=True)
 @with_message_command_group_template
@@ -427,6 +450,8 @@ async def restrict_sg_m(_: tj.abc.MessageContext):
 ### /config restrict list
 
 
+@with_identifier(C.CONFIG_RESTRICT_LIST)
+# -
 @restrict_sg_s.with_command
 @tj.as_slash_command('list', "Shows the current restricted channels, roles and members")
 @restrict_sg_m.with_command
@@ -474,7 +499,7 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 
 
 @with_annotated_args
-@with_author_permission_check(RESTRICTOR)
+@with_restricts_cmd_check(C.CONFIG_RESTRICT_ADD)
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command(
@@ -482,15 +507,18 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 )
 @restrict_sg_m.with_command
 @tj.as_message_command('add', 'a', '+')
-# TODO: Remove pyright ignores when tanjun relaxed converter func sig
+# TODO: Remove tyoe casting when tanjun relaxed converter func sig
 async def restrict_add_(
     ctx: tj.abc.MessageContext,
     cfg: al.Injected[LyraDBCollectionType],
-    mentionables: t.Annotated[  # pyright: ignore [reportUnknownParameterType]
+    mentionables: t.Annotated[
         ja.Greedy[
             ja.Converted[
-                to_multi_mentionables
-            ]  # pyright: ignore [reportGeneralTypeIssues, reportUnknownArgumentType]
+                t.cast(
+                    t.Callable[[str], frozenset[MentionableType]],
+                    to_multi_mentionables,
+                )
+            ]
         ],
         "Which channel/role/member?",
     ],
@@ -500,7 +528,7 @@ async def restrict_add_(
     await restrict_list_edit(
         ctx,
         cfg,
-        mentionables=mentionables,  # pyright: ignore [reportUnknownArgumentType]
+        mentionables=mentionables,
         mode='+',
     )
 
@@ -509,7 +537,7 @@ async def restrict_add_(
 
 
 @with_annotated_args
-@with_restricts_cmd_check
+@with_restricts_cmd_check(C.CONFIG_RESTRICT_REMOVE)
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command(
@@ -517,15 +545,18 @@ async def restrict_add_(
 )
 @restrict_sg_m.with_command
 @tj.as_message_command('remove', 'rm', 'del', 'r', 'd', '-')
-# TODO: Remove pyright ignores when tanjun relaxed converter func sig
+# TODO: Remove type casting when tanjun relaxed converter func sig
 async def restrict_remove_(
     ctx: tj.abc.MessageContext,
     cfg: al.Injected[LyraDBCollectionType],
-    mentionables: t.Annotated[  # pyright: ignore [reportUnknownParameterType]
+    mentionables: t.Annotated[
         ja.Greedy[
             ja.Converted[
-                to_multi_mentionables
-            ]  # pyright: ignore [reportGeneralTypeIssues, reportUnknownArgumentType]
+                t.cast(
+                    t.Callable[[str], frozenset[MentionableType]],
+                    to_multi_mentionables,
+                )
+            ]
         ],
         "Which channel/role/member?",
     ],
@@ -535,7 +566,7 @@ async def restrict_remove_(
     await restrict_list_edit(
         ctx,
         cfg,
-        mentionables=mentionables,  # pyright: ignore [reportUnknownArgumentType]
+        mentionables=mentionables,
         mode='-',
     )
 
@@ -544,7 +575,7 @@ async def restrict_remove_(
 
 
 @with_annotated_args
-@with_restricts_cmd_check
+@with_restricts_cmd_check(C.CONFIG_RESTRICT_BLACKLIST)
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command('blacklist', "Sets a category's restriction mode to blacklisting")
@@ -564,11 +595,11 @@ async def restrict_blacklist_(
     await restrict_mode_set(ctx, cfg, category=category, mode=-1)
 
 
-### /config restrict blacklist
+### /config restrict whitelist
 
 
 @with_annotated_args
-@with_restricts_cmd_check
+@with_restricts_cmd_check(C.CONFIG_RESTRICT_WHITELIST)
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command('whitelist', "Sets a category's restriction mode to whitelisting")
@@ -588,8 +619,11 @@ async def restrict_whitelist_(
     await restrict_mode_set(ctx, cfg, category=category, mode=1)
 
 
+### /config restrict clear
+
+
 @with_annotated_args
-@with_restricts_cmd_check
+@with_restricts_cmd_check(C.CONFIG_RESTRICT_CLEAR)
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command('clear', "Clears a category's restriction mode")
@@ -617,7 +651,7 @@ async def restrict_clear_(
 ### /config restrict wipe
 
 
-@with_dangerous_restricts_cmd_check
+@with_dangerous_restricts_cmd_check(C.CONFIG_RESTRICT_WIPE)
 # -
 @restrict_sg_s.with_command
 @tj.as_slash_command('wipe', "Wipes the restricted list of EVERY category")
