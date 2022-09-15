@@ -1,4 +1,6 @@
+import typing as t
 import difflib as dfflib
+
 import operator as op
 import functools as ft
 
@@ -6,17 +8,18 @@ import hikari as hk
 import tanjun as tj
 import alluka as al
 
+from ..lib.cmd import get_cmd_name
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.compose import Binds, with_identifier
 from ..lib.musicutils import __init_component__
-from ..lib.compose import Binds
+
+from ..lib.extras import groupby
 from ..lib.utils import (
-    BaseCommandType,
+    GenericCommandType,
     EmojiRefs,
     color_hash_obj,
-    get_cmd_handle,
-    get_cmd_trigger,
     say,
 )
-from ..lib.extras import groupby
 
 
 misc = __init_component__(__name__, guild_check=False)
@@ -25,13 +28,13 @@ misc = __init_component__(__name__, guild_check=False)
 # ~
 
 
-all_cmds_sep: dict[str, list[BaseCommandType]] = {}
-all_cmds_aliases: dict[tuple[str], list[BaseCommandType]] = {}
-all_cmds_cat: dict[tj.abc.Component, dict[str, tuple[BaseCommandType]]] = {}
+all_cmds_sep: dict[str, list[GenericCommandType]] = {}
+all_cmds_aliases: dict[tuple[str], list[GenericCommandType]] = {}
+all_cmds_cat: dict[tj.abc.Component, dict[str, tuple[GenericCommandType]]] = {}
 
 
 async def commands_autocomplete(ctx: tj.abc.AutocompleteContext, value: str, /):
-    def _calc_ratio(_a_cmds: tuple[tuple[str], list[BaseCommandType]]):
+    def _calc_ratio(_a_cmds: tuple[tuple[str], list[GenericCommandType]]):
         return dfflib.SequenceMatcher(
             lambda n: not n,
             next(iter(dfflib.get_close_matches(value.casefold(), _a_cmds[0])), ''),
@@ -54,14 +57,44 @@ async def commands_autocomplete(ctx: tj.abc.AutocompleteContext, value: str, /):
 
 
 @misc.with_listener()
-async def on_started(_: hk.StartedEvent, client: al.Injected[tj.Client]):
-    _all_cmds_iter = tuple(client.iter_commands())
-    _all_cmds_sep = groupby(_all_cmds_iter, key=lambda cmd: get_cmd_handle(cmd))
+async def on_started(
+    _: hk.StartedEvent, client: al.Injected[tj.Client], bot: al.Injected[hk.GatewayBot]
+):
+    me = bot.get_me()
+    assert me
+
+    slash = sorted(client.iter_slash_commands(), key=lambda cmd: cmd.name)
+    slash_ = sorted(
+        filter(
+            lambda cmd: cmd.type is hk.CommandType.SLASH,
+            await bot.rest.fetch_application_commands(me.id, 777069316247126036),
+        ),
+        key=lambda cmd: cmd.name,
+    )
+
+    class MockContext(t.NamedTuple):
+        command: GenericCommandType
+
+    for s, s_ in zip(slash, slash_, strict=True):
+        s.set_tracked_command(s_)
+
+    for cmd in (cmds_tup := (*client.iter_commands(),)):
+        check = next(iter(cmd.checks))
+        set_metadata = (
+            check._checks[0]  # pyright: ignore [reportPrivateUsage]
+            if isinstance(
+                check, tj.checks._AllChecks  # pyright: ignore [reportPrivateUsage]
+            )
+            else check
+        )
+        set_metadata(MockContext(cmd))
+
+    _all_cmds_sep = groupby(cmds_tup, key=lambda cmd: cmd.metadata['identifier'])
 
     all_cmds_sep.update(_all_cmds_sep)
     all_cmds_aliases.update(
         {
-            (ft.reduce(op.add, (get_cmd_trigger(cmd) for cmd in cmds))): cmds
+            (ft.reduce(op.add, (get_cmd_name(cmd) for cmd in cmds))): cmds
             for cmds in _all_cmds_sep.values()
         }
     )
@@ -78,6 +111,8 @@ async def on_started(_: hk.StartedEvent, client: al.Injected[tj.Client]):
 # /ping
 
 
+@with_identifier(C.PING)
+# -
 @tj.as_slash_command('ping', "Shows the bot's latency", dm_enabled=True)
 @tj.as_message_command('ping', 'latency', 'pi', 'lat', 'late', 'png')
 async def ping_(ctx: tj.abc.Context):
@@ -91,7 +126,6 @@ async def ping_(ctx: tj.abc.Context):
 # /help
 
 
-# TODO: #27 Implement `/help`
 # @tj.with_str_slash_option(
 #     'command',
 #     "Which command?",
@@ -104,7 +138,7 @@ async def ping_(ctx: tj.abc.Context):
 # @tj.as_message_command('help', 'h', 'man', 'manual')
 async def help_(
     ctx: tj.abc.Context,
-    command: list[BaseCommandType],
+    command: list[GenericCommandType],
     erf: al.Injected[EmojiRefs],
 ):
     # await err_say(ctx, content="⚡ This command is coming soon!")
@@ -112,7 +146,7 @@ async def help_(
     component = cmd.component
     assert component
 
-    handle: str = get_cmd_handle(cmd)
+    identifier: C = cmd.metadata['identifier']
     docs: str = getattr(cmd, 'callback').__doc__
     avail_in: list[hk.KnownCustomEmoji] = []
     if any(
@@ -131,7 +165,7 @@ async def help_(
     color = color_hash_obj(component)
     embed = (
         hk.Embed(
-            title=f"📖 Manual for command `{handle}`", description=desc, color=color
+            title=f"📖 Manual for command `{identifier}`", description=desc, color=color
         )
         .add_field(
             'Checks',

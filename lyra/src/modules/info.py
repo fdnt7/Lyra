@@ -6,27 +6,27 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.compose import with_identifier
 from ..lib.utils import (
     Q_CHUNK,
     TIMEOUT,
     EitherContext,
     EmojiRefs,
-    EditableComponentsType,
     limit_img_size_by_guild,
     say,
     err_say,
     extract_content,
     trigger_thinking,
     disable_components,
-    with_metadata,
     with_annotated_args,
 )
 from ..lib.playback import stop, unstop
 from ..lib.musicutils import generate_queue_embeds, __init_component__
 from ..lib.errors import QueryEmpty, LyricsNotFound
 from ..lib.extras import Option, Result, to_stamp, wr, get_lyrics
-from ..lib.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
-from ..lib.lavautils import get_queue, access_queue
+from ..lib.lava.utils import get_queue, access_queue
+from ..lib.cmd.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
 
 
 info = __init_component__(__name__)
@@ -41,7 +41,7 @@ info = __init_component__(__name__)
 with_np_cmd_check = with_cmd_checks(Checks.CONN | Checks.QUEUE | Checks.PLAYING)
 
 
-@with_np_cmd_check
+@with_np_cmd_check(C.NOWPLAYING)
 # -
 @tj.as_slash_command('now-playing', "Displays info of the current track")
 @tj.as_message_command(
@@ -117,7 +117,7 @@ with_se_cmd_check_and_connect_vc = with_cmd_composer(
 
 
 @with_annotated_args
-@with_se_cmd_check_and_connect_vc
+@with_se_cmd_check_and_connect_vc(C.SEARCH)
 # -
 @tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
 @tj.as_slash_command(
@@ -134,8 +134,7 @@ async def search_(
     await _search(ctx, query, lvc)
 
 
-@with_se_cmd_check_and_connect_vc
-@with_metadata(handle='search')
+@with_se_cmd_check_and_connect_vc(C.SEARCH)
 @tj.as_message_menu('Search this song up')
 async def search_c(
     ctx: tj.abc.MenuContext,
@@ -246,8 +245,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
             await stop(ctx, lvc)
 
         async for event in stream:
-            inter = event.interaction
-            assert isinstance(inter, hk.ComponentInteraction)
+            inter = t.cast(hk.ComponentInteraction, event.interaction)
             key = inter.custom_id
 
             if key == 'cancel':
@@ -345,7 +343,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
 with_q_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN)
 
 
-@with_q_cmd_check
+@with_q_cmd_check(C.QUEUE)
 # -
 @tj.as_slash_command('queue', "Lists out the entire queue")
 @tj.as_message_command('queue', 'q', 'all')
@@ -393,8 +391,7 @@ async def queue_(
     _i_ori = (q.pos - 2) // Q_CHUNK + 1
     i = _i_ori
 
-    def _update_buttons(b: EditableComponentsType):
-        assert isinstance(b, hk.api.ButtonBuilder)
+    def _update_buttons(b: hk.api.ButtonBuilder[hk.api.ActionRowBuilder]):
         return (
             (not pages[:i] and b.emoji == '◀️')
             or (not pages[i + 1 :] and b.emoji == '▶️')
@@ -421,8 +418,7 @@ async def queue_(
     ) as stream:
         _row = row
         async for event in stream:
-            inter = event.interaction
-            assert isinstance(inter, hk.ComponentInteraction)
+            inter = t.cast(hk.ComponentInteraction, event.interaction)
             await inter.create_initial_response(
                 hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
             )
@@ -464,6 +460,7 @@ async def queue_(
 
 
 @with_annotated_args
+@with_identifier(C.LYRICS)
 # -
 @tj.as_slash_command('lyrics', 'Attempts to find the lyrics of the current song')
 @tj.as_message_command('lyrics', 'ly')
@@ -565,8 +562,7 @@ async def lyrics_(
     ) as stream:
         _last_sel: Option[str] = None
         async for event in stream:
-            inter = event.interaction
-            assert isinstance(inter, hk.ComponentInteraction)
+            inter = t.cast(hk.ComponentInteraction, event.interaction)
             await inter.create_initial_response(
                 hk.ResponseType.DEFERRED_MESSAGE_UPDATE,
             )

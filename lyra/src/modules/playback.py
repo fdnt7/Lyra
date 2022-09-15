@@ -7,22 +7,23 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.compose import Binds
-from ..lib.musicutils import __init_component__
-from ..lib.extras import to_stamp, to_ms
-from ..lib.compose import (
-    with_cmd_composer,
-    with_cmd_checks,
-)
-from ..lib.flags import (
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.flags import (
     ALONE__SPEAK__CAN_SEEK_ANY,
     ALONE__SPEAK__NP_YOURS,
     Checks,
 )
+from ..lib.cmd.compose import (
+    Binds,
+    with_cmd_composer,
+    with_cmd_checks,
+)
+from ..lib.musicutils import __init_component__
+from ..lib.extras import to_stamp, to_ms
 from ..lib.errors import (
     IllegalArgument,
 )
-from ..lib.lavautils import (
+from ..lib.lava.utils import (
     get_data,
     set_data,
     get_queue,
@@ -38,6 +39,8 @@ from ..lib.playback import (
     while_stop,
 )
 from ..lib.utils import (
+    Option,
+    ConnectionInfo,
     say,
     err_say,
     with_annotated_args,
@@ -67,23 +70,6 @@ with_common_cmd_check = with_cmd_checks(COMMON_CHECKS)
 with_activity_cmd_check = with_cmd_checks(COMMON_CHECKS | Checks.PAUSE)
 
 
-# /play-pause
-
-
-@with_common_cmd_check
-# -
-@tj.as_slash_command(
-    'play-pause', "Toggles the playback of the current song between play and pause"
-)
-@tj.as_message_command('play-pause', 'playpause', 'pp', '>||')
-async def play_pause_(
-    ctx: tj.abc.MessageContext,
-    lvc: al.Injected[lv.Lavalink],
-) -> None:
-    """Pauses the current song."""
-    await play_pause_abs(ctx, lvc)
-
-
 @playback.with_listener()
 async def on_voice_state_update(
     event: hk.VoiceStateUpdateEvent,
@@ -92,7 +78,10 @@ async def on_voice_state_update(
     bot: al.Injected[hk.GatewayBot],
 ):
     def conn():
-        return lvc.get_guild_gateway_connection_info(event.guild_id)
+        return t.cast(
+            Option[ConnectionInfo],
+            lvc.get_guild_gateway_connection_info(event.guild_id),
+        )
 
     new = event.state
     old = event.old_state
@@ -108,7 +97,7 @@ async def on_voice_state_update(
         cache = client.cache
         if not _conn:
             return frozenset()
-        assert isinstance(_conn, dict) and cache
+        assert conn is not None and cache
         ch_id: int = _conn['channel_id']
         return (
             await cache.get_voice_states_view_for_channel(event.guild_id, ch_id)
@@ -123,7 +112,7 @@ async def on_voice_state_update(
 
     if not (_conn := conn()):
         return
-    assert isinstance(_conn, dict)
+    assert _conn is not None
 
     from .playback import set_pause
 
@@ -184,10 +173,27 @@ async def on_voice_state_update(
         await client.rest.create_message(out_ch, f"🕊️▶️ Paused as no one is listening")
 
 
+# /play-pause
+
+
+@with_common_cmd_check(C.PLAYPAUSE)
+# -
+@tj.as_slash_command(
+    'play-pause', "Toggles the playback of the current song between play and pause"
+)
+@tj.as_message_command('play-pause', 'playpause', 'pp', '>||')
+async def play_pause_(
+    ctx: tj.abc.MessageContext,
+    lvc: al.Injected[lv.Lavalink],
+) -> None:
+    """Pauses the current song."""
+    await play_pause_abs(ctx, lvc)
+
+
 # /pause
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.PAUSE)
 # -
 @tj.as_slash_command('pause', "Pauses the current song")
 @tj.as_message_command('pause', '>', 'ps')
@@ -204,7 +210,7 @@ async def pause_(
 # /resume
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.RESUME)
 # -
 @tj.as_slash_command("resume", "Resumes the current track")
 @tj.as_message_command('resume', 'res', 'rs', '||')
@@ -221,7 +227,7 @@ async def resume_(
 # /stop
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.STOP)
 # -
 @tj.as_slash_command('stop', "Stops the current track; skip to play again")
 @tj.as_message_command('stop', 'st', '[]')
@@ -238,7 +244,7 @@ async def stop_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_activity_cmd_check
+@with_activity_cmd_check(C.FASTFORWARD)
 # -
 @tj.with_float_slash_option(
     'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
@@ -278,7 +284,7 @@ async def fastforward_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_activity_cmd_check
+@with_activity_cmd_check(C.REWIND)
 # -
 @tj.with_float_slash_option(
     'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
@@ -319,7 +325,7 @@ with_skip_cmd_check_and_voting = with_cmd_composer(
 )
 
 
-@with_skip_cmd_check_and_voting
+@with_skip_cmd_check_and_voting(C.SKIP)
 # -
 @tj.as_slash_command('skip', "Skips the current track")
 @tj.as_message_command('skip', 's', '>>|')
@@ -340,7 +346,7 @@ with_playat_cmd_check_and_voting = with_cmd_composer(
 
 
 @with_annotated_args
-@with_playat_cmd_check_and_voting
+@with_playat_cmd_check_and_voting(C.PLAYAT)
 # -
 @tj.as_slash_command("play-at", "Plays the track at the specified position")
 @tj.as_message_command('play-at', 'playat', 'pa', 'i', 'pos', 'skipto', '->', '^')
@@ -382,7 +388,7 @@ with_next_cmd_check = with_cmd_checks(
 )
 
 
-@with_next_cmd_check
+@with_next_cmd_check(C.NEXT)
 # -
 @tj.as_slash_command('next', "Plays the next track in the queue")
 @tj.as_message_command('next', 'n')
@@ -405,7 +411,7 @@ with_prev_cmd_check_and_voting = with_cmd_composer(
 )
 
 
-@with_prev_cmd_check_and_voting
+@with_prev_cmd_check_and_voting(C.PREVIOUS)
 # -
 @tj.as_slash_command('previous', "Plays the previous track in the queue")
 @tj.as_message_command('previous', 'prev', 'pr', 'prv', 'pre', 'b', 'back', '|<<')
@@ -425,10 +431,9 @@ with_re_cmd_check_and_voting = with_cmd_composer(
 )
 
 
-@with_re_cmd_check_and_voting
+@with_re_cmd_check_and_voting(C.RESTART)
+# -
 @tj.as_slash_command('restart', "Restarts the current track; Equivalent to /seek 0:00")
-#
-@with_re_cmd_check_and_voting
 @tj.as_message_command('restart', 're', '<')
 async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     assert ctx.guild_id
@@ -445,7 +450,7 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 
 
 @with_annotated_args
-@with_activity_cmd_check
+@with_activity_cmd_check(C.SEEK)
 # -
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")
 @tj.as_message_command('seek', 'sk', '-v', '-^')

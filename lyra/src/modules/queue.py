@@ -6,9 +6,17 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.compose import Binds
-from ..lib.playback import while_stop
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.flags import IN_VC_ALONE
+from ..lib.cmd.compose import (
+    Checks,
+    Binds,
+    with_identifier,
+    with_cmd_composer,
+    with_cmd_checks,
+)
 from ..lib.musicutils import __init_component__
+from ..lib.playback import while_stop
 from ..lib.queue import (
     RepeatMode,
     to_tracks,
@@ -21,20 +29,13 @@ from ..lib.queue import (
 )
 from ..lib.utils import (
     EitherContext,
-    with_metadata,
     with_message_command_group_template,
     extract_content,
     err_say,
     say,
 )
-from ..lib.flags import IN_VC_ALONE
-from ..lib.compose import (
-    Checks,
-    with_cmd_composer,
-    with_cmd_checks,
-)
 from ..lib.extras import Option, Panic, flatten, fmt_str
-from ..lib.lavautils import (
+from ..lib.lava.utils import (
     RepeatMode,
     get_data,
     set_data,
@@ -73,7 +74,7 @@ def to_source(value: str, /) -> Panic[str]:
 
 
 def to_repeat_mode(value: str, /) -> Panic[RepeatMode]:
-    from ..lib.lavautils import all_repeat_modes
+    from ..lib.lava.utils import all_repeat_modes
 
     if value in all_repeat_modes[0]:
         return RepeatMode.NONE
@@ -125,7 +126,7 @@ with_play_cmd_check_and_connect_vc = with_cmd_composer(
 
 
 @ja.with_annotated_args
-@with_play_cmd_check_and_connect_vc
+@with_play_cmd_check_and_connect_vc(C.PLAY)
 @tj.as_slash_command('play', "Plays a song, or add it to the queue")
 async def play_s(
     ctx: tj.abc.SlashContext,
@@ -145,7 +146,7 @@ async def play_s(
 
 
 @ja.with_annotated_args
-@with_play_cmd_check_and_connect_vc
+@with_play_cmd_check_and_connect_vc(C.PLAY)
 @tj.as_slash_command('play-file', "Plays an attached audio, or add it to the queue")
 async def playfile_s(
     ctx: tj.abc.SlashContext,
@@ -162,7 +163,7 @@ async def playfile_s(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_play_cmd_check_and_connect_vc
+@with_play_cmd_check_and_connect_vc(C.PLAY)
 @tj.with_option('source', '--source', '-src', default='yt', converters=to_source)
 @tj.with_option(
     'shuffle',
@@ -187,8 +188,7 @@ async def play_m(
     await _play(ctx, lvc, _song, source=source, shuffle=shuffle)
 
 
-@with_play_cmd_check_and_connect_vc
-@with_metadata(handle='play')
+@with_play_cmd_check_and_connect_vc(C.PLAY)
 @tj.as_message_menu("Enqueue this song")
 async def play_c(
     ctx: tj.abc.MenuContext,
@@ -219,9 +219,13 @@ async def _play(
 # /remove
 
 
-remove_g_s = tj.slash_command_group('remove', "Removes tracks from the queue")
+remove_g_s = with_identifier(C.REMOVE)(
+    tj.slash_command_group('remove', "Removes tracks from the queue")
+)
 
 
+@with_identifier(C.REMOVE)
+# -
 @tj.as_message_command_group('remove', 'rem', 'rm', 'rmv', 'del', 'd', '-', strict=True)
 @with_message_command_group_template
 async def remove_g_m(_: tj.abc.MessageContext):
@@ -233,7 +237,7 @@ async def remove_g_m(_: tj.abc.MessageContext):
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_stage_cmd_check
+@with_stage_cmd_check(C.REMOVE_ONE)
 # -
 @remove_g_s.with_command
 @tj.with_str_slash_option(
@@ -246,7 +250,6 @@ async def remove_g_m(_: tj.abc.MessageContext):
 )
 #
 @remove_g_m.with_command
-@with_stage_cmd_check
 @tj.with_greedy_argument('track', default=None)
 @tj.as_message_command('one', '1', 'o', 's', '.', '^')
 async def remove_one_(
@@ -279,7 +282,7 @@ async def remove_one_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_strict_stage_cmd_check
+@with_strict_stage_cmd_check(C.REMOVE_BULK)
 # -
 @remove_g_s.with_command
 @tj.with_int_slash_option(
@@ -314,7 +317,7 @@ async def remove_bulk_(
     except IllegalArgument:
         await err_say(
             ctx,
-            del_after=6.5,
+            delete_after=6.5,
             content=f"❌ Invalid start position or end position\n**Start position must be smaller or equal to end position *AND* both of them has to be in between 1 and the queue length **",
         )
     else:
@@ -333,10 +336,9 @@ async def remove_bulk_(
 # /clear
 
 
-@with_common_cmd_check
+@with_common_cmd_check(C.CLEAR)
+# -
 @tj.as_slash_command('clear', "Clears the queue; Equivalent to /remove bulk start:1")
-#
-@with_common_cmd_check
 @tj.as_message_command('clear', 'destroy', 'clr', 'c')
 async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     async with access_data(ctx, lvc) as d:
@@ -353,7 +355,7 @@ async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 with_common_cmd_check_and_voting = with_cmd_composer(Binds.VOTE, COMMON_CHECKS)
 
 
-@with_common_cmd_check_and_voting
+@with_common_cmd_check_and_voting(C.SHUFFLE)
 # -
 @tj.as_slash_command('shuffle', "Shuffles the upcoming tracks")
 @tj.as_message_command('shuffle', 'sh', 'shuf', 'rand', 'rd')
@@ -364,9 +366,13 @@ async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /move
 
 
-move_g_s = tj.slash_command_group('move', "Moves the track in the queue")
+move_g_s = with_identifier(C.MOVE)(
+    tj.slash_command_group('move', "Moves the track in the queue")
+)
 
 
+@with_identifier(C.MOVE)
+# -
 @tj.as_message_command_group('move', 'mv', '=>', strict=True)
 @with_message_command_group_template
 async def move_g_m(_: tj.abc.MessageContext):
@@ -378,7 +384,7 @@ async def move_g_m(_: tj.abc.MessageContext):
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_stage_cmd_check
+@with_stage_cmd_check(C.MOVE_LAST)
 # -
 @move_g_s.with_command
 @tj.with_int_slash_option(
@@ -429,7 +435,7 @@ async def move_last_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_strict_stage_cmd_check
+@with_strict_stage_cmd_check(C.MOVE_SWAP)
 # -
 @move_g_s.with_command
 @tj.with_int_slash_option(
@@ -502,7 +508,7 @@ async def move_swap_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_strict_stage_cmd_check
+@with_strict_stage_cmd_check(C.MOVE_INSERT)
 # -
 @move_g_s.with_command
 @tj.with_int_slash_option(
@@ -556,7 +562,7 @@ async def move_insert_(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
-@with_common_cmd_check_and_voting
+@with_common_cmd_check_and_voting(C.REPEAT)
 # -
 @tj.with_str_slash_option(
     'mode',

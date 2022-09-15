@@ -13,77 +13,47 @@ import src.lib.globs as globs
 from hikari.permissions import Permissions as hkperms
 from hikari.messages import MessageFlag as msgflag
 
-from .consts import TIMEOUT, Q_CHUNK  # pyright: ignore [reportUnusedImport]
-from .errors import BaseLyraException, CommandCancelled
-from .extras import (
+# pyright: reportUnusedImport=false
+from .vars import RESTRICTOR, base_h, EmojiRefs, DJ_PERMS, dj_perms_fmt, guild_c
+from .types import (
+    Contextish,
+    EitherContext,
+    GenericCommandType,
+    GenericMenuCommandType,
+    GenericMessageCommandGroupType,
+    GenericMessageCommandType,
+    GenericSlashCommandType,
+    GuildOrInferable,
+    GuildOrRESTInferable,
+    GuildInferableEvents,
+    EditableComponentsType,
+    MaybeClientInferable,
+    RESTInferable,
+    # -
+    ConnectionInfo,
+    BindSig,
+    ButtonBuilderType,
+    MentionableType,
+    JoinableChannelType,
+    PartialMentionableType,
+    with_annotated_args,
+)
+from ..cmd import get_full_cmd_repr
+from ..consts import TIMEOUT, Q_CHUNK
+from ..errors import BaseLyraException, CommandCancelled
+from ..extras import (
     Option,
     Result,
     Panic,
-    Coro,
     URLstr,
-    AsyncVoidFunction,
-    format_flags,
+    MapSig,
+    DecorateSig,
+    PredicateSig,
     join_and,
     limit_bytes_img_size,
     url_to_bytesio,
 )
-from .dataimpl import LyraDBCollectionType
-
-
-EitherContext = tj.abc.MessageContext | tj.abc.AppCommandContext
-Contextish = tj.abc.Context | hk.ComponentInteraction
-"""A union "Context-ish" type hint. Includes:
-* `tanjun.abc.Context` - A proper Context data
-* `hikari.ComponentInteraction` - A similarly structured data"""
-
-GuildInferableEvents = hk.GuildEvent | hk.VoiceEvent
-"""A union type hint of events that can infer its guild id. Includes:
-* `hikari.GuildEvent`
-* `hikari.VoiceEvent`"""
-
-GuildOrInferable = Contextish | hk.Snowflakeish | GuildInferableEvents
-"""A union type hint of objects that can infer its guild id, or is the id itself. Includes:
-* `hikari.Snowflakeish`
-* `Contextish`
-* `GuildInferableEvents`"""
-
-RESTInferable = Contextish | GuildInferableEvents
-"""A union type hint of objects that can infer its `hikari.api.RESTClient` client. Includes:
-* `Contextish`
-* `GuildInferableEvents`"""
-
-GuildOrRESTInferable = GuildOrInferable | RESTInferable
-"""A union type hint of objects that can infer its `hikari.api.RESTClient` client, its guild id, or is the id itself. Includes:
-* `GuildOrInferable`
-* `RESTInferable`"""
-
-MaybeClientInferable = t.Any | tj.abc.Context
-
-ButtonBuilderType = hk.api.ButtonBuilder[hk.api.ActionRowBuilder]
-ConnectionInfo = dict[
-    str, t.Any
-]  # TODO: Remove this once lavasnek_rs use the correct type
-SelectMenuBuilderType = hk.api.SelectMenuBuilder[hk.api.ActionRowBuilder]
-EditableComponentsType = ButtonBuilderType | SelectMenuBuilderType
-MentionableType = hk.GuildChannel | hk.Role | hk.Member
-PartialMentionableType = hk.PartialUser | hk.PartialRole | hk.PartialChannel
-JoinableChannelType = hk.GuildVoiceChannel | hk.GuildStageChannel
-BaseCommandType = tj.abc.ExecutableCommand[tj.abc.Context]
-ParentCommandType: tj.abc.SlashCommandGroup | tj.abc.MessageCommandGroup[
-    AsyncVoidFunction
-]
-BindSig = t.Callable[..., Coro[bool]] | t.Callable[..., bool]
-
-EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
-base_h = tj.AnyHooks()
-guild_c = tj.checks.GuildCheck(
-    error_message="🙅 Commands can only be used in guild channels"
-)
-with_annotated_args = tj.annotations.with_annotated_args(follow_wrapped=True)
-
-RESTRICTOR = hkperms.MANAGE_CHANNELS | hkperms.MANAGE_ROLES
-DJ_PERMS: t.Final = hkperms.MOVE_MEMBERS
-dj_perms_fmt: t.Final = format_flags(DJ_PERMS)
+from ..dataimpl import LyraDBCollectionType
 
 
 async def delete_after(
@@ -136,21 +106,20 @@ async def err_say(
     g_r_inf: GuildOrRESTInferable,
     /,
     *,
-    del_after: float = 3.5,
+    delete_after: float = 3.5,
     follow_up: bool = True,
     ensure_result: bool = False,
     channel: Option[hk.Snowflakeish] = None,
     **kwargs: t.Any,
 ) -> Option[hk.Message]:
-    return await say(
-        g_r_inf,
+    return await ft.partial(
+        say,
         hidden=True,
         ensure_result=ensure_result,
         channel=channel,
         follow_up=follow_up,
-        delete_after=del_after,
-        **kwargs,
-    )  # pyright: ignore [reportUnknownVariableType]
+        delete_after=delete_after,
+    )(g_r_inf, **kwargs)
 
 
 @t.overload
@@ -314,8 +283,8 @@ async def say(
         return msg
 
 
-_C_d = t.TypeVar(
-    '_C_d',
+_EditableBuilderT = t.TypeVar(
+    '_EditableBuilderT',
     bound=EditableComponentsType,
 )
 
@@ -324,10 +293,10 @@ def disable_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    predicates: Option[t.Callable[[_C_d], bool]] = None,
+    predicates: Option[PredicateSig[_EditableBuilderT]] = None,
 ) -> tuple[hk.api.ActionRowBuilder, ...]:
-    edits: t.Callable[[_C_d], _C_d] = lambda x: x.set_is_disabled(True)
-    reverts: t.Callable[[_C_d], _C_d] = lambda x: x.set_is_disabled(False)
+    edits: MapSig[_EditableBuilderT] = lambda x: x.set_is_disabled(True)
+    reverts: MapSig[_EditableBuilderT] = lambda x: x.set_is_disabled(False)
 
     return edit_components(
         rest,
@@ -338,8 +307,8 @@ def disable_components(
     )
 
 
-_C_contra = t.TypeVar(
-    '_C_contra',
+_BuilderT = t.TypeVar(
+    '_BuilderT',
     bound=hk.api.ComponentBuilder,
     contravariant=True,
 )
@@ -349,10 +318,10 @@ def edit_components(
     rest: hk.api.RESTClient,
     /,
     *action_rows: hk.api.ActionRowBuilder,
-    edits: t.Callable[[_C_contra], _C_contra],
-    reverts: Option[t.Callable[[_C_contra], _C_contra]] = None,
-    predicates: Option[t.Callable[[_C_contra], bool]] = None,
-) -> tuple[hk.api.ActionRowBuilder]:
+    edits: MapSig[_BuilderT],
+    reverts: Option[MapSig[_BuilderT]] = None,
+    predicates: Option[PredicateSig[_BuilderT]] = None,
+) -> tuple[hk.api.ActionRowBuilder, ...]:
     reverts = reverts or (lambda _: _)
     predicates = predicates or (lambda _: True)
 
@@ -361,7 +330,12 @@ def edit_components(
         components = ar.components
         ar = rest.build_action_row()
         for c in map(
-            lambda c_: (edits(c_) if predicates(c_) else reverts(c_)),
+            lambda c_: (
+                # TODO: Find out why is pyright complaining at this line
+                edits(c_)  # pyright: ignore [reportGeneralTypeIssues]
+                if predicates(c_)  # pyright: ignore [reportGeneralTypeIssues]
+                else reverts(c_)  # pyright: ignore [reportGeneralTypeIssues]
+            ),
             components,
         ):
             ar.add_component(c)
@@ -397,10 +371,8 @@ def trigger_thinking(
     flags: hk.UndefinedOr[int | msgflag] = hk.UNDEFINED,
 ):
     if isinstance(ctx, tj.abc.MessageContext) or ctx.has_responded:
-        ch = ctx.get_channel()
-        assert ch
+        ch = t.cast(hk.TextableGuildChannel, ctx.get_channel())
         return ch.trigger_typing()
-    assert isinstance(ctx, tj.abc.AppCommandContext)
 
     @ctxlib.asynccontextmanager
     async def _defer():
@@ -418,20 +390,13 @@ async def start_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert bot
 
-    cmd_n = ''.join((get_pref(ctx), get_cmd_repr(ctx)))
-    cmd = ctx.command
-    if t.TYPE_CHECKING:
-        match cmd.type:
-            case hk.CommandType.SLASH:
-                cmd: tj.SlashCommand[AsyncVoidFunction]
-            case hk.CommandType.MESSAGE:
-                cmd: tj.MenuCommand[AsyncVoidFunction, hk.CommandType.MESSAGE]
-            case hk.CommandType.USER:
-                cmd: tj.MenuCommand[AsyncVoidFunction, hk.CommandType.USER]
-            case _:
-                cmd: tj.MessageCommand[AsyncVoidFunction]
+    cmd_r = get_full_cmd_repr(ctx)
+    cmd = t.cast(
+        GenericMessageCommandType | GenericSlashCommandType | GenericMenuCommandType,
+        ctx.command,
+    )
 
-    callback: Option[AsyncVoidFunction] = cmd.callback
+    callback = cmd.callback
     docs = callback.__doc__
 
     row = (
@@ -444,7 +409,7 @@ async def start_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
         .add_to_container()
     )
     embed = hk.Embed(
-        title=f'⚠️ Confirmation prompt for command `{cmd_n}`',
+        title=f'⚠️ Confirmation prompt for command {cmd_r}',
         description="This will: __**%s**__\n\n" % docs if docs else None,
         color=0xDBDBDB,
     ).set_footer('Click the ✅ button below to proceed, or ❌ to cancel')
@@ -459,22 +424,10 @@ async def start_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
         and e.interaction.user.id == ctx.author.id,
     )
 
-    inter = event.interaction
-    assert isinstance(inter, hk.ComponentInteraction)
+    inter = t.cast(hk.ComponentInteraction, event.interaction)
     await inter.create_initial_response(hk.ResponseType.DEFERRED_MESSAGE_UPDATE)
     if inter.custom_id != 'prompt_y':
         raise CommandCancelled
-
-
-_CMD = t.TypeVar('_CMD', bound=BaseCommandType)
-
-
-def with_metadata(**kwargs: t.Any) -> t.Callable[[_CMD], _CMD]:
-    def _with_metadata(cmd: _CMD) -> _CMD:
-        cmd.metadata.update(**kwargs)
-        return cmd
-
-    return _with_metadata
 
 
 _P_mgT = t.ParamSpec('_P_mgT')
@@ -486,17 +439,13 @@ def with_message_command_group_template(func: t.Callable[_P_mgT, t.Awaitable[Non
         ctx = next((a for a in args if isinstance(a, tj.abc.Context)), None)
         assert ctx
 
-        cmd = ctx.command
-        assert isinstance(cmd, tj.abc.MessageCommandGroup)
-        p = next(iter(ctx.client.prefixes))
-        cmd_n = get_cmd_repr(ctx)
+        cmd = t.cast(GenericMessageCommandGroupType, ctx.command)
+        cmd_r = get_full_cmd_repr(ctx, pretty=False)
         sub_cmds_n = map(lambda s: next(iter(s.names)), cmd.commands)
-        valid_cmds = ', '.join(
-            f"`{p}{cmd_n} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n
-        )
+        valid_cmds = ', '.join(f"`{cmd_r} {sub_cmd_n} ...`" for sub_cmd_n in sub_cmds_n)
         await err_say(
             ctx,
-            del_after=6.5,
+            delete_after=6.5,
             content=f"❌ This is a command group. Use the following subcommands instead:\n{valid_cmds}",
         )
 
@@ -526,7 +475,7 @@ async def restricts_c(
     res_r_all: set[int] = {*(map(int, res_r.setdefault('all', [])))}
     res_u_all: set[int] = {*(map(int, res_u.setdefault('all', [])))}
 
-    author_perms = await tj.utilities.fetch_permissions(
+    author_perms = await tj.permissions.fetch_permissions(
         ctx.client, ctx.member, channel=ctx.channel_id
     )
 
@@ -584,7 +533,7 @@ async def on_parser_error(ctx: tj.abc.Context, error: tj.errors.ParserError) -> 
     await err_say(
         ctx,
         content=msg,
-        del_after=3.5 if not related_errs else 6.5,
+        delete_after=3.5 if not related_errs else 6.5,
     )
 
 
@@ -610,7 +559,6 @@ async def pre_execution(
     g_id = str(ctx.guild_id)
     flt = {'id': g_id}
 
-    # pyright: reportUnknownMemberType=false
     if _g_cfg := cfg.find_one(flt):
         g_cfg = _g_cfg
     else:
@@ -630,7 +578,7 @@ async def pre_execution(
     bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
     assert bot_m
 
-    bot_perms = await tj.utilities.fetch_permissions(
+    bot_perms = await tj.permissions.fetch_permissions(
         ctx.client, bot_m, channel=ctx.channel_id
     )
     if bot_perms & hkperms.MANAGE_MESSAGES:
@@ -644,21 +592,11 @@ def infer_guild(g_r_inf: GuildOrRESTInferable, /) -> hk.Snowflakeish:
     return g_r_inf.guild_id
 
 
-def get_pref(ctx_: Contextish, /):
-    if isinstance(ctx_, tj.abc.MessageContext):
-        return next(iter(ctx_.client.prefixes))
-    if isinstance(ctx_, tj.abc.SlashContext):
-        return '/'
-    if isinstance(ctx_, tj.abc.MenuContext):
-        return '[>]'
-    return ';;'
-
-
 async def fetch_permissions(ctx_: Contextish, /) -> hk.Permissions:
     if isinstance(ctx_, tj.abc.Context):
         member = ctx_.member
         assert member
-        auth_perms = await tj.utilities.fetch_permissions(
+        auth_perms = await tj.permissions.fetch_permissions(
             ctx_.client, member, channel=ctx_.channel_id
         )
     else:
@@ -672,8 +610,9 @@ def get_client(_c_inf: Option[MaybeClientInferable] = None, /) -> tj.abc.Client:
     if isinstance(_c_inf, tj.abc.Context):
         return _c_inf.client
 
-    # pyright: reportGeneralTypeIssues=false
-    _c: tj.Client = globs.client
+    _c: tj.Client = (
+        globs.client  # pyright: ignore [reportGeneralTypeIssues, reportUnknownMemberType]
+    )
     return _c
 
 
@@ -681,49 +620,6 @@ def get_rest(g_r_inf: RESTInferable, /):
     if isinstance(g_r_inf, tj.abc.Context):
         return g_r_inf.rest
     return g_r_inf.app.rest
-
-
-def get_cmd_trigger(cmd: BaseCommandType, /) -> tuple[str]:
-    if isinstance(cmd, tj.abc.SlashCommand | tj.abc.SlashCommandGroup):
-        return (cmd.name,)
-    if isinstance(cmd, tj.abc.MessageCommand | tj.abc.MessageCommandGroup):
-        return (*cmd.names,)
-    if isinstance(cmd, tj.abc.MenuCommand):
-        return (cmd.name,)
-    raise NotImplementedError
-
-
-def get_cmd_handle(cmd: BaseCommandType, /) -> str:
-    if isinstance(cmd, tj.abc.SlashCommand | tj.abc.SlashCommandGroup):
-        return cmd.name
-    if isinstance(cmd, tj.abc.MessageCommand | tj.abc.MessageCommandGroup):
-        return next(iter(cmd.names))
-    if isinstance(cmd, tj.abc.MenuCommand):
-        return cmd.metadata['handle']
-    raise NotImplementedError
-
-
-def get_cmd_repr(ctx: tj.abc.Context, /):
-    cmd = ctx.command
-
-    def _recurse(_cmd: BaseCommandType, _names: list[str]) -> list[str]:
-        if isinstance(_cmd, tj.abc.MessageCommand):
-            _names.append(next(iter(_cmd.names)))
-        elif isinstance(
-            _cmd, tj.abc.SlashCommand | tj.abc.SlashCommandGroup | tj.abc.MenuCommand
-        ):
-            _names.append(_cmd.name)
-
-        if not (
-            parent_cmd := getattr(
-                _cmd, 'parent', None  # pyright: ignore [reportUnknownArgumentType]
-            )
-        ):
-            return _names
-        return _recurse(parent_cmd, _names)
-
-    assert cmd
-    return ' '.join(_recurse(cmd, [])[::-1])
 
 
 def get_guild_upload_limit(guild: hk.Guild, /) -> int:
@@ -750,7 +646,7 @@ def limit_img_size_by_guild(
 
 def color_hash_obj(any_: t.Any) -> hk.Color:
     _r = repr(any_)
-    h = hl.sha256(bytes(_r))
+    h = hl.sha256(_r.encode('ascii'))
     h_d = int(h.hexdigest(), 16)
 
     r = (h_d & 0xFF0000) >> 16

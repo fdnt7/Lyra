@@ -8,6 +8,8 @@ import lavasnek_rs as lv
 
 from hikari.permissions import Permissions as hkperms
 
+from .cmd import get_full_cmd_repr_from_identifier
+from .cmd.ids import CommandIdentifier
 from .utils import (
     DJ_PERMS,
     RESTRICTOR,
@@ -16,7 +18,6 @@ from .utils import (
     err_say,
     fetch_permissions,
     get_client,
-    get_pref,
     say,
 )
 from .extras import Option, Result, lgfmt
@@ -31,9 +32,9 @@ from .errors import (
     RequestedToSpeak,
     Restricted,
 )
-from .expects import CheckErrorExpects
 from .dataimpl import LyraDBCollectionType
-from .lavautils import access_data, access_queue
+from .lava.utils import access_data, access_queue
+from .errors.expects import CheckErrorExpects
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -68,8 +69,9 @@ async def join(
         new_ch = channel.id
         # Join the specified voice channel
 
-    old_conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
-    assert isinstance(old_conn, dict) or old_conn is None
+    old_conn = t.cast(
+        Option[ConnectionInfo], lvc.get_guild_gateway_connection_info(ctx.guild_id)
+    )
     assert new_ch is not None
 
     # Check if the bot is already connected and the user tries to change
@@ -91,7 +93,7 @@ async def join(
     bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
     assert bot_m
 
-    my_perms = await tj.utilities.fetch_permissions(ctx.client, bot_m, channel=new_ch)
+    my_perms = await tj.permissions.fetch_permissions(ctx.client, bot_m, channel=new_ch)
     if not (my_perms & (p := hkperms.CONNECT)):
         raise Forbidden(p, channel=new_ch)
 
@@ -106,13 +108,13 @@ async def join(
         *(
             map(
                 int,
-                res_ch.get('all', []),  # pyright: ignore [reportUnknownArgumentType]
+                res_ch.get('all', t.cast(list[int], [])),
             )
         )
     }
     ch_wl: t.Literal[-1, 0, 1] = res_ch.get('wl_mode', 0)
 
-    author_perms = await tj.utilities.fetch_permissions(
+    author_perms = await tj.permissions.fetch_permissions(
         ctx.client, ctx.member, channel=ctx.channel_id
     )
 
@@ -158,12 +160,14 @@ async def join(
 async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Result[hk.Snowflakeish]:
     assert ctx.guild_id
 
-    if not (conn := lvc.get_guild_gateway_connection_info(ctx.guild_id)):
+    if not (
+        conn := t.cast(
+            ConnectionInfo, lvc.get_guild_gateway_connection_info(ctx.guild_id)
+        )
+    ):
         raise NotConnected
 
-    assert isinstance(conn, dict)
-    curr_channel: int = conn['channel_id']
-    assert isinstance(curr_channel, int)
+    curr_channel: int = t.cast(int, conn['channel_id'])
 
     await others_not_in_vc_check_impl(ctx, conn)
 
@@ -215,10 +219,12 @@ async def join_impl_precaught(
         await say(ctx, content=msg)
         return sig.new_channel
     except Restricted as exc:
-        p = get_pref(ctx)
+        cmd_r = get_full_cmd_repr_from_identifier(
+            CommandIdentifier.CONFIG_RESTRICT_LIST, ctx
+        )
         await err_say(
             ctx,
-            content=f"🚷 This voice channel is {'blacklisted from being' if exc.mode == -1 else 'not whitelisted to be'} connected. Consider checking the restricted channels list from `{p}config restrict list`",
+            content=f"🚷 This voice channel is {'blacklisted from being' if exc.mode == -1 else 'not whitelisted to be'} connected. Consider checking the restricted channels list from {cmd_r}",
         )
     except AlreadyConnected as exc:
         await err_say(ctx, content=f"❗ Already connected to <#{exc.channel}>")

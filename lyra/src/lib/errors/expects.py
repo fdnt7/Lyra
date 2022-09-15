@@ -5,9 +5,7 @@ import asyncio
 import attr as a
 import lavasnek_rs as lv
 
-from .utils import Contextish, dj_perms_fmt, err_say, get_pref, get_rest, say
-from .extras import Result, format_flags
-from .errors import (
+from . import (
     CommandCancelled,
     ErrorNotRecognized,
     InternalError,
@@ -27,6 +25,13 @@ from .errors import (
     NoPlayableTracks,
     NotDeveloper,
 )
+from ..cmd import get_full_cmd_repr_from_identifier
+from ..cmd.ids import CommandIdentifier
+from ..utils import Contextish, dj_perms_fmt, err_say, get_rest, say
+from ..extras import Result, format_flags
+
+
+ExpectSig = t.Callable[[], t.Awaitable[None]]
 
 
 @a.frozen
@@ -34,9 +39,7 @@ class BaseErrorExpects(abc.ABC):
     context: Contextish
 
     @abc.abstractmethod
-    def match_expect(
-        self, error: Exception, /
-    ) -> Result[t.Callable[[], t.Awaitable[None]]]:
+    def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
         ...
 
     @abc.abstractmethod
@@ -93,10 +96,14 @@ class CheckErrorExpects(BaseErrorExpects):
         )
 
     async def expect_not_connected(self):
-        p = get_pref(ctx := self.context)
+        join_r = get_full_cmd_repr_from_identifier(
+            CommandIdentifier.JOIN, ctx := self.context
+        )
+        play_r = get_full_cmd_repr_from_identifier(CommandIdentifier.PLAY, ctx)
+
         await err_say(
             ctx,
-            content=f"❌ Not currently connected to any channel. Use `{p}join` or `{p}play` first",
+            content=f"❌ Not currently connected to any channel. Use {join_r} or {play_r} first",
         )
 
     async def expect_queue_empty(self):
@@ -120,10 +127,15 @@ class CheckErrorExpects(BaseErrorExpects):
         await err_say(self.context, content="❗ The current track is paused")
 
     async def expect_track_stopped(self):
-        p = get_pref(ctx := self.context)
+        skip_r = get_full_cmd_repr_from_identifier(
+            CommandIdentifier.SKIP, ctx := self.context
+        )
+        restart_r = get_full_cmd_repr_from_identifier(CommandIdentifier.RESTART, ctx)
+        remove_r = get_full_cmd_repr_from_identifier(CommandIdentifier.REMOVE, ctx)
+
         await err_say(
             ctx,
-            content=f"❗ The current track had been stopped. Use `{p}skip`, `{p}restart` or `{p}remove` the current track first",
+            content=f"❗ The current track had been stopped. Use {skip_r}, {restart_r} or {remove_r} for the current track first",
         )
 
     async def expect_query_empty(self, error: QueryEmpty, /):
@@ -137,9 +149,7 @@ class CheckErrorExpects(BaseErrorExpects):
     async def expect_not_developer(self):
         await err_say(self.context, content="🚫⚙️ Reserved for bot's developers only")
 
-    def match_expect(
-        self, error: Exception, /
-    ) -> Result[t.Callable[[], t.Awaitable[None]]]:
+    def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
         match error:
             case lv.NetworkError():
                 return lambda: self.expect_network_error()
@@ -194,15 +204,15 @@ class BindErrorExpects(BaseErrorExpects):
         )
 
     async def expect_not_in_voice(self):
-        p = get_pref(ctx := self.context)
+        join_r = get_full_cmd_repr_from_identifier(
+            CommandIdentifier.JOIN, ctx := self.context
+        )
         await err_say(
             ctx,
-            content=f"❌ Please join a voice channel first. You can also do `{p}join channel:` `[🔊 ...]`",
+            content=f"❌ Please join a voice channel first. You can also do {join_r} `channel:` `[🔊 ...]`",
         )
 
-    def match_expect(
-        self, error: Exception, /
-    ) -> Result[t.Callable[[], t.Awaitable[None]]]:
+    def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
         match error:
             case NotInVoice():
                 return lambda: self.expect_not_in_voice()

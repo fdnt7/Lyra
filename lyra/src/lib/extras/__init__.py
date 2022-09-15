@@ -9,28 +9,32 @@ import itertools as it
 import collections as cl
 
 # pyright: reportUnusedImport=false
-from ._extras_types import (
+from .types import (
     Option,
-    Decorator,
-    _DecoratedT,  # pyright: ignore [reportPrivateUsage]
-    Coro,
     Result,
+    KeySig,
+    PredicateSig,
+    DecorateSig,
+    ArgsDecorateSig,
+    # -
+    Coro,
     Panic,
     NULL,
     RGBTriplet,
     MaybeIterable,
-    AsyncVoidFunction,
+    MapSig,
+    AsyncVoidAnySig,
     URLstr,
 )
-from ._extras_vars import time_regex, time_regex_2, url_regex, loop
-from ._extras_untyped import (
+from .vars import time_regex, time_regex_2, url_regex, loop
+from .untyped import (
     limit_bytes_img_size,
     get_img_pallete,
     get_thumbnail,
     get_lyrics,
     url_to_bytesio,
 )
-from .consts import LOG_PAD
+from ..consts import LOG_PAD
 
 
 class AutoDocsFlag(e.Flag):
@@ -105,11 +109,11 @@ class List(list[_E]):
         func: t.Callable[[_E], t.Any],
         /,
         *,
-        predicate: Option[t.Callable[[_E], bool]] = None,
+        predicate: Option[PredicateSig[_E]] = None,
     ):
         map_in_place(func, self, predicate=predicate)
 
-    def filter_sub(self, predicate: Option[t.Callable[[_E], bool]] = None):
+    def filter_sub(self, predicate: Option[PredicateSig[_E]] = None):
         self.map_in_place(lambda e: self.remove(e), predicate=predicate)
 
     @property
@@ -237,7 +241,10 @@ def fmt_str(iter_strs: t.Iterable[str], /, *, sep: str = ', ') -> str:
     return sep.join('\"%s\"' % s for s in iter_strs)
 
 
-def composed(*decs: Decorator[_DecoratedT]) -> Decorator[_DecoratedT]:
+_DecoratedT = t.TypeVar('_DecoratedT')
+
+
+def composed(*decs: DecorateSig[_DecoratedT]) -> DecorateSig[_DecoratedT]:
     def decorator(f: _DecoratedT) -> _DecoratedT:
         for dec in reversed(decs):
             f = dec(f)
@@ -251,7 +258,7 @@ _KE = t.TypeVar('_KE')
 
 
 def groupby(
-    seq: t.Iterable[__E], /, *, key: Option[t.Callable[[__E], _KE]] = None
+    seq: t.Iterable[__E], /, *, key: Option[KeySig[__E, _KE]] = None
 ) -> dict[_KE, list[__E]]:
     key = key or (lambda _: t.cast(_KE, _))
     return ft.reduce(
@@ -295,7 +302,7 @@ def map_in_place(
     iter_: t.Iterable[_E],
     /,
     *,
-    predicate: Option[t.Callable[[_E], bool]] = None,
+    predicate: Option[PredicateSig[_E]] = None,
 ):
     predicate = predicate or (lambda _: True)
     for e in iter_:

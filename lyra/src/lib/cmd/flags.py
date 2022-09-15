@@ -1,3 +1,4 @@
+import typing as t
 import asyncio
 
 import hikari as hk
@@ -7,7 +8,7 @@ import lavasnek_rs as lv
 
 from hikari.permissions import Permissions as hkperms
 
-from .utils import (
+from ..utils import (
     DJ_PERMS,
     TIMEOUT,
     BindSig,
@@ -18,7 +19,7 @@ from .utils import (
     get_client,
     start_confirmation_prompt,
 )
-from .errors import (
+from ..errors import (
     AlreadyConnected,
     CommandCancelled,
     NotDeveloper,
@@ -31,10 +32,10 @@ from .errors import (
     Unauthorized,
     VotingTimeout,
 )
-from .expects import BindErrorExpects, CheckErrorExpects
-from .extras import AutoDocsFlag, Result, Panic
-from .lavautils import get_queue
-from .connections import others_not_in_vc_check_impl
+from ..errors.expects import BindErrorExpects, CheckErrorExpects
+from ..extras import AutoDocsFlag, Result, Option, Panic
+from ..lava.utils import get_queue
+from ..connections import others_not_in_vc_check_impl
 
 
 class Checks(AutoDocsFlag):
@@ -56,7 +57,7 @@ class Checks(AutoDocsFlag):
 
     NP_YOURS = """Checks whether you requested the current track or you have the DJ permissions"""
 
-    ADVANCE = STOP = """Check whether the current track had been stopped"""
+    ADVANCE = """Check whether the current track had been stopped"""
 
     PLAYBACK = PAUSE = """Checks whether the currently playing track had been paused"""
 
@@ -102,7 +103,7 @@ async def speaker_check(ctx_: Contextish, /) -> Result[bool]:
 
 
 async def developer_check(ctx: tj.abc.Context, /) -> Result[bool]:
-    from ..lib import consts as c
+    from .. import consts as c
 
     if int(ctx.author.id) not in c.__developers__:
         raise NotDeveloper
@@ -184,8 +185,10 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     ) -> Panic[bool]:
         assert ctx.guild_id
 
-        conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
-        assert isinstance(conn, dict)
+        conn = t.cast(
+            Option[ConnectionInfo], lvc.get_guild_gateway_connection_info(ctx.guild_id)
+        )
+        assert conn is not None
         try:
             return await __check_in_vc(ctx, conn)
         except AlreadyConnected as exc:
@@ -228,7 +231,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     ) -> Result[bool]:
         if (cmd := ctx.command) and Binds.VOTE in cmd.metadata.get('binds', set()):
             try:
-                from .musicutils import start_listeners_voting
+                from ..musicutils import start_listeners_voting
 
                 await start_listeners_voting(ctx, lvc)
             except VotingTimeout:
@@ -266,8 +269,10 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     ) -> Panic[bool]:
         assert ctx.guild_id
 
-        conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
-        assert isinstance(conn, dict)
+        conn = t.cast(
+            Option[ConnectionInfo], lvc.get_guild_gateway_connection_info(ctx.guild_id)
+        )
+        assert conn is not None
         try:
             return await others_not_in_vc_check_impl(ctx, conn, perms=DJ_PERMS)
         except OthersInVoice as exc:
@@ -303,7 +308,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         _checks.append(_as_in_vc_check)
     if Checks.OTHERS_NOT_IN_VC & checks:
         _checks.append(_as_others_not_in_vc_check)
-    if Checks.STOP & checks:
+    if Checks.ADVANCE & checks:
         _checks.append(_as_stop_check)
     if Checks.PAUSE & checks:
         _checks.append(_as_pause_check)
@@ -374,7 +379,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
             return True
         async with ch.trigger_typing():
             try:
-                from .connections import join_impl_precaught
+                from ..connections import join_impl_precaught
 
                 vc = await join_impl_precaught(ctx, lvc)
             except RequestedToSpeak as sig:

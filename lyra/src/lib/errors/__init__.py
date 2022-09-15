@@ -7,7 +7,7 @@ import lavasnek_rs as lv
 
 from hikari.permissions import Permissions as hkperms
 
-from ._extras_types import Option
+from ..extras.types import Option
 
 
 @a.frozen

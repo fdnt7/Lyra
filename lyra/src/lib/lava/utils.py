@@ -11,10 +11,10 @@ import attr as a
 import hikari as hk
 import lavasnek_rs as lv
 
-from .consts import STOP_REFRESH
-from .utils import GuildOrInferable, infer_guild, limit_img_size_by_guild
-from .errors import NotConnected, QueueEmpty
-from .extras import (
+from ..utils import GuildOrInferable, infer_guild, limit_img_size_by_guild
+from ..errors import NotConnected, QueueEmpty
+from ..consts import STOP_REFRESH
+from ..extras import (
     List,
     Option,
     Result,
@@ -243,10 +243,8 @@ class Bands(tuple[float]):
         if key in (cached := cls.__cached_bands):
             return cached[key]
 
-        bands = loaded[key]['bands']
-        name = loaded[key]['name']
-
-        assert isinstance(bands, list) and isinstance(name, str)
+        bands = t.cast(list[float], loaded[key]['bands'])
+        name = t.cast(str, loaded[key]['name'])
 
         obj = super().__new__(cls, bands)
         obj.__init__(name=name, key_=key)
@@ -330,8 +328,7 @@ async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, /) -> Panic[NodeDat
     node = await lvc.get_guild_node(guild)
     if not node:
         raise NotConnected
-    data = node.get_data() or NodeData()
-    assert isinstance(data, NodeData)
+    data = t.cast(NodeData, node.get_data() or NodeData())
     return data
 
 

@@ -6,13 +6,13 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from ..lib.extras import Option, Panic
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.compose import with_identifier
+from ..lib.extras import Option, Panic
+from ..lib.utils import ConnectionInfo, JoinableChannelType, dj_perms_fmt, say, err_say
+from ..lib.lava.utils import get_data, access_data, set_data
 from ..lib.musicutils import __init_component__
-from ..lib.utils import JoinableChannelType, dj_perms_fmt, say, err_say
-from ..lib.lavautils import get_data, access_data, set_data
-from ..lib.utils import dj_perms_fmt, say, err_say
-from ..lib.extras import Option
 from ..lib.errors import (
     NotInVoice,
     OthersInVoice,
@@ -46,7 +46,10 @@ async def on_voice_state_update(
     lvc: al.Injected[lv.Lavalink],
 ):
     def conn():
-        return lvc.get_guild_gateway_connection_info(event.guild_id)
+        return t.cast(
+            Option[ConnectionInfo],
+            lvc.get_guild_gateway_connection_info(event.guild_id),
+        )
 
     new = event.state
     old = event.old_state
@@ -62,7 +65,7 @@ async def on_voice_state_update(
         cache = client.cache
         if not _conn:
             return frozenset()
-        assert isinstance(_conn, dict) and cache
+        assert cache
         ch_id: int = _conn['channel_id']
         return (
             await cache.get_voice_states_view_for_channel(event.guild_id, ch_id)
@@ -105,7 +108,6 @@ async def on_voice_state_update(
 
     if not (_conn := conn()):
         return
-    assert isinstance(_conn, dict)
 
     async def on_everyone_leaves_vc():
         logger.debug(
@@ -120,7 +122,7 @@ async def on_voice_state_update(
             await asyncio.sleep(60)
 
         __conn = conn()
-        assert isinstance(__conn, dict)
+        assert __conn
 
         async with access_data(event.guild_id, lvc) as d:
             d.vc_change_intended = True
@@ -155,6 +157,8 @@ async def on_voice_state_update(
 
 
 # TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_identifier(C.JOIN)
+# -
 @tj.with_channel_slash_option(
     'channel',
     "Which channel? (If not given, your currently connected channel)",
@@ -189,6 +193,8 @@ async def join_(
 # /leave
 
 
+@with_identifier(C.LEAVE)
+# -
 @tj.as_slash_command('leave', "Leaves the voice channel and clears the queue")
 @tj.as_message_command(
     'leave', 'l', 'lv', 'dc', 'disconnect', 'discon', 'eddisntheregoaway'

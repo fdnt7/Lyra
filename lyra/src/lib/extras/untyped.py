@@ -17,8 +17,8 @@ import lavasnek_rs as lv
 
 from PIL import Image as pil_img
 
-from ._extras_types import Option, OptionResult, URLstr, RGBTriplet
-from ._extras_vars import (
+from .types import Option, OptionResult, URLstr, RGBTriplet
+from .vars import (
     ytm_api,
     gn_api,
     sc_api,
@@ -27,6 +27,8 @@ from ._extras_vars import (
     youtube_regex,
     soundcloud_regex,
 )
+
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 
 class LyricsData(t.NamedTuple):
@@ -40,7 +42,6 @@ class LyricsData(t.NamedTuple):
     artist_url: Option[str] = None
 
 
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 async def get_lyrics_yt(song: str, /) -> Option[LyricsData]:
     queried = ytm_api.search(song, 'songs') + ytm_api.search(song, 'videos')
     if not queried:
@@ -51,8 +52,7 @@ async def get_lyrics_yt(song: str, /) -> Option[LyricsData]:
     if watches['lyrics'] is None:
         return None
 
-    lyrics_id = watches['lyrics']
-    assert isinstance(lyrics_id, str)
+    lyrics_id = t.cast(str, watches['lyrics'])
     lyrics: dict[str, str] = ytm_api.get_lyrics(lyrics_id)
     source: str = lyrics['source'].replace("Source: ", '')
 
@@ -91,7 +91,7 @@ async def get_lyrics_ge(song: str, /) -> Option[LyricsData]:
 
 
 async def get_lyrics(song: str, /) -> dict[str, LyricsData]:
-    from .errors import LyricsNotFound
+    from ..errors import LyricsNotFound
 
     # tests = (get_lyrics_ge(song), get_lyrics_yt(song))
     tests = (get_lyrics_yt(song),)
@@ -195,7 +195,6 @@ def get_thumbnail(t_info: lv.Info, /) -> OptionResult[URLstr | bytes]:
                 continue
         raise ValueError('Malformed youtube thumbnail uri')
     if soundcloud_regex.fullmatch(uri):
-        track = sc_api.resolve(uri)
-        assert isinstance(track, sc.Track)
+        track = t.cast(sc.Track, sc_api.resolve(uri))
         return track.artwork_url
     return get_url_audio_album_art(uri)

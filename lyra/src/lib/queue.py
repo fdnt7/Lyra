@@ -35,8 +35,8 @@ from .errors import (
     OthersInVoice,
     PlaybackChangeRefused,
 )
-from .compose import others_not_in_vc_check
-from .lavautils import (
+from .cmd.compose import others_not_in_vc_check
+from .lava.utils import (
     QueueList,
     RepeatMode,
     Trackish,
@@ -327,9 +327,9 @@ async def insert_track(
         async with while_stop(ctx, lvc, d):
             await skip(ctx, lvc, advance=False, reset_repeat=True, change_stop=False)
 
-    q[t_] = NULL  # pyright: ignore [reportGeneralTypeIssues]
+    q[t_] = t.cast(lv.TrackQueue, NULL)
     q.insert(insert, ins)
-    q.remove(NULL)  # pyright: ignore [reportGeneralTypeIssues]
+    q.remove(t.cast(lv.TrackQueue, NULL))
 
     await set_data(ctx.guild_id, lvc, d)
     return ins
@@ -361,7 +361,7 @@ async def repeat_abs(
     else:
         raise NotImplementedError
 
-    from .lavautils import get_repeat_emoji
+    from .lava.utils import get_repeat_emoji
 
     await say(ctx_, show_author=True, content=f"{e} {msg}")
     if d.nowplaying_msg:

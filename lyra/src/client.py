@@ -24,6 +24,8 @@ from .lib import (
 )
 from .lib.dataimpl import __init_mongo_client__
 
+# pyright: reportUnknownMemberType=false
+
 
 logger = logging.getLogger(lgfmt(__name__))
 logger.setLevel(logging.DEBUG)
@@ -70,7 +72,6 @@ async def prefix_getter(
     g_id = str(ctx.guild_id)
     flt = {'id': g_id}
 
-    # pyright: reportUnknownMemberType=false
     if _g_cfg := cfg.find_one(flt):
         g_cfg = _g_cfg
     else:

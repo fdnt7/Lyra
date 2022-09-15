@@ -9,7 +9,9 @@ import tanjun.annotations as ja
 
 from hikari.permissions import Permissions as hkperms
 
-from ..lib.flags import as_developer_check
+from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.flags import as_developer_check
+from ..lib.cmd.compose import with_identifier
 from ..lib.musicutils import __init_component__
 from ..lib.extras import lgfmt
 from ..lib.utils import (
@@ -22,7 +24,7 @@ from ..lib.utils import (
 
 debug = (
     __init_component__(
-        __name__, guild_check=False, music_hook=False, other_checks={as_developer_check}
+        __name__, guild_check=False, music_hook=False, other_checks=as_developer_check
     )
     .set_default_app_command_permissions(hkperms.ADMINISTRATOR)
     .set_dms_enabled_for_app_cmds(True)
@@ -43,9 +45,13 @@ modules_tup = (*modules,)
 # /debug
 
 
-debug_g_s = tj.slash_command_group('debug', "For debugging purposes only")
+debug_g_s = with_identifier(C.DEBUG)(
+    tj.slash_command_group('debug', "For debugging purposes only")
+)
 
 
+@with_identifier(C.DEBUG)
+# -
 @tj.as_message_command_group(
     'debug',
     'dbg',
@@ -62,11 +68,15 @@ async def debug_g_m(_: tj.abc.MessageContext):
 ## /debug module
 
 
-module_sg_s = debug_g_s.with_command(
-    tj.slash_command_group('module', "Manages the bot's modules")
+module_sg_s = with_identifier(C.DEBUG_MODULE)(
+    debug_g_s.with_command(
+        tj.slash_command_group('module', "Manages the bot's modules")
+    )
 )
 
 
+@with_identifier(C.DEBUG_MODULE)
+# -
 @debug_g_m.with_command
 @tj.as_message_command_group(
     'module',
@@ -86,6 +96,7 @@ async def module_sg_m(_: tj.abc.MessageContext):
 
 
 @with_annotated_args
+@with_identifier(C.DEBUG_MODULE_RELOAD)
 # -
 @module_sg_s.with_command
 @tj.as_slash_command('reload', "Reloads a module")
@@ -110,6 +121,7 @@ async def reload_module(
 
 
 @with_annotated_args
+@with_identifier(C.DEBUG_MODULE_UNLOAD)
 # -
 @module_sg_s.with_command
 @tj.as_slash_command('unload', "Unloads a module")
@@ -135,6 +147,7 @@ async def unload_module(
 
 
 @with_annotated_args
+@with_identifier(C.DEBUG_MODULE_LOAD)
 # -
 @module_sg_s.with_command
 @tj.as_slash_command('load', "Loads a module")
@@ -159,11 +172,15 @@ async def load_module(
 ## /debug command
 
 
-command_sg_s = debug_g_s.with_command(
-    tj.slash_command_group('command', "Manages the bot's commands")
+command_sg_s = with_identifier(C.DEBUG_COMMAND)(
+    debug_g_s.with_command(
+        tj.slash_command_group('command', "Manages the bot's commands")
+    )
 )
 
 
+@with_identifier(C.DEBUG_COMMAND)
+# -
 @debug_g_m.with_command
 @tj.as_message_command_group(
     'commands',
@@ -181,6 +198,8 @@ async def command_sg_m(_: tj.abc.MessageContext):
 ### /debug command delete-all
 
 
+@with_identifier(C.DEBUG_COMMAND_DELETEALL)
+# -
 @command_sg_s.with_command
 @tj.as_slash_command('delete-all', "Deletes all application commands")
 @command_sg_m.with_command
