@@ -18,11 +18,6 @@ from .vars import RESTRICTOR, base_h, EmojiRefs, DJ_PERMS, dj_perms_fmt, guild_c
 from .types import (
     Contextish,
     EitherContext,
-    GenericCommandType,
-    GenericMenuCommandType,
-    GenericMessageCommandGroupType,
-    GenericMessageCommandType,
-    GenericSlashCommandType,
     GuildOrInferable,
     GuildOrRESTInferable,
     GuildInferableEvents,
@@ -39,6 +34,12 @@ from .types import (
     with_annotated_args,
 )
 from ..cmd import get_full_cmd_repr
+from ..cmd.types import (
+    GenericMenuCommandType,
+    GenericMessageCommandGroupType,
+    GenericMessageCommandType,
+    GenericSlashCommandType,
+)
 from ..consts import TIMEOUT, Q_CHUNK
 from ..errors import BaseLyraException, CommandCancelled
 from ..extras import (

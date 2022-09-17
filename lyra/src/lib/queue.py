@@ -46,7 +46,7 @@ from .lava.utils import (
     get_data,
     set_data,
 )
-from .playback import back, skip, while_stop
+from .playback import back, skip, while_stop, set_pause
 from .dataimpl import LyraDBClientType
 
 
@@ -194,8 +194,6 @@ async def add_tracks_(
 async def remove_track(
     ctx: tj.abc.Context, track: Option[str], lvc: lv.Lavalink, /
 ) -> Result[lv.TrackQueue]:
-    from .playback import while_stop, skip
-
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
@@ -236,7 +234,7 @@ async def remove_track(
     q.sub(rm)
 
     logger.info(
-        f"In guild {ctx.guild_id} track [{i: >3}+1/{len(q)}] removed: '{rm.track.info.title}'"
+        f"In guild {ctx.guild_id} track [{i: >3}/{len(q): >3}] removed: '{rm.track.info.title}'"
     )
 
     await set_data(ctx.guild_id, lvc, d)
@@ -246,8 +244,6 @@ async def remove_track(
 async def remove_tracks(
     ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
 ) -> Result[list[lv.TrackQueue]]:
-    from .playback import while_stop, set_pause
-
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
@@ -270,7 +266,7 @@ async def remove_tracks(
     q.sub(*rm)
 
     logger.info(
-        f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}/{len(q)}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
+        f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}/{len(q): >3}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
     )
 
     await set_data(ctx.guild_id, lvc, d)

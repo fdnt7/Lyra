@@ -18,11 +18,11 @@ from .lib import (
     repeat_emojis,
     EmojiRefs,
     base_h,
+    __init_mongo_client__,
     restricts_c,
     inj_glob,
     lgfmt,
 )
-from .lib.dataimpl import __init_mongo_client__
 
 # pyright: reportUnknownMemberType=false
 
@@ -59,7 +59,10 @@ _client = globs.__init_client__(
     .set_dms_enabled_for_app_cmds(False)
 )
 
-activity = hk.Activity(name='/play', type=hk.ActivityType.LISTENING)
+activity = hk.Activity(
+    name="%s" % '/play',
+    type=hk.ActivityType.LISTENING,
+)
 
 emoji_refs = EmojiRefs({})
 

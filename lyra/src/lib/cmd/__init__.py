@@ -1,12 +1,13 @@
 import typing as t
+import functools as ft
 
 import tanjun as tj
 import hikari as hk
 
-
 from .ids import CommandIdentifier
-from ..utils.types import (
-    Contextish,
+from .types import (
+    AlmostGenericAnyCommandType,
+    GenericAnyCommandGroupType,
     GenericAnyCommandType,
     GenericAnySlashCommandType,
     GenericCommandType,
@@ -16,17 +17,18 @@ from ..utils.types import (
     SlashCommandGroupType,
     SlashCommandType,
 )
+from ..utils.types import (
+    Contextish,
+)
+from ..extras import FlattenerSig, recurse
 from ..extras.types import Option
 
 
-def get_pref(ctx_: Contextish, /):
-    if isinstance(ctx_, tj.abc.MessageContext):
-        return next(iter(ctx_.client.prefixes))
-    if isinstance(ctx_, tj.abc.SlashContext):
-        return '/'
-    if isinstance(ctx_, tj.abc.MenuContext):
-        return '[>]'
-    return ';;'
+def get_pref(ctx_: Contextish, /) -> str:
+    from ..utils import get_client
+
+    client = get_client(ctx_)
+    return next(iter(client.prefixes))
 
 
 def get_cmd_name(cmd: GenericCommandType, /) -> tuple[str]:
@@ -67,44 +69,126 @@ def get_cmd_id(cmd: GenericAnySlashCommandType, /) -> hk.Snowflake:
     return _recurse(cmd)
 
 
+@t.overload
 def get_full_cmd_repr(
-    ctx_: Contextish,
+    ctx: tj.abc.Context,
+    /,
+    cmd: Option[GenericAnyCommandType] = None,
+    *,
+    pretty: bool = True,
+) -> str:
+    ...
+
+
+@t.overload
+def get_full_cmd_repr(
+    ctx_: hk.ComponentInteraction,
+    /,
+    cmd: GenericAnySlashCommandType,
+    *,
+    pretty: bool = True,
+) -> str:
+    ...
+
+
+@t.overload
+def get_full_cmd_repr(
+    _: None, /, cmd: GenericAnySlashCommandType, *, pretty: bool = True
+) -> str:
+    ...
+
+
+def get_full_cmd_repr(
+    _ctx_: Option[Contextish],
     /,
     cmd: Option[GenericAnyCommandType] = None,
     *,
     pretty: bool = True,
 ):
-    p = get_pref(ctx_)
-    if not isinstance(ctx_, tj.abc.Context):
+    if not isinstance(_ctx_, tj.abc.Context):
         if not cmd:
             raise RuntimeError(
-                "Got `ctx` of type `ComponentInteraction` but `cmd` was `None`; No command object can be inferred."
+                "Got `ctx` not of type `tj.abc.Context` but `cmd` was `None`; No command object can be inferred."
             )
     else:
-        cmd = cmd or t.cast(GenericAnyCommandType, ctx_.command)
+        cmd = cmd or t.cast(GenericAnyCommandType, _ctx_.command)
 
     cmd_n = get_full_cmd_name(cmd)
     if isinstance(cmd, SlashCommandType | SlashCommandGroupType) and pretty:
         return f"</{cmd_n}:{get_cmd_id(cmd)}>"
+
+    p = (get_pref(_ctx_)) if _ctx_ else '/'
     joined = ''.join((p, cmd_n))
     return ("`%s`" % joined) if pretty else joined
 
 
+@t.overload
+def get_full_cmd_repr_from_identifier(
+    identifier: CommandIdentifier, /, *, pretty: bool = True
+) -> str:
+    ...
+
+
+@t.overload
 def get_full_cmd_repr_from_identifier(
     identifier: CommandIdentifier, /, ctx_: Contextish, *, pretty: bool = True
+) -> str:
+    ...
+
+
+@t.overload
+def get_full_cmd_repr_from_identifier(
+    identifier: CommandIdentifier, /, client: tj.abc.Client, *, pretty: bool = True
+) -> str:
+    ...
+
+
+def get_full_cmd_repr_from_identifier(
+    identifier: CommandIdentifier,
+    /,
+    _ctx_c: Option[Contextish | tj.abc.Client] = None,
+    *,
+    pretty: bool = True,
 ):
     from ..utils import get_client
 
-    client = get_client(ctx_)
-    if isinstance(ctx_, tj.abc.SlashContext):
+    client = get_client(_ctx_c) or _ctx_c
+    _ctx_ = None if isinstance(_ctx_c, tj.abc.Client) else _ctx_c
+    if not _ctx_ or isinstance(_ctx_, tj.abc.SlashContext):
         cmds = client.iter_slash_commands()
-    elif isinstance(ctx_, tj.abc.MenuContext):
+    elif isinstance(_ctx_, tj.abc.MenuContext):
         cmds = client.iter_menu_commands()
     else:
         cmds = client.iter_message_commands()
-    for cmd in cmds:
+
+    for cmd in recurse_cmds(cmds, keep_group_cmds=True):
         if cmd.metadata['identifier'] == identifier:
+            if _ctx_:
+                return get_full_cmd_repr(
+                    _ctx_, t.cast(GenericAnySlashCommandType, cmd), pretty=pretty
+                )
             return get_full_cmd_repr(
-                ctx_, t.cast(GenericAnyCommandType, cmd), pretty=pretty
+                _ctx_, t.cast(GenericAnySlashCommandType, cmd), pretty=pretty
             )
     raise NotImplementedError
+
+
+def recurse_cmds(
+    cmds: t.Iterable[AlmostGenericAnyCommandType], /, *, keep_group_cmds: bool = False
+) -> t.Iterator[AlmostGenericAnyCommandType]:
+    recurse_part = ft.partial(
+        recurse,
+        recursed=tj.abc.SlashCommandGroup
+        | MessageCommandGroupType,  # pyright: ignore [reportGeneralTypeIssues]
+        include_recursed=keep_group_cmds,
+    )
+    recurser: FlattenerSig[
+        GenericAnyCommandGroupType, AlmostGenericAnyCommandType
+    ] = lambda c: (
+        _c
+        for _c in recurse_part(
+            c.commands,
+            recurser=recurser,
+        )
+    )
+    yield from recurse_part(cmds, recurser=recurser)

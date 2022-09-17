@@ -114,8 +114,6 @@ async def on_voice_state_update(
         return
     assert _conn is not None
 
-    from .playback import set_pause
-
     old_is_stage = (
         None
         if not (old and old.channel_id)
@@ -433,7 +431,10 @@ with_re_cmd_check_and_voting = with_cmd_composer(
 
 @with_re_cmd_check_and_voting(C.RESTART)
 # -
-@tj.as_slash_command('restart', "Restarts the current track; Equivalent to /seek 0:00")
+@tj.as_slash_command(
+    'restart',
+    "Restarts the current track; Equivalent to %s 0:00" % '/seek',
+)
 @tj.as_message_command('restart', 're', '<')
 async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     assert ctx.guild_id

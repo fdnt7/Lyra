@@ -190,13 +190,13 @@ async def cleanup(
     lvc: lv.Lavalink,
     /,
     *,
-    also_disconns: bool = True,
+    also_disconn: bool = True,
 ) -> None:
     async with access_queue(guild, lvc) as q:
         q.clr()
     await lvc.destroy(guild)
     if shards:
-        if also_disconns:
+        if also_disconn:
             await shards.update_voice_state(guild, None)
         await lvc.wait_for_connection_info_remove(guild)
     await lvc.remove_guild_node(guild)

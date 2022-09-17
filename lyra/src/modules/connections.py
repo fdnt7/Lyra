@@ -89,7 +89,7 @@ async def on_voice_state_update(
     # print(conn_cmd_invoked)
     if not conn_cmd_invoked and old and old.user_id == bot_u.id:
         if not new.channel_id:
-            await cleanup(event.guild_id, client.shards, lvc, also_disconns=False)
+            await cleanup(event.guild_id, client.shards, lvc, also_disconn=False)
             await bot.rest.create_message(
                 out_ch,
                 f"🥀📎 ~~<#{(_vc := old.channel_id)}>~~ `(Bot was forcefully disconnected)`",
