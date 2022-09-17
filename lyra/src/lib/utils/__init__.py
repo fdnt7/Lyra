@@ -388,7 +388,7 @@ def extract_content(msg: hk.Message):
 
 async def start_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert bot
+    assert not isinstance(bot, al.abc.Undefined)
 
     cmd_r = get_full_cmd_repr(ctx)
     cmd = t.cast(

@@ -11,7 +11,8 @@ from ..lib.cmd.ids import CommandIdentifier as C
 from ..lib.cmd.compose import with_identifier
 from ..lib.extras import Option, Panic
 from ..lib.utils import ConnectionInfo, JoinableChannelType, dj_perms_fmt, say, err_say
-from ..lib.lava.utils import get_data, access_data, set_data
+from ..lib.lava.utils import get_data
+from ..lib.lava.events import ConnectionCommandsInvokedEvent
 from ..lib.musicutils import __init_component__
 from ..lib.errors import (
     NotInVoice,
@@ -75,11 +76,18 @@ async def on_voice_state_update(
         )
 
     new_vc_id = new.channel_id
-    out_ch = (d := await get_data(event.guild_id, lvc)).out_channel_id
+    out_ch = (await get_data(event.guild_id, lvc)).out_channel_id
     assert out_ch
-    if not d.vc_change_intended and old and old.user_id == bot_u.id:
-        d.vc_change_intended = False
-        await set_data(event.guild_id, lvc, d)
+
+    try:
+        conn_cmd_invoked = await bot.wait_for(
+            ConnectionCommandsInvokedEvent, timeout=0.5
+        )
+    except asyncio.TimeoutError:
+        conn_cmd_invoked = None
+
+    # print(conn_cmd_invoked)
+    if not conn_cmd_invoked and old and old.user_id == bot_u.id:
         if not new.channel_id:
             await cleanup(event.guild_id, client.shards, lvc, also_disconns=False)
             await bot.rest.create_message(
@@ -103,9 +111,6 @@ async def on_voice_state_update(
         )
         return
 
-    d.vc_change_intended = False
-    await set_data(event.guild_id, lvc, d)
-
     if not (_conn := conn()):
         return
 
@@ -124,8 +129,6 @@ async def on_voice_state_update(
         __conn = conn()
         assert __conn
 
-        async with access_data(event.guild_id, lvc) as d:
-            d.vc_change_intended = True
         await cleanup(event.guild_id, client.shards, lvc)
         _vc: int = __conn['channel_id']
         logger.info(

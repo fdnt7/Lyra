@@ -14,6 +14,7 @@ from .utils import (
     get_repeat_emoji,
     wait_until_current_track_valid,
 )
+from .events import TrackStoppedEvent
 from ..utils import EmojiRefs, get_client
 from ..extras import Panic, lgfmt
 from ..errors import QueueEmpty
@@ -55,7 +56,9 @@ class EventHandler(BaseEventHandler):
             cfg = client.get_type_dependency(LyraDBCollectionType)
             erf = client.get_type_dependency(EmojiRefs)
 
-            assert not isinstance(cfg, al.abc.Undefined) and erf
+            assert not isinstance(cfg, al.abc.Undefined) and not isinstance(
+                erf, al.abc.Undefined
+            )
 
             g_cfg = cfg.find_one({'id': str(event.guild_id)})
             assert g_cfg
@@ -114,7 +117,10 @@ class EventHandler(BaseEventHandler):
             client = get_client()
 
             cfg = client.get_type_dependency(LyraDBCollectionType)
-            assert not isinstance(cfg, al.abc.Undefined)
+            bot = client.get_type_dependency(hk.GatewayBot)
+            assert not isinstance(cfg, al.abc.Undefined) and not isinstance(
+                bot, al.abc.Undefined
+            )
 
             g_cfg = cfg.find_one({'id': str(event.guild_id)})
             assert g_cfg
@@ -131,7 +137,7 @@ class EventHandler(BaseEventHandler):
                 logger.info(
                     f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] stopped: '{t}'"
                 )
-                d.track_stopped_fired = True
+                bot.dispatch(TrackStoppedEvent(bot))
                 return
             try:
                 if next_t := q.next:
@@ -148,7 +154,6 @@ class EventHandler(BaseEventHandler):
                 logger.debug(
                     f"In guild {event.guild_id} track [{q.pos: >3}/{l: >3}] ended  : '{t}'"
                 )
-                # d._track_finished_fired = True
 
     async def track_exception(
         self, lvc: lv.Lavalink, event: lv.TrackException, /

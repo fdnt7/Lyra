@@ -103,7 +103,7 @@ class QueueList(List[lv.TrackQueue]):
         return None
 
     @property
-    def playing(self) -> bool:
+    def is_playing(self) -> bool:
         return not (self.is_paused or self.is_stopped) and bool(self.current)
 
     @property
@@ -286,8 +286,6 @@ class NodeData:
     nowplaying_components: Option[t.Sequence[hk.api.ActionRowBuilder]] = a.field(
         default=None, init=False
     )
-    track_stopped_fired: bool = a.field(factory=bool, init=False)
-    vc_change_intended: bool = a.field(factory=bool, init=False)
     ...
 
     async def edit_now_playing_components(

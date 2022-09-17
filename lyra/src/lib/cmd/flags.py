@@ -331,7 +331,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
         ctx: tj.abc.Context, sig: RequestedToSpeak, /
     ) -> Panic[bool]:
         bot = ctx.client.get_type_dependency(hk.GatewayBot)
-        assert bot
+        assert not isinstance(bot, al.abc.Undefined)
 
         if isinstance(ctx, tj.abc.AppCommandContext):
             await ctx.defer()
@@ -372,7 +372,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
 
         ch = ctx.get_channel()
         lvc = ctx.client.get_type_dependency(lv.Lavalink)
-        assert lvc and ch
+        assert not isinstance(lvc, al.abc.Undefined) and ch
 
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
         if conn:

@@ -34,6 +34,7 @@ from .errors import (
 )
 from .dataimpl import LyraDBCollectionType
 from .lava.utils import access_data, access_queue
+from .lava.events import ConnectionCommandsInvokedEvent
 from .errors.expects import CheckErrorExpects
 
 
@@ -55,6 +56,9 @@ async def join(
 
     if not (ctx.cache and ctx.shards):
         raise InternalError
+
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    assert not isinstance(bot, al.abc.Undefined)
 
     if channel is None:
         # If user is connected to a voice channel
@@ -142,8 +146,7 @@ async def join(
         await ctx.rest.edit_my_voice_state(ctx.guild_id, new_ch, request_to_speak=True)
 
     if old_conn and old_ch:
-        async with access_data(ctx, lvc) as d:
-            d.vc_change_intended = True
+        bot.dispatch(ConnectionCommandsInvokedEvent(bot))
         logger.info(
             f"In guild {ctx.guild_id} moved   from    {old_ch} > {ch_type: <7} {new_ch} gracefully"
         )
@@ -160,6 +163,9 @@ async def join(
 async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Result[hk.Snowflakeish]:
     assert ctx.guild_id
 
+    bot = ctx.client.get_type_dependency(hk.GatewayBot)
+    assert not isinstance(bot, al.abc.Undefined)
+
     if not (
         conn := t.cast(
             ConnectionInfo, lvc.get_guild_gateway_connection_info(ctx.guild_id)
@@ -171,11 +177,9 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Result[hk.Snowflake
 
     await others_not_in_vc_check_impl(ctx, conn)
 
-    async with access_data(ctx, lvc) as d:
-        d.vc_change_intended = True
-
     await cleanup(ctx.guild_id, ctx.client.shards, lvc)
 
+    bot.dispatch(ConnectionCommandsInvokedEvent(bot))
     logger.info(f"In guild {ctx.guild_id} left    channel {curr_channel} gracefully")
     return curr_channel
 
