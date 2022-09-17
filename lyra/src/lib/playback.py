@@ -183,10 +183,10 @@ async def skip(
             q.reset_repeat()
         await lvc.stop(g := infer_guild(g_inf))
         if q.is_stopped:
-            if advance:
-                q.adv()
             if next_t := q.next:
                 await lvc.play(g, next_t.track).start()
+            if advance:
+                q.adv()
         if change_stop:
             q.is_stopped = False
         await set_pause(g_inf, lvc, pause=False)
