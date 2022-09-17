@@ -447,8 +447,8 @@ async def move_last_(
 @tj.as_slash_command('swap', "Swaps positions of two tracks in a queue")
 #
 @move_g_m.with_command
-@tj.with_argument('first', converters=int)
 @tj.with_argument('second', converters=int, default=None)
+@tj.with_argument('first', converters=int)
 @tj.as_message_command('swap', 'sw', '<>', '<->', '<=>')
 async def move_swap_(
     ctx: tj.abc.Context,
