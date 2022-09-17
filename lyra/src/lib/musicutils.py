@@ -199,7 +199,7 @@ async def generate_queue_embeds(
         )
     )
 
-    color = None if q.is_paused or not q.current else q.curr_t_palette[2]
+    color = q.curr_t_palette[2] if q.is_playing else None
 
     _base_embed = hk.Embed(title="≡♪ Queue", description=desc, color=color,).set_footer(
         f"⌛ {to_stamp(queue_elapsed)} (-{to_stamp(queue_eta)}) / {to_stamp(queue_durr)}ㅤ•ㅤ{q.pos+1} (-{len(q)-q.pos-1}) / {len(q)}"
@@ -225,7 +225,7 @@ async def generate_queue_embeds(
             ),
         )
         .add_field(
-            f"{'🎶 ' if np and not q.is_paused else ''}Now playing",
+            f"{'🎶 ' if q.is_playing else ''}Now playing",
             np_text,
         )
         .add_field(

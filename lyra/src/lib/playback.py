@@ -37,6 +37,8 @@ from .lava.events import TrackStoppedEvent
 
 async def stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
     async with access_queue(g_inf, lvc) as q:
+        if np_pos := q.np_position:
+            q.update_paused_np_position(np_pos)
         q.is_stopped = True
 
     await lvc.stop(infer_guild(g_inf))

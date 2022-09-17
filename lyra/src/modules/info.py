@@ -85,13 +85,13 @@ async def nowplaying_(
         .replace('─', '▬', progress),
     )
 
-    color = None if q.is_paused else q.curr_t_palette[1]
+    color = q.curr_t_palette[1] if q.is_playing else None
 
     if thumb := q.curr_t_thumbnail:
         thumb = limit_img_size_by_guild(thumb, ctx, ctx.cache)
     embed = (
         hk.Embed(
-            title=f"{'🎶 ' if not q.is_paused else ''}__**`#{q.pos + 1}`**__  {t_info.title}",
+            title=f"{'🎶 ' if q.is_playing else ''}__**`#{q.pos + 1}`**__  {t_info.title}",
             description="%s\n\n%s" % desc,
             url=t_info.uri,
             color=color,
