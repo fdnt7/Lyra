@@ -151,7 +151,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
     from ..lib.music import play, add_tracks_
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
-    assert ctx.guild_id and erf
+    assert ctx.guild_id and not isinstance(erf, al.abc.Undefined)
 
     query = query.strip("<>|")
 
@@ -160,7 +160,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
     PREVIEW_TIME = 30_000
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert bot
+    assert not isinstance(bot, al.abc.Undefined)
 
     async with trigger_thinking(ctx):
         results = await lvc.auto_search_tracks(query)
@@ -357,7 +357,9 @@ async def queue_(
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert bot and erf
+    assert not isinstance(bot, al.abc.Undefined) and not isinstance(
+        erf, al.abc.Undefined
+    )
 
     def _page_row(*, cancel_b: bool = False):
         row = ctx.rest.build_action_row()
@@ -475,7 +477,9 @@ async def lyrics_(
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     erf = ctx.client.get_type_dependency(EmojiRefs)
-    assert bot and erf
+    assert not isinstance(bot, al.abc.Undefined) and not isinstance(
+        erf, al.abc.Undefined
+    )
 
     if song is None:
         if not ((q := await get_queue(ctx, lvc)) and (np := q.current)):

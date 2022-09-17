@@ -1,10 +1,12 @@
 import asyncio
 import contextlib as ctxlib
 
+import hikari as hk
 import tanjun as tj
+import alluka as al
 import lavasnek_rs as lv
 
-from .consts import STOP_REFRESH
+from .consts import TIMEOUT
 from .extras import Option, Result, Panic, MapSig, PredicateSig
 from .utils import (
     ButtonBuilderType,
@@ -30,6 +32,7 @@ from .lava.utils import (
     get_queue,
     set_data,
 )
+from .lava.events import TrackStoppedEvent
 
 
 async def stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
@@ -55,23 +58,24 @@ async def unstop(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> None:
         q.is_stopped = False
 
 
-async def wait_for_track_finish_event_fire(
-    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
-):
-    while not (await get_data(infer_guild(g_inf), lvc)).track_stopped_fired:
-        await asyncio.sleep(STOP_REFRESH)
-    data.track_stopped_fired = False
+async def wait_for_track_finish_event_fire():
+    client = get_client()
+    bot = client.get_type_dependency(hk.GatewayBot)
+    assert not isinstance(bot, al.abc.Undefined)
+
+    try:
+        await bot.wait_for(TrackStoppedEvent, timeout=TIMEOUT)
+    except asyncio.TimeoutError:
+        return
 
 
 @ctxlib.asynccontextmanager
 async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /):
     await stop_in_ctxmng(g_inf, lvc, data)
-    prior_playing = data.queue.current
+    await wait_for_track_finish_event_fire()
     try:
         yield
     finally:
-        if prior_playing:
-            await wait_for_track_finish_event_fire(g_inf, lvc, data)
         data.queue.is_stopped = False
 
 
@@ -90,7 +94,7 @@ async def set_pause(
     try:
         client = get_client(g_r_inf)
         erf = client.get_type_dependency(EmojiRefs)
-        assert erf
+        assert not isinstance(erf, al.abc.Undefined)
 
         d = await get_data(g, lvc)
         q = d.queue

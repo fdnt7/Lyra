@@ -83,7 +83,7 @@ async def start_listeners_voting(
 
     cmd_r = get_full_cmd_repr(ctx)
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert bot
+    assert not isinstance(bot, al.abc.Undefined)
 
     row = (
         ctx.rest.build_action_row()
