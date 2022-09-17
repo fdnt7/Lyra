@@ -6,6 +6,7 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
+from ..lib.cmd import get_full_cmd_repr_from_identifier
 from ..lib.cmd.ids import CommandIdentifier as C
 from ..lib.cmd.flags import IN_VC_ALONE
 from ..lib.cmd.compose import (
@@ -16,7 +17,7 @@ from ..lib.cmd.compose import (
     with_cmd_checks,
 )
 from ..lib.musicutils import __init_component__
-from ..lib.playback import while_stop
+from ..lib.music import while_stop
 from ..lib.queue import (
     RepeatMode,
     to_tracks,
@@ -308,7 +309,8 @@ async def remove_bulk_(
     assert ctx.guild_id
 
     q = await get_queue(ctx, lvc)
-    end = end or len(q)
+    q_l = len(q)
+    end = end or q_l
     i_s = start - 1
     t_n = end - i_s
 
@@ -325,11 +327,14 @@ async def remove_bulk_(
             ctx,
             content=f"**`≡⁻`** Removed track position `{start}-{end}` `({t_n} tracks)` from the queue",
         )
-        if start == 1 and end is None:
+        if start == 1 and end == q_l:
+            remove_bulk_r = get_full_cmd_repr_from_identifier(C.REMOVE_BULK, ctx)
+            clear_r = get_full_cmd_repr_from_identifier(C.CLEAR, ctx)
             await say(
                 ctx,
                 hidden=True,
-                content="💡 It is best to only remove a part of the queue when using `/remove bulk`. *For clearing the entire queue, use `/clear` instead*",
+                follow_up=True,
+                content=f"💡 It is best to only remove a part of the queue when using {remove_bulk_r}. *For clearing the entire queue, use {clear_r} instead*",
             )
 
 
@@ -338,7 +343,10 @@ async def remove_bulk_(
 
 @with_common_cmd_check(C.CLEAR)
 # -
-@tj.as_slash_command('clear', "Clears the queue; Equivalent to /remove bulk start:1")
+@tj.as_slash_command(
+    'clear',
+    "Clears the queue; Equivalent to %s start:1" % '/remove bulk',
+)
 @tj.as_message_command('clear', 'destroy', 'clr', 'c')
 async def clear_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
     async with access_data(ctx, lvc) as d:

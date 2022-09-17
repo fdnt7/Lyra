@@ -34,6 +34,7 @@ class CommandIdentifier(e.Enum):
     QUEUE = e.auto()
     LYRICS = e.auto()
 
+    ABOUT = e.auto()  # TODO: Implement `/about`
     PING = e.auto()
     HELP = e.auto()  # TODO: #27 Implement `/help`
 

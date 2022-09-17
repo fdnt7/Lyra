@@ -6,6 +6,7 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
+from ..lib.cmd import get_full_cmd_repr_from_identifier
 from ..lib.cmd.ids import CommandIdentifier as C
 from ..lib.cmd.compose import with_identifier
 from ..lib.utils import (
@@ -21,7 +22,7 @@ from ..lib.utils import (
     disable_components,
     with_annotated_args,
 )
-from ..lib.playback import stop, unstop
+from ..lib.music import stop, unstop
 from ..lib.musicutils import generate_queue_embeds, __init_component__
 from ..lib.errors import QueryEmpty, LyricsNotFound
 from ..lib.extras import Option, Result, to_stamp, wr, get_lyrics
@@ -165,12 +166,14 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
     async with trigger_thinking(ctx):
         results = await lvc.auto_search_tracks(query)
     if results.load_type in {'TRACK_LOADED', 'PLAYLIST_LOADED'}:
+        play_r = get_full_cmd_repr_from_identifier(C.PLAY, ctx)
+
         await play(ctx, lvc, tracks=results, respond=True)
         await say(
             ctx,
             hidden=True,
             follow_up=True,
-            content="💡 This is already a song link. *Did you mean to use `/play` instead?*",
+            content=f"💡 This is already a song link. *Did you mean to use {play_r} instead?*",
         )
         return
 

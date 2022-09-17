@@ -229,8 +229,32 @@ def join_and(
 _FE = t.TypeVar('_FE')
 
 
-def flatten(iter_iters: t.Iterable[t.Iterable[_FE]], /) -> t.Iterable[_FE]:
-    return (*(val for sublist in iter_iters for val in sublist),)
+def flatten(iter_iters: t.Iterable[t.Iterable[_FE]], /) -> t.Iterator[_FE]:
+    return (val for sublist in iter_iters for val in sublist)
+
+
+_RE = t.TypeVar('_RE')
+_RecurseT = t.Iterable[_RE | '_RecurseT']
+_FlattenedT = t.TypeVar('_FlattenedT')
+FlattenerSig = t.Callable[[_FlattenedT], t.Iterator[_RE]]
+
+
+def recurse(
+    iters: _RecurseT[_RE],
+    /,
+    recursed: Option[type[_FlattenedT]] = None,
+    recurser: Option[FlattenerSig[_FlattenedT, _RE]] = None,
+    *,
+    include_recursed: bool = False,
+) -> t.Iterator[_RE]:
+    recurser = recurser or (lambda i: (j for j in recurse(t.cast(t.Iterable[_RE], i))))
+    for _r in iters:
+        if isinstance(_r, recursed or t.Iterable):
+            if include_recursed:
+                yield t.cast(_RE, _r)
+            yield from recurser(t.cast(_FlattenedT, _r))
+        else:
+            yield t.cast(_RE, _r)
 
 
 def split_preset(str_: str, /, *, sep_1: str = ',', sep_2: str = '|'):

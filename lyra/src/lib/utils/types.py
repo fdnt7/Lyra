@@ -3,7 +3,7 @@ import typing as t
 import hikari as hk
 import tanjun as tj
 
-from ..extras.types import Coro, AsyncVoidAnySig
+from ..extras.types import Coro
 
 
 EitherContext = tj.abc.MessageContext | tj.abc.AppCommandContext
@@ -44,28 +44,6 @@ EditableComponentsType = ButtonBuilderType | SelectMenuBuilderType
 MentionableType = hk.GuildChannel | hk.Role | hk.Member
 PartialMentionableType = hk.PartialUser | hk.PartialRole | hk.PartialChannel
 JoinableChannelType = hk.GuildVoiceChannel | hk.GuildStageChannel
-
-CommandType = tj.abc.ExecutableCommand
-GenericCommandType = CommandType[tj.abc.Context]
-MenuCommandType = tj.abc.MenuCommand
-GenericMenuCommandType = MenuCommandType[
-    AsyncVoidAnySig, t.Literal[hk.CommandType.MESSAGE]
-]
-MessageCommandType = tj.abc.MessageCommand
-GenericMessageCommandType = MessageCommandType[AsyncVoidAnySig]
-MessageCommandGroupType = tj.abc.MessageCommandGroup
-GenericMessageCommandGroupType = MessageCommandGroupType[AsyncVoidAnySig]
-GenericAnyMessageCommandType = (
-    GenericMessageCommandType | GenericMessageCommandGroupType
-)
-SlashCommandType = tj.abc.SlashCommand
-GenericSlashCommandType = SlashCommandType[AsyncVoidAnySig]
-SlashCommandGroupType = tj.abc.SlashCommandGroup
-GenericAnySlashCommandType = GenericSlashCommandType | tj.abc.SlashCommandGroup
-GenericAnyCommandType = (
-    GenericMenuCommandType | GenericAnySlashCommandType | GenericAnyMessageCommandType
-)
-ParentCommandType: tj.abc.SlashCommandGroup | GenericMessageCommandGroupType
 
 BindSig = t.Callable[..., Coro[bool]] | t.Callable[..., bool]
 

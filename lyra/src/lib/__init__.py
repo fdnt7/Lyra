@@ -10,4 +10,4 @@ from .lava.utils import (
     get_data,
     repeat_emojis,
 )
-from .dataimpl import LyraDBClientType, LyraDBCollectionType
+from .dataimpl import LyraDBClientType, LyraDBCollectionType, __init_mongo_client__

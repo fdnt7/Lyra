@@ -8,14 +8,13 @@ import hikari as hk
 import tanjun as tj
 import alluka as al
 
-from ..lib.cmd import get_cmd_name
+from ..lib.cmd import recurse_cmds, get_cmd_name, get_full_cmd_repr_from_identifier
 from ..lib.cmd.ids import CommandIdentifier as C
+from ..lib.cmd.types import AlmostGenericAnyCommandType, GenericCommandType
 from ..lib.cmd.compose import Binds, with_identifier
 from ..lib.musicutils import __init_component__
-
 from ..lib.extras import groupby
 from ..lib.utils import (
-    GenericCommandType,
     EmojiRefs,
     color_hash_obj,
     say,
@@ -78,7 +77,8 @@ async def on_started(
     for s, s_ in zip(slash, slash_, strict=True):
         s.set_tracked_command(s_)
 
-    for cmd in (cmds_tup := (*client.iter_commands(),)):
+    cmds_tup = t.cast(tuple[AlmostGenericAnyCommandType], (*client.iter_commands(),))
+    for cmd in recurse_cmds(cmds_tup, keep_group_cmds=True):
         check = next(iter(cmd.checks))
         set_metadata = (
             check._checks[0]  # pyright: ignore [reportPrivateUsage]
@@ -88,8 +88,9 @@ async def on_started(
             else check
         )
         set_metadata(MockContext(cmd))
+        # print(f"{cmd}\n - {cmd.metadata}")
 
-    _all_cmds_sep = groupby(cmds_tup, key=lambda cmd: cmd.metadata['identifier'])
+    _all_cmds_sep = groupby(cmds_tup, key=lambda c: c.metadata['identifier'])
 
     all_cmds_sep.update(_all_cmds_sep)
     all_cmds_aliases.update(
@@ -188,7 +189,7 @@ async def help_(
             or '` - `',
         )
         .set_footer(
-            "For more info about the glossary and meanings of the symbols above, please check /about"
+            f"For more info about the glossary and meanings of the symbols above, please check {get_full_cmd_repr_from_identifier(C.ABOUT, pretty=False)}"
         )
     )
     await say(ctx, embed=embed)

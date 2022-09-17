@@ -8,6 +8,7 @@ import lavasnek_rs as lv
 from hikari.permissions import Permissions as hkperms
 
 from .ids import CommandIdentifier
+from .types import GenericCommandType
 from .flags import (
     Binds,
     Checks,
@@ -20,7 +21,6 @@ from .flags import (
 )
 from ..utils import (
     BindSig,
-    GenericCommandType,
     Contextish,
     get_client,
     fetch_permissions,
