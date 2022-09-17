@@ -85,7 +85,7 @@ class QueueList(List[lv.TrackQueue]):
 
     @property
     def np_position(self) -> Option[int]:
-        if self.is_paused:
+        if not self.is_playing:
             return self._paused_np_position
         if not self.current:
             return None
