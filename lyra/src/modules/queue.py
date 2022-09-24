@@ -193,8 +193,8 @@ async def play_m(
 @tj.as_message_menu("Enqueue this song")
 async def play_c(
     ctx: tj.abc.MenuContext,
-    lvc: al.Injected[lv.Lavalink],
     msg: hk.Message,
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     cnt = extract_content(msg)
     song = concat_audio(msg, cnt)

@@ -139,8 +139,8 @@ async def search_(
 @tj.as_message_menu('Search this song up')
 async def search_c(
     ctx: tj.abc.MenuContext,
-    lvc: al.Injected[lv.Lavalink],
     msg: hk.Message,
+    lvc: al.Injected[lv.Lavalink],
 ) -> None:
     if not (cnt := extract_content(msg)):
         await err_say(ctx, content="❌ Cannot process an empty message")
