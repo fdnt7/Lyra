@@ -189,7 +189,7 @@ async def help_(
             or '` - `',
         )
         .set_footer(
-            f"For more info about the glossary and meanings of the symbols above, please check {get_full_cmd_repr_from_identifier(C.ABOUT, pretty=False)}"
+            f"For more info about the glossary and meanings of the symbols above, please check {get_full_cmd_repr_from_identifier(C.ABOUT, ctx, pretty=False)}"
         )
     )
     await say(ctx, embed=embed)
