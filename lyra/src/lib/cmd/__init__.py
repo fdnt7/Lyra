@@ -20,14 +20,22 @@ from .types import (
 from ..utils.types import (
     Contextish,
 )
-from ..extras import FlattenerSig, recurse
+from ..extras import RecurserSig, recurse
 from ..extras.types import Option
 
 
-def get_pref(ctx_: Contextish, /) -> str:
+def get_implied_prefix(ctx_cmd: Contextish | GenericAnyCommandType, /) -> str:
+    if isinstance(ctx_cmd, tj.abc.MessageContext):
+        return next(iter(ctx_cmd.client.prefixes))
+    if isinstance(
+        ctx_cmd, tj.abc.SlashContext | SlashCommandType | SlashCommandGroupType
+    ):
+        return '/'
+    if isinstance(ctx_cmd, tj.abc.MenuContext | MenuCommandType):
+        return '|> '
     from ..utils import get_client
 
-    client = get_client(ctx_)
+    client = get_client(ctx_cmd)
     return next(iter(client.prefixes))
 
 
@@ -117,16 +125,9 @@ def get_full_cmd_repr(
     if isinstance(cmd, SlashCommandType | SlashCommandGroupType) and pretty:
         return f"</{cmd_n}:{get_cmd_id(cmd)}>"
 
-    p = (get_pref(_ctx_)) if _ctx_ else '/'
+    p = get_implied_prefix(cmd)
     joined = ''.join((p, cmd_n))
     return ("`%s`" % joined) if pretty else joined
-
-
-@t.overload
-def get_full_cmd_repr_from_identifier(
-    identifier: CommandIdentifier, /, *, pretty: bool = True
-) -> str:
-    ...
 
 
 @t.overload
@@ -146,13 +147,13 @@ def get_full_cmd_repr_from_identifier(
 def get_full_cmd_repr_from_identifier(
     identifier: CommandIdentifier,
     /,
-    _ctx_c: Option[Contextish | tj.abc.Client] = None,
+    _ctx_c: Contextish | tj.abc.Client,
     *,
     pretty: bool = True,
 ):
     from ..utils import get_client
 
-    client = get_client(_ctx_c) or _ctx_c
+    client = _ctx_c if isinstance(_ctx_c, tj.abc.Client) else get_client(_ctx_c)
     _ctx_ = None if isinstance(_ctx_c, tj.abc.Client) else _ctx_c
     if not _ctx_ or isinstance(_ctx_, tj.abc.SlashContext):
         cmds = client.iter_slash_commands()
@@ -182,7 +183,7 @@ def recurse_cmds(
         | MessageCommandGroupType,  # pyright: ignore [reportGeneralTypeIssues]
         include_recursed=keep_group_cmds,
     )
-    recurser: FlattenerSig[
+    recurser: RecurserSig[
         GenericAnyCommandGroupType, AlmostGenericAnyCommandType
     ] = lambda c: (
         _c

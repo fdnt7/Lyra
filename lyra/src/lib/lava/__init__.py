@@ -71,29 +71,21 @@ class EventHandler(BaseEventHandler):
             if not d.queue.current:
                 return
             embed = await generate_nowplaying_embed(event.guild_id, client.cache, lvc)
-            controls = client.rest.build_action_row()
-            (
-                controls.add_button(hk.ButtonStyle.SECONDARY, 'lyra_shuffle')
+            controls = (
+                client.rest.build_action_row()
+                .add_button(hk.ButtonStyle.SECONDARY, 'lyra_shuffle')
                 .set_emoji(erf['shuffle_b'])
                 .add_to_container()
-            )
-            (
-                controls.add_button(hk.ButtonStyle.SECONDARY, 'lyra_previous')
+                .add_button(hk.ButtonStyle.SECONDARY, 'lyra_previous')
                 .set_emoji(erf['previous_b'])
                 .add_to_container()
-            )
-            (
-                controls.add_button(hk.ButtonStyle.PRIMARY, 'lyra_playpause')
+                .add_button(hk.ButtonStyle.PRIMARY, 'lyra_playpause')
                 .set_emoji(erf['resume_b'])
                 .add_to_container()
-            )
-            (
-                controls.add_button(hk.ButtonStyle.SECONDARY, 'lyra_skip')
+                .add_button(hk.ButtonStyle.SECONDARY, 'lyra_skip')
                 .set_emoji(erf['skip_b'])
                 .add_to_container()
-            )
-            (
-                controls.add_button(hk.ButtonStyle.SUCCESS, 'lyra_repeat')
+                .add_button(hk.ButtonStyle.SUCCESS, 'lyra_repeat')
                 .set_emoji(get_repeat_emoji(q))
                 .add_to_container()
             )

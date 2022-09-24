@@ -188,15 +188,15 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
         )
     )
 
-    pre_row_1 = ctx.rest.build_action_row()
+    prv_row_1 = ctx.rest.build_action_row()
     components: list[hk.api.ActionRowBuilder] = []
 
-    for i in (pre_row_1_ := map(str, range(1, 1 + len(queried[:5])))):
-        pre_row_1.add_button(hk.ButtonStyle.SECONDARY, i).set_label(
+    for i in (prv_row_1_ := map(str, range(1, 1 + len(queried[:5])))):
+        prv_row_1.add_button(hk.ButtonStyle.SECONDARY, i).set_label(
             i
         ).add_to_container()
-    if pre_row_1_:
-        components.append(pre_row_1)
+    if prv_row_1_:
+        components.append(prv_row_1)
 
         pre_row_2 = ctx.rest.build_action_row()
         for j in (pre_row_2_ := map(str, range(6, 6 + len(queried[5:10])))):
@@ -206,17 +206,18 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
         if pre_row_2_:
             components.append(pre_row_2)
 
-    ops_row = ctx.rest.build_action_row()
-    ops_row.add_button(hk.ButtonStyle.SUCCESS, 'enqueue').set_label(
-        "＋ Enqueue"
-    ).add_to_container()
-
-    ops_row.add_button(hk.ButtonStyle.PRIMARY, 'link').set_label(
-        "Get Link"
-    ).add_to_container()
-    ops_row.add_button(hk.ButtonStyle.DANGER, 'cancel').set_emoji(
-        erf['exit_b']
-    ).add_to_container()
+    ops_row = (
+        ctx.rest.build_action_row()
+        .add_button(hk.ButtonStyle.SUCCESS, 'enqueue')
+        .set_label("＋ Enqueue")
+        .add_to_container()
+        .add_button(hk.ButtonStyle.PRIMARY, 'link')
+        .set_label("Get Link")
+        .add_to_container()
+        .add_button(hk.ButtonStyle.DANGER, 'cancel')
+        .set_emoji(erf['exit_b'])
+        .add_to_container()
+    )
     components.append(ops_row)
 
     embed = hk.Embed(

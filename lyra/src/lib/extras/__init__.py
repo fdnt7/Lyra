@@ -235,15 +235,15 @@ def flatten(iter_iters: t.Iterable[t.Iterable[_FE]], /) -> t.Iterator[_FE]:
 
 _RE = t.TypeVar('_RE')
 _RecurseT = t.Iterable[_RE | '_RecurseT']
-_FlattenedT = t.TypeVar('_FlattenedT')
-FlattenerSig = t.Callable[[_FlattenedT], t.Iterator[_RE]]
+_RecursedT = t.TypeVar('_RecursedT')
+RecurserSig = t.Callable[[_RecursedT], t.Iterator[_RE]]
 
 
 def recurse(
     iters: _RecurseT[_RE],
     /,
-    recursed: Option[type[_FlattenedT]] = None,
-    recurser: Option[FlattenerSig[_FlattenedT, _RE]] = None,
+    recursed: Option[type[_RecursedT]] = None,
+    recurser: Option[RecurserSig[_RecursedT, _RE]] = None,
     *,
     include_recursed: bool = False,
 ) -> t.Iterator[_RE]:
@@ -252,7 +252,7 @@ def recurse(
         if isinstance(_r, recursed or t.Iterable):
             if include_recursed:
                 yield t.cast(_RE, _r)
-            yield from recurser(t.cast(_FlattenedT, _r))
+            yield from recurser(t.cast(_RecursedT, _r))
         else:
             yield t.cast(_RE, _r)
 
