@@ -11,7 +11,7 @@ import attr as a
 import hikari as hk
 import lavasnek_rs as lv
 
-from ..utils import GuildOrInferable, infer_guild, limit_img_size_by_guild
+from ..utils import MaybeGuildIDAware, IntCastable, infer_guild, limit_img_size_by_guild
 from ..errors import NotConnected, QueueEmpty
 from ..consts import STOP_REFRESH
 from ..extras import (
@@ -340,8 +340,8 @@ async def set_data(
 
 
 @ctxlib.asynccontextmanager
-async def access_queue(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
-    data = await get_data(g := infer_guild(g_inf), lvc)
+async def access_queue(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /):
+    data = await get_data(g := infer_guild(g_), lvc)
     try:
         yield data.queue
     finally:
@@ -349,8 +349,8 @@ async def access_queue(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
 
 
 @ctxlib.asynccontextmanager
-async def access_equalizer(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
-    data = await get_data(g := infer_guild(g_inf), lvc)
+async def access_equalizer(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /):
+    data = await get_data(g := infer_guild(g_), lvc)
     try:
         yield data.equalizer
     finally:
@@ -358,16 +358,18 @@ async def access_equalizer(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
 
 
 @ctxlib.asynccontextmanager
-async def access_data(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
-    data = await get_data(g := infer_guild(g_inf), lvc)
+async def access_data(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /):
+    data = await get_data(g := infer_guild(g_), lvc)
     try:
         yield data
     finally:
         await set_data(g, lvc, data)
 
 
-async def get_queue(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> Panic[QueueList]:
-    return (await get_data(infer_guild(g_inf), lvc)).queue
+async def get_queue(
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /
+) -> Panic[QueueList]:
+    return (await get_data(infer_guild(g_), lvc)).queue
 
 
 def get_repeat_emoji(q: QueueList, /):
@@ -416,9 +418,11 @@ async def generate_nowplaying_embed(
     return embed
 
 
-async def wait_until_current_track_valid(g_inf: GuildOrInferable, lvc: lv.Lavalink, /):
+async def wait_until_current_track_valid(
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /
+):
     while True:
-        d = await get_data(infer_guild(g_inf), lvc)
+        d = await get_data(infer_guild(g_), lvc)
         if d.queue.current and d.out_channel_id:
             return
         await asyncio.sleep(STOP_REFRESH)

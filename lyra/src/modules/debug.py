@@ -17,7 +17,7 @@ from ..lib.extras import lgfmt
 from ..lib.utils import (
     say,
     err_say,
-    with_annotated_args,
+    with_annotated_args_wrapped,
     with_message_command_group_template,
 )
 
@@ -45,11 +45,6 @@ modules_tup = (*modules,)
 # /debug
 
 
-debug_g_s = with_identifier(C.DEBUG)(
-    tj.slash_command_group('debug', "For debugging purposes only")
-)
-
-
 @with_identifier(C.DEBUG)
 # -
 @tj.as_message_command_group(
@@ -65,20 +60,17 @@ async def debug_g_m(_: tj.abc.MessageContext):
     ...
 
 
-## /debug module
-
-
-module_sg_s = with_identifier(C.DEBUG_MODULE)(
-    debug_g_s.with_command(
-        tj.slash_command_group('module', "Manages the bot's modules")
-    )
+debug_g_s = with_identifier(C.DEBUG)(
+    tj.slash_command_group('debug', "For debugging purposes only")
 )
+
+
+## /debug module
 
 
 @with_identifier(C.DEBUG_MODULE)
 # -
-@debug_g_m.with_command
-@tj.as_message_command_group(
+@debug_g_m.as_sub_group(
     'module',
     'modules',
     'm',
@@ -92,16 +84,21 @@ async def module_sg_m(_: tj.abc.MessageContext):
     ...
 
 
+module_sg_s = with_identifier(C.DEBUG_MODULE)(
+    debug_g_s.with_command(
+        tj.slash_command_group('module', "Manages the bot's modules")
+    )
+)
+
+
 ### /debug module reload
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_identifier(C.DEBUG_MODULE_RELOAD)
 # -
-@module_sg_s.with_command
-@tj.as_slash_command('reload', "Reloads a module")
-@module_sg_m.with_command
-@tj.as_message_command('reload', 'rl')
+@module_sg_m.as_sub_command('reload', 'rl')
+@module_sg_s.as_sub_command('reload', "Reloads a module")
 async def reload_module(
     ctx: tj.abc.Context,
     module: t.Annotated[ja.Str, "Which module?", ja.Choices(modules_tup)],
@@ -120,13 +117,11 @@ async def reload_module(
 ### /debug module unload
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_identifier(C.DEBUG_MODULE_UNLOAD)
 # -
-@module_sg_s.with_command
-@tj.as_slash_command('unload', "Unloads a module")
-@module_sg_m.with_command
-@tj.as_message_command('unload', 'ul')
+@module_sg_m.as_sub_command('unload', 'ul')
+@module_sg_s.as_sub_command('unload', "Unloads a module")
 async def unload_module(
     ctx: tj.abc.Context,
     module: t.Annotated[ja.Str, "Which module?", ja.Choices(modules_tup)],
@@ -146,13 +141,11 @@ async def unload_module(
 ### /debug module load
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_identifier(C.DEBUG_MODULE_LOAD)
 # -
-@module_sg_s.with_command
-@tj.as_slash_command('load', "Loads a module")
-@module_sg_m.with_command
-@tj.as_message_command('load', 'lo')
+@module_sg_m.as_sub_command('load', 'lo')
+@module_sg_s.as_sub_command('load', "Loads a module")
 async def load_module(
     ctx: tj.abc.Context,
     module: t.Annotated[ja.Str, "Which module?", ja.Choices(modules_tup)],
@@ -172,13 +165,6 @@ async def load_module(
 ## /debug command
 
 
-command_sg_s = with_identifier(C.DEBUG_COMMAND)(
-    debug_g_s.with_command(
-        tj.slash_command_group('command', "Manages the bot's commands")
-    )
-)
-
-
 @with_identifier(C.DEBUG_COMMAND)
 # -
 @debug_g_m.with_command
@@ -195,15 +181,20 @@ async def command_sg_m(_: tj.abc.MessageContext):
     ...
 
 
+command_sg_s = with_identifier(C.DEBUG_COMMAND)(
+    debug_g_s.with_command(
+        tj.slash_command_group('command', "Manages the bot's commands")
+    )
+)
+
+
 ### /debug command delete-all
 
 
 @with_identifier(C.DEBUG_COMMAND_DELETEALL)
 # -
-@command_sg_s.with_command
-@tj.as_slash_command('delete-all', "Deletes all application commands")
-@command_sg_m.with_command
-@tj.as_message_command('delete-all', 'deleteall', 'delall', 'wipe', 'wp')
+@command_sg_m.as_sub_command('delete-all', 'deleteall', 'delall', 'wipe', 'wp')
+@command_sg_s.as_sub_command('delete-all', "Deletes all application commands")
 async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.GatewayBot]):
     """Deletes all global commands"""
 

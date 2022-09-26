@@ -29,7 +29,7 @@ from ..lib.queue import (
     play,
 )
 from ..lib.utils import (
-    EitherContext,
+    with_annotated_args_wrapped,
     with_message_command_group_template,
     extract_content,
     err_say,
@@ -96,7 +96,7 @@ def concat_audio(msg: hk.Message, /, _song: Option[str]) -> Panic[str]:
     )
     if not (_song or audio_files):
         raise tj.NotEnoughArgumentsError(
-            "No audio files or search query were given", 'song'
+            "No audio files or search queries were given", 'song'
         )
     audio_urls = map(lambda f: f.url, audio_files)
     return (
@@ -128,6 +128,7 @@ with_play_cmd_check_and_connect_vc = with_cmd_composer(
 
 @ja.with_annotated_args
 @with_play_cmd_check_and_connect_vc(C.PLAY)
+# -
 @tj.as_slash_command('play', "Plays a song, or add it to the queue")
 async def play_s(
     ctx: tj.abc.SlashContext,
@@ -148,13 +149,15 @@ async def play_s(
 
 @ja.with_annotated_args
 @with_play_cmd_check_and_connect_vc(C.PLAY)
+# -
 @tj.as_slash_command('play-file', "Plays an attached audio, or add it to the queue")
 async def playfile_s(
     ctx: tj.abc.SlashContext,
     lvc: al.Injected[lv.Lavalink],
     audio: t.Annotated[ja.Attachment, "What audio?"],
     shuffle: t.Annotated[
-        ja.Bool, "Also shuffles the queue after enqueuing? (If not given, False)"
+        ja.Positional[ja.Bool],
+        "Also shuffles the queue after enqueuing? (If not given, False)",
     ] = False,
 ) -> Panic[None]:
     """Play a song, or add it to the queue."""
@@ -163,26 +166,20 @@ async def playfile_s(
     await _play(ctx, lvc, audio.url, shuffle=shuffle)
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@ja.with_annotated_args
 @with_play_cmd_check_and_connect_vc(C.PLAY)
-@tj.with_option('source', '--source', '-src', default='yt', converters=to_source)
-@tj.with_option(
-    'shuffle',
-    '--shuffle',
-    '-sh',
-    default=False,
-    empty_value=True,
-    converters=tj.to_bool,
-)
-@tj.with_argument('song', greedy=True, default=None)
-#
+# -
 @tj.as_message_command('play', 'p', 'a', 'add', '+')
 async def play_m(
     ctx: tj.abc.MessageContext,
     lvc: al.Injected[lv.Lavalink],
-    song: Option[str],
-    source: str,
-    shuffle: bool,
+    song: Option[ja.Positional[ja.Greedy[ja.Str]]] = None,
+    source: t.Annotated[
+        ja.Default[ja.Converted[to_source], 'yt'], ja.Flag(aliases=('-src',))
+    ] = ...,
+    shuffle: t.Annotated[
+        ja.Default[ja.Bool, False], ja.Flag(aliases=('-sh',), empty_value=True)
+    ] = ...,
 ) -> None:
     """Play a song, or add it to the queue."""
     _song = concat_audio(ctx.message, song)
@@ -202,7 +199,7 @@ async def play_c(
 
 
 async def _play(
-    ctx: EitherContext,
+    ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
     song: str,
@@ -220,11 +217,6 @@ async def _play(
 # /remove
 
 
-remove_g_s = with_identifier(C.REMOVE)(
-    tj.slash_command_group('remove', "Removes tracks from the queue")
-)
-
-
 @with_identifier(C.REMOVE)
 # -
 @tj.as_message_command_group('remove', 'rem', 'rm', 'rmv', 'del', 'd', '-', strict=True)
@@ -234,29 +226,28 @@ async def remove_g_m(_: tj.abc.MessageContext):
     ...
 
 
+remove_g_s = with_identifier(C.REMOVE)(
+    tj.slash_command_group('remove', "Removes tracks from the queue")
+)
+
+
 ## /remove one
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_stage_cmd_check(C.REMOVE_ONE)
 # -
-@remove_g_s.with_command
-@tj.with_str_slash_option(
-    'track',
-    "The track by the name/position what? (If not given, the current track)",
-    default=None,
-)
-@tj.as_slash_command(
+@remove_g_m.as_sub_command('one', '1', 'o', 's', '.', '^')
+@remove_g_s.as_sub_command(
     'one', "Removes a track from the queue by queue position or track name"
 )
-#
-@remove_g_m.with_command
-@tj.with_greedy_argument('track', default=None)
-@tj.as_message_command('one', '1', 'o', 's', '.', '^')
 async def remove_one_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    track: Option[str],
+    track: t.Annotated[
+        Option[ja.Positional[ja.Greedy[ja.Str]]],
+        "The track by the name/position what? (If not given, the current track)",
+    ] = None,
 ) -> None:
     assert ctx.guild_id
 
@@ -282,29 +273,21 @@ async def remove_one_(
 ## /remove bulk
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_strict_stage_cmd_check(C.REMOVE_BULK)
 # -
-@remove_g_s.with_command
-@tj.with_int_slash_option(
-    'end',
-    "To what position? (If not given, the end of the queue)",
-    default=None,
-)
-@tj.with_int_slash_option('start', "From what position?")
-@tj.as_slash_command(
+@remove_g_m.as_sub_command('bulk', 'b', 'm', 'r', '<>')
+@remove_g_s.as_sub_command(
     'bulk', "Removes a track from the queue by queue position or track name"
 )
-#
-@remove_g_m.with_command
-@tj.with_argument('end', converters=int, default=None)
-@tj.with_argument('start', converters=int)
-@tj.as_message_command('bulk', 'b', 'm', 'r', '<>')
 async def remove_bulk_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    start: int,
-    end: Option[int],
+    start: t.Annotated[ja.Int, "From what position?"],
+    end: t.Annotated[
+        Option[ja.Positional[ja.Int]],
+        "To what position? (If not given, the end of the queue)",
+    ] = None,
 ) -> None:
     assert ctx.guild_id
 
@@ -374,11 +357,6 @@ async def shuffle_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /move
 
 
-move_g_s = with_identifier(C.MOVE)(
-    tj.slash_command_group('move', "Moves the track in the queue")
-)
-
-
 @with_identifier(C.MOVE)
 # -
 @tj.as_message_command_group('move', 'mv', '=>', strict=True)
@@ -388,27 +366,26 @@ async def move_g_m(_: tj.abc.MessageContext):
     ...
 
 
+move_g_s = with_identifier(C.MOVE)(
+    tj.slash_command_group('move', "Moves the track in the queue")
+)
+
+
 ## /move last
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_stage_cmd_check(C.MOVE_LAST)
 # -
-@move_g_s.with_command
-@tj.with_int_slash_option(
-    'track',
-    "Position of the track? (If not given, the current position)",
-    default=None,
-)
-@tj.as_slash_command('last', "Moves the selected track to the end of the queue")
-#
-@move_g_m.with_command
-@tj.with_argument('track', converters=int, default=None)
-@tj.as_message_command('last', 'l', '>>')
+@move_g_m.as_sub_command('last', 'l', '>>')
+@move_g_s.as_sub_command('last', "Moves the selected track to the end of the queue")
 async def move_last_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    track: Option[int],
+    track: t.Annotated[
+        Option[ja.Positional[ja.Int]],
+        "Position of the track? (If not given, the current position)",
+    ] = None,
 ):
     """Moves the selected track to the end of the queue"""
     q = await get_queue(ctx, lvc)
@@ -442,27 +419,19 @@ async def move_last_(
 ## /move swap
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_strict_stage_cmd_check(C.MOVE_SWAP)
 # -
-@move_g_s.with_command
-@tj.with_int_slash_option(
-    'second',
-    "Position of the second track? (If not given, the current track)",
-    default=None,
-)
-@tj.with_int_slash_option('first', "Position of the first track?")
-@tj.as_slash_command('swap', "Swaps positions of two tracks in a queue")
-#
-@move_g_m.with_command
-@tj.with_argument('second', converters=int, default=None)
-@tj.with_argument('first', converters=int)
-@tj.as_message_command('swap', 'sw', '<>', '<->', '<=>')
+@move_g_m.as_sub_command('swap', 'sw', '<>', '<->', '<=>')
+@move_g_s.as_sub_command('swap', "Swaps positions of two tracks in a queue")
 async def move_swap_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    first: int,
-    second: Option[int],
+    first: t.Annotated[ja.Int, "Position of the first track?"],
+    second: t.Annotated[
+        Option[ja.Positional[ja.Int]],
+        "Position of the second track? (If not given, the current track)",
+    ] = None,
 ):
     """
     Swaps positions of two tracks in a queue
@@ -515,25 +484,19 @@ async def move_swap_(
 ## /move insert
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_strict_stage_cmd_check(C.MOVE_INSERT)
 # -
-@move_g_s.with_command
-@tj.with_int_slash_option(
-    'track', "Position of the track? (If not given, the current position)", default=None
-)
-@tj.with_int_slash_option('position', "Where to insert the track?")
-@tj.as_slash_command('insert', "Inserts a track in the queue after a new position")
-#
-@move_g_m.with_command
-@tj.with_argument('track', converters=int, default=None)
-@tj.with_argument('position', converters=int)
-@tj.as_message_command('insert', 'ins', 'i', 'v', '^')
+@move_g_m.as_sub_command('insert', 'ins', 'i', 'v', '^')
+@move_g_s.as_sub_command('insert', "Inserts a track in the queue after a new position")
 async def move_insert_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    position: int,
-    track: Option[int],
+    position: t.Annotated[ja.Int, "Where to insert the track?"],
+    track: t.Annotated[
+        Option[ja.Positional[ja.Int]],
+        "Position of the track? (If not given, the current position)",
+    ] = None,
 ):
     """
     Inserts a track in the queue after a new position
@@ -569,24 +532,19 @@ async def move_insert_(
 # /repeat
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_common_cmd_check_and_voting(C.REPEAT)
 # -
-@tj.with_str_slash_option(
-    'mode',
-    "Which mode? (If not given, will cycle between: All > One > Off)",
-    choices={'All': 'all', 'One': 'one', 'Off': 'off'},
-    converters=to_repeat_mode,
-    default=None,
-)
 @tj.as_slash_command('repeat', "Select a repeat mode for the queue")
-#
-@tj.with_argument('mode', to_repeat_mode, default=None)
 @tj.as_message_command('repeat', 'r', 'rep', 'lp', 'rp', 'loop')
 async def repeat_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    mode: Option[RepeatMode],
+    mode: t.Annotated[
+        Option[ja.Positional[ja.Converted[to_repeat_mode]]],
+        "Which mode? (If not given, will cycle between: All > One > Off)",
+        ja.Choices({'All': 'all', 'One': 'one', 'Off': 'off'}),
+    ] = None,
 ):
     """
     Select a repeat mode for the queue

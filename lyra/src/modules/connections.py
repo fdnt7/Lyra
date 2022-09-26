@@ -159,7 +159,7 @@ async def on_voice_state_update(
 # /join
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+# TODO: Use tanjun's new annotation system and combine message & slash options once possible
 @with_identifier(C.JOIN)
 # -
 @tj.with_channel_slash_option(

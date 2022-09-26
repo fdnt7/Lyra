@@ -14,7 +14,7 @@ from .utils import (
     DJ_PERMS,
     RESTRICTOR,
     ConnectionInfo,
-    Contextish,
+    ContextishType,
     err_say,
     fetch_permissions,
     get_client,
@@ -249,7 +249,7 @@ async def join_impl_precaught(
 
 
 async def others_not_in_vc_check_impl(
-    ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
+    ctx_: ContextishType, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
 ) -> Result[bool]:
     auth_perms = await fetch_permissions(ctx_)
     member = ctx_.member

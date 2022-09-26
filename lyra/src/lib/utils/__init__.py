@@ -7,6 +7,7 @@ import contextlib as ctxlib
 import hikari as hk
 import tanjun as tj
 import alluka as al
+from ..extras.types import AnyOr
 
 import src.lib.globs as globs
 
@@ -16,14 +17,18 @@ from hikari.messages import MessageFlag as msgflag
 # pyright: reportUnusedImport=false
 from .vars import RESTRICTOR, base_h, EmojiRefs, DJ_PERMS, dj_perms_fmt, guild_c
 from .types import (
-    Contextish,
-    EitherContext,
-    GuildOrInferable,
-    GuildOrRESTInferable,
-    GuildInferableEvents,
+    ChannelAware,
+    RESTAware,
+    RESTAwareAware,
+    ClientAware,
+    ClientAwareGuildContextish,
+    MaybeGuildIDAware,
+    GuildContextish,
+    IntCastable,
+    AnyContextType,
+    ContextishType,
+    GuildAwareEventType,
     EditableComponentsType,
-    MaybeClientInferable,
-    RESTInferable,
     # -
     ConnectionInfo,
     BindSig,
@@ -31,7 +36,8 @@ from .types import (
     MentionableType,
     JoinableChannelType,
     PartialMentionableType,
-    with_annotated_args,
+    RESTAwareType,
+    with_annotated_args_wrapped,
 )
 from ..cmd import get_full_cmd_repr
 from ..cmd.types import (
@@ -58,16 +64,20 @@ from ..dataimpl import LyraDBCollectionType
 
 
 async def delete_after(
-    ctx_: Contextish, msg: hk.SnowflakeishOr[hk.PartialMessage], /, *, time: float = 3.5
+    ch_: ChannelAware,
+    msg: hk.SnowflakeishOr[hk.PartialMessage],
+    /,
+    *,
+    time: float = 3.5,
 ):
     await asyncio.sleep(time)
-    ch = await ctx_.fetch_channel()
+    ch = await ch_.fetch_channel()
     await ch.delete_messages(msg)
 
 
 @t.overload
 async def err_say(
-    event: GuildInferableEvents | hk.Snowflakeish,
+    event: GuildAwareEventType,
     /,
     *,
     del_after: float = 3.5,
@@ -79,7 +89,7 @@ async def err_say(
 
 @t.overload
 async def err_say(
-    ctx_: Contextish,
+    ctx_: ContextishType,
     /,
     *,
     del_after: float = 3.5,
@@ -92,7 +102,7 @@ async def err_say(
 
 @t.overload
 async def err_say(
-    ctx_: Contextish,
+    ctx_: ContextishType,
     /,
     *,
     del_after: float = 3.5,
@@ -104,7 +114,7 @@ async def err_say(
 
 
 async def err_say(
-    g_r_inf: GuildOrRESTInferable,
+    g_r_inf: RESTAwareType,
     /,
     *,
     delete_after: float = 3.5,
@@ -125,7 +135,7 @@ async def err_say(
 
 @t.overload
 async def ephim_say(
-    g_: GuildInferableEvents | hk.Snowflakeish,
+    g_: GuildAwareEventType,
     /,
     *,
     channel: hk.Snowflakeish = ...,
@@ -136,7 +146,7 @@ async def ephim_say(
 
 @t.overload
 async def ephim_say(
-    ctx_: Contextish,
+    ctx_: ContextishType,
     /,
     **kwargs: t.Any,
 ) -> hk.Message:
@@ -144,7 +154,7 @@ async def ephim_say(
 
 
 async def ephim_say(
-    g_r_inf: GuildOrRESTInferable,
+    g_r_inf: RESTAwareType,
     /,
     *,
     channel: Option[hk.Snowflakeish] = None,
@@ -156,7 +166,7 @@ async def ephim_say(
 
 @t.overload
 async def say(
-    g_: GuildInferableEvents | hk.Snowflakeish,
+    g_: GuildAwareEventType,
     /,
     *,
     hidden: bool = False,
@@ -219,7 +229,7 @@ async def say(
 
 
 async def say(
-    g_r_inf: GuildOrRESTInferable,
+    g_r_inf: RESTAwareType,
     /,
     *,
     hidden: bool = False,
@@ -236,11 +246,11 @@ async def say(
         kwargs['components'] = ()
 
     try:
-        if isinstance(g_r_inf, hk.ComponentInteraction | GuildInferableEvents):
+        if isinstance(g_r_inf, hk.ComponentInteraction | GuildAwareEventType):
             kwargs.pop('delete_after', None)
 
         flags = msgflag.EPHEMERAL if hidden else hk.UNDEFINED
-        if isinstance(g_r_inf, GuildInferableEvents):
+        if isinstance(g_r_inf, GuildAwareEventType):
             if not channel:
                 raise RuntimeError(
                     '`g_r_inf` was type `GuildInferableEvents` but `channel` was not passed'
@@ -271,14 +281,14 @@ async def say(
                     hk.ResponseType.MESSAGE_CREATE, **kwargs, flags=flags
                 )
     except (RuntimeError, hk.NotFoundError):
-        assert isinstance(g_r_inf, Contextish)
+        assert isinstance(g_r_inf, ContextishType)
         msg = await g_r_inf.edit_initial_response(**kwargs)
     finally:
         if not ensure_result:
             return msg
         if isinstance(g_r_inf, hk.ComponentInteraction):
             return (await g_r_inf.fetch_initial_response()) or msg
-        if isinstance(g_r_inf, Contextish):
+        if isinstance(g_r_inf, ContextishType):
             return (await g_r_inf.fetch_last_response()) or msg
         assert msg
         return msg
@@ -365,7 +375,7 @@ def trigger_thinking(
 
 
 def trigger_thinking(
-    ctx: EitherContext,
+    ctx: AnyContextType,
     /,
     *,
     ephemeral: bool = False,
@@ -586,29 +596,27 @@ async def pre_execution(
         await ctx.message.edit(flags=msgflag.SUPPRESS_EMBEDS)
 
 
-def infer_guild(g_r_inf: GuildOrRESTInferable, /) -> hk.Snowflakeish:
-    if isinstance(g_r_inf, hk.Snowflakeish):
-        return g_r_inf
-    assert g_r_inf.guild_id
-    return g_r_inf.guild_id
+def infer_guild(g_r_inf: IntCastable | MaybeGuildIDAware, /) -> int:
+    if isinstance(g_r_inf, MaybeGuildIDAware):
+        assert g_r_inf.guild_id
+        return g_r_inf.guild_id
+    return int(g_r_inf)
 
 
-async def fetch_permissions(ctx_: Contextish, /) -> hk.Permissions:
-    if isinstance(ctx_, tj.abc.Context):
-        member = ctx_.member
-        assert member
-        auth_perms = await tj.permissions.fetch_permissions(
-            ctx_.client, member, channel=ctx_.channel_id
-        )
-    else:
-        member = ctx_.member
-        assert member
-        auth_perms = member.permissions
-    return auth_perms
+async def fetch_permissions(
+    ctx_: GuildContextish | ClientAwareGuildContextish, /
+) -> hk.Permissions:
+    if isinstance((m := ctx_.member), hk.InteractionMember):
+        return m.permissions
+    member = ctx_.member
+    assert member
+    return await tj.permissions.fetch_permissions(
+        get_client(ctx_), member, channel=ctx_.channel_id
+    )
 
 
-def get_client(_c_inf: Option[MaybeClientInferable] = None, /) -> tj.abc.Client:
-    if isinstance(_c_inf, tj.abc.Context):
+def get_client(_c_inf: AnyOr[ClientAware] = None, /) -> tj.abc.Client:
+    if isinstance(_c_inf, ClientAware):
         return _c_inf.client
 
     _c: tj.Client = (
@@ -617,8 +625,8 @@ def get_client(_c_inf: Option[MaybeClientInferable] = None, /) -> tj.abc.Client:
     return _c
 
 
-def get_rest(g_r_inf: RESTInferable, /):
-    if isinstance(g_r_inf, tj.abc.Context):
+def get_rest(g_r_inf: RESTAware | RESTAwareAware, /):
+    if isinstance(g_r_inf, RESTAware):
         return g_r_inf.rest
     return g_r_inf.app.rest
 
@@ -636,7 +644,10 @@ def get_guild_upload_limit(guild: hk.Guild, /) -> int:
 
 
 def limit_img_size_by_guild(
-    img_url_b: URLstr | bytes, g_inf: GuildOrInferable, /, cache: hk.api.Cache
+    img_url_b: URLstr | bytes,
+    g_inf: IntCastable | MaybeGuildIDAware,
+    /,
+    cache: hk.api.Cache,
 ):
     if isinstance(img_url_b, str):
         img_url_b = url_to_bytesio(img_url_b).getvalue()

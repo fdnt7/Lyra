@@ -43,7 +43,7 @@ from ..lib.utils import (
     ConnectionInfo,
     say,
     err_say,
-    with_annotated_args,
+    with_annotated_args_wrapped,
 )
 
 
@@ -241,21 +241,20 @@ async def stop_(
 # /fast-forward
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_activity_cmd_check(C.FASTFORWARD)
 # -
-@tj.with_float_slash_option(
-    'seconds', "Fast-foward by how much? (If not given, 10 seconds)", default=10.0
-)
 @tj.as_slash_command('fast-forward', "Fast-forwards the current track")
-@tj.with_argument('seconds', converters=float, default=10.0)
 @tj.as_message_command(
     'fast-forward', 'fastforward', 'forward', 'fw', 'fwd', 'ff', '>>'
 )
 async def fastforward_(
     ctx: tj.abc.MessageContext,
     lvc: al.Injected[lv.Lavalink],
-    seconds: float,
+    seconds: t.Annotated[
+        ja.Positional[ja.Float],
+        "Fast-foward by how much? (If not given, 10 seconds)",
+    ] = 10.0,
 ):
     async with access_queue(ctx, lvc) as q:
         assert not ((q.current is None) or (q.np_position is None))
@@ -281,19 +280,17 @@ async def fastforward_(
 # /rewind
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_activity_cmd_check(C.REWIND)
 # -
-@tj.with_float_slash_option(
-    'seconds', "Rewind by how much? (If not given, 10 seconds)", default=10.0
-)
 @tj.as_slash_command('rewind', "Rewinds the current track")
-@tj.with_argument('seconds', converters=float, default=10.00)
 @tj.as_message_command('rewind', 'rw', 'rew', '<<')
 async def rewind_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    seconds: float,
+    seconds: t.Annotated[
+        ja.Positional[ja.Float], "Rewind by how much? (If not given, 10 seconds)"
+    ] = 10.0,
 ):
     async with access_queue(ctx, lvc) as q:
         assert not ((q.current is None) or (q.np_position is None))
@@ -343,7 +340,7 @@ with_playat_cmd_check_and_voting = with_cmd_composer(
 )
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_playat_cmd_check_and_voting(C.PLAYAT)
 # -
 @tj.as_slash_command("play-at", "Plays the track at the specified position")
@@ -450,7 +447,7 @@ async def restart_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /seek
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_activity_cmd_check(C.SEEK)
 # -
 @tj.as_slash_command("seek", "Seeks the current track to a timestamp")

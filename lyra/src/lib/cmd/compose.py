@@ -21,7 +21,7 @@ from .flags import (
 )
 from ..utils import (
     BindSig,
-    Contextish,
+    ContextishType,
     get_client,
     fetch_permissions,
     start_confirmation_prompt,
@@ -46,7 +46,9 @@ from ..errors.expects import BindErrorExpects, CheckErrorExpects
 from ..lava.utils import get_queue
 
 
-async def others_not_in_vc_check(ctx_: Contextish, lvc: lv.Lavalink, /) -> Result[bool]:
+async def others_not_in_vc_check(
+    ctx_: ContextishType, lvc: lv.Lavalink, /
+) -> Result[bool]:
     assert ctx_.guild_id
 
     conn = t.cast(
@@ -72,7 +74,7 @@ def with_cb_check(
     P = t.ParamSpec('P')
 
     async def _check_in_vc(
-        ctx_: Contextish, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
+        ctx_: ContextishType, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
     ):
         member = ctx_.member
         assert ctx_.guild_id
@@ -94,7 +96,7 @@ def with_cb_check(
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
             raise AlreadyConnected(channel)
 
-    async def check_in_vc(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_in_vc(ctx_: ContextishType, lvc: lv.Lavalink):
         assert ctx_.guild_id
 
         conn = t.cast(
@@ -103,7 +105,7 @@ def with_cb_check(
         assert conn is not None
         await _check_in_vc(ctx_, conn)
 
-    async def check_np_yours(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_np_yours(ctx_: ContextishType, lvc: lv.Lavalink):
         assert ctx_.member
 
         auth_perms = await fetch_permissions(ctx_)
@@ -114,7 +116,7 @@ def with_cb_check(
         ):
             raise PlaybackChangeRefused(q.current)
 
-    async def check_can_seek_any(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_can_seek_any(ctx_: ContextishType, lvc: lv.Lavalink):
         assert ctx_.member
 
         auth_perms = await fetch_permissions(ctx_)
@@ -124,26 +126,26 @@ def with_cb_check(
             if ctx_.member.id != np.requester:
                 raise PlaybackChangeRefused(np)
 
-    async def check_stop(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_stop(ctx_: ContextishType, lvc: lv.Lavalink):
         if (await get_queue(ctx_, lvc)).is_stopped:
             raise TrackStopped
 
-    async def check_conn(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_conn(ctx_: ContextishType, lvc: lv.Lavalink):
         assert ctx_.guild_id
 
         conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
         if not conn:
             raise NotConnected
 
-    async def check_queue(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_queue(ctx_: ContextishType, lvc: lv.Lavalink):
         if not await get_queue(ctx_, lvc):
             raise QueueEmpty
 
-    async def check_playing(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_playing(ctx_: ContextishType, lvc: lv.Lavalink):
         if not (await get_queue(ctx_, lvc)).current:
             raise NotPlaying
 
-    async def check_pause(ctx_: Contextish, lvc: lv.Lavalink):
+    async def check_pause(ctx_: ContextishType, lvc: lv.Lavalink):
         if (await get_queue(ctx_, lvc)).is_paused:
             raise TrackPaused
 
@@ -153,7 +155,7 @@ def with_cb_check(
         @ft.wraps(func)
         async def inner(*args: P.args, **kwargs: P.kwargs) -> None:
 
-            ctx_ = next((a for a in args if isinstance(a, Contextish)), NULL)
+            ctx_ = next((a for a in args if isinstance(a, ContextishType)), NULL)
 
             assert ctx_, "Missing a Contextish object"
             assert ctx_.guild_id

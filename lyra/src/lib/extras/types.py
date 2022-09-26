@@ -30,7 +30,8 @@ Result = t.Annotated[_T | t.NoReturn, ...]
 OptionResult = Option[Result[_T]]
 Panic = t.Annotated[_T | t.NoReturn, ...]
 Require = t.Annotated[_T_co, ...]
-MaybeIterable = _T | t.Iterable[_T]
+AnyOr = t.Any | _T
+IterableOr = _T | t.Iterable[_T]
 
 KeySig = t.Callable[[__E], _KE]
 MapSig = t.Callable[[_T], _T]
