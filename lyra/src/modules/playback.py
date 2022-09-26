@@ -270,6 +270,7 @@ async def fastforward_(
                 ctx,
                 content=f"❕⏭️ ~~`{np_info.title}`~~ *(The fast-forwarded time was too large; **Skipping** to the next track)*",
             )
+            return
         fmt_sec = f"{I if (I := int(seconds)) == seconds else f'{seconds:.3f}'}s"
         await say(
             ctx,
@@ -305,6 +306,7 @@ async def rewind_(
                 ctx,
                 content=f"❕◀️ *The rewinded time was too large; **Restarted** the current track*",
             )
+            return
         fmt_sec = f"{I if (I := int(seconds)) == seconds else f'{seconds:.3f}'}s"
         await say(
             ctx,
@@ -469,11 +471,11 @@ async def seek_(
                 ctx,
                 content=f"❌ Invalid timestamp position given; The track's length is `{to_stamp(xe.arg.expected)}` but was given `{to_stamp(xe.arg.got)}`",
             )
-        else:
-            await say(
-                ctx,
-                content=f"🕹️ ~~`{to_stamp(old_np_ms)}`~~ ➜ **`{to_stamp(timestamp)}`**",
-            )
+            return
+        await say(
+            ctx,
+            content=f"🕹️ ~~`{to_stamp(old_np_ms)}`~~ ➜ **`{to_stamp(timestamp)}`**",
+        )
 
 
 # -
