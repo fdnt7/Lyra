@@ -27,7 +27,7 @@ from . import (
 )
 from ..cmd import get_full_cmd_repr_from_identifier
 from ..cmd.ids import CommandIdentifier
-from ..utils import Contextish, dj_perms_fmt, err_say, get_rest, say
+from ..utils import ContextishType, dj_perms_fmt, err_say, get_rest, say
 from ..extras import Result, format_flags
 
 
@@ -36,7 +36,7 @@ ExpectSig = t.Callable[[], t.Awaitable[None]]
 
 @a.frozen
 class BaseErrorExpects(abc.ABC):
-    context: Contextish
+    context: ContextishType
 
     @abc.abstractmethod
     def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
@@ -54,7 +54,7 @@ class BaseErrorExpects(abc.ABC):
 
 @a.frozen
 class CheckErrorExpects(BaseErrorExpects):
-    context: Contextish
+    context: ContextishType
 
     async def expect_network_error(self):
         await err_say(self.context, content="⁉️ A network error has occurred")
@@ -192,7 +192,7 @@ class CheckErrorExpects(BaseErrorExpects):
 
 @a.frozen
 class BindErrorExpects(BaseErrorExpects):
-    context: Contextish
+    context: ContextishType
 
     async def expect_command_cancelled(self):
         await err_say(self.context, follow_up=False, content="🛑 Cancelled the command")

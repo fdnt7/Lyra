@@ -1,7 +1,7 @@
 alluka==0.1.1
 attrs
 hikari==2.0.0.dev110
-hikari-tanjun==2.6.2a1
+hikari-tanjun==2.7.0a1
 lyricsgenius==3.0.1
 PyYAML
 requests

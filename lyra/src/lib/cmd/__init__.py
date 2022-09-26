@@ -17,14 +17,14 @@ from .types import (
     SlashCommandGroupType,
     SlashCommandType,
 )
-from ..utils.types import (
-    Contextish,
+from ..utils import (
+    ContextishType,
 )
 from ..extras import RecurserSig, recurse
 from ..extras.types import Option
 
 
-def get_implied_prefix(ctx_cmd: Contextish | GenericAnyCommandType, /) -> str:
+def get_implied_prefix(ctx_cmd: ContextishType | GenericAnyCommandType, /) -> str:
     if isinstance(ctx_cmd, tj.abc.MessageContext):
         return next(iter(ctx_cmd.client.prefixes))
     if isinstance(
@@ -107,7 +107,7 @@ def get_full_cmd_repr(
 
 
 def get_full_cmd_repr(
-    _ctx_: Option[Contextish],
+    _ctx_: Option[ContextishType],
     /,
     cmd: Option[GenericAnyCommandType] = None,
     *,
@@ -132,7 +132,7 @@ def get_full_cmd_repr(
 
 @t.overload
 def get_full_cmd_repr_from_identifier(
-    identifier: CommandIdentifier, /, ctx_: Contextish, *, pretty: bool = True
+    identifier: CommandIdentifier, /, ctx_: ContextishType, *, pretty: bool = True
 ) -> str:
     ...
 
@@ -147,7 +147,7 @@ def get_full_cmd_repr_from_identifier(
 def get_full_cmd_repr_from_identifier(
     identifier: CommandIdentifier,
     /,
-    _ctx_c: Contextish | tj.abc.Client,
+    _ctx_c: ContextishType | tj.abc.Client,
     *,
     pretty: bool = True,
 ):

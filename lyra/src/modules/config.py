@@ -29,7 +29,7 @@ from ..lib.utils import (
     RESTRICTOR,
     MentionableType,
     PartialMentionableType,
-    with_annotated_args,
+    with_annotated_args_wrapped,
     with_message_command_group_template,
     say,
     err_say,
@@ -244,6 +244,15 @@ async def config_g_m(_: tj.abc.MessageContext):
 ## /config prefix
 
 
+@with_identifier(C.CONFIG_PREFIX)
+# -
+@config_g_m.as_sub_group('prefix', 'pfx', '/')
+@with_message_command_group_template
+async def prefix_sg_m(_: tj.abc.MessageContext):
+    """Manages the bot's prefixes"""
+    ...
+
+
 prefix_sg_s = with_identifier(C.CONFIG_PREFIX)(
     config_g_s.with_command(
         (tj.slash_command_group('prefix', "Manages the bot's prefixes"))
@@ -251,25 +260,13 @@ prefix_sg_s = with_identifier(C.CONFIG_PREFIX)(
 )
 
 
-@with_identifier(C.CONFIG_PREFIX)
-# -
-@config_g_m.with_command
-@tj.as_message_command_group('prefix', 'pfx', '/', strict=True)
-@with_message_command_group_template
-async def prefix_sg_m(_: tj.abc.MessageContext):
-    """Manages the bot's prefixes"""
-    ...
-
-
 ### /config prefix list
 
 
 @with_identifier(C.CONFIG_PREFIX_LIST)
 # -
-@prefix_sg_s.with_command
-@tj.as_slash_command('list', "Lists all usable prefixes of the bot")
-@prefix_sg_m.with_command
-@tj.as_message_command('list', 'l', '.')
+@prefix_sg_m.as_sub_command('list', 'l', '.')
+@prefix_sg_s.as_sub_command('list', "Lists all usable prefixes of the bot")
 async def prefix_list_(
     ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]
 ) -> None:
@@ -296,13 +293,11 @@ async def prefix_list_(
 ### /config prefix add
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_admin_cmd_check(C.CONFIG_PREFIX_ADD)
 # -
-@prefix_sg_s.with_command
-@tj.as_slash_command('add', "Adds a new prefix of the bot for this guild")
-@prefix_sg_m.with_command
-@tj.as_message_command('add', '+', 'a', 'new', 'create', 'n')
+@prefix_sg_m.as_sub_command('add', '+', 'a', 'new', 'create', 'n')
+@prefix_sg_s.as_sub_command('add', "Adds a new prefix of the bot for this guild")
 async def prefix_add_(
     ctx: tj.abc.Context,
     cfg: al.Injected[LyraDBCollectionType],
@@ -332,13 +327,13 @@ async def prefix_add_(
 ### /config prefix remove
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_admin_cmd_check(C.CONFIG_PREFIX_REMOVE)
 # -
-@prefix_sg_s.with_command
-@tj.as_slash_command('remove', "Removes an existing prefix of the bot for this guild")
-@prefix_sg_m.with_command
-@tj.as_message_command('remove', '-', 'rem', 'r', 'rm', 'd', 'del', 'delete')
+@prefix_sg_m.as_sub_command('remove', '-', 'rem', 'r', 'rm', 'd', 'del', 'delete')
+@prefix_sg_s.as_sub_command(
+    'remove', "Removes an existing prefix of the bot for this guild"
+)
 async def prefix_remove_(
     ctx: tj.abc.Context,
     cfg: al.Injected[LyraDBCollectionType],
@@ -370,15 +365,6 @@ async def prefix_remove_(
 ## /config nowplayingmsg
 
 
-nowplayingmsg_sg_s = with_identifier(C.CONFIG_NOWPLAYINGMSG)(
-    config_g_s.with_command(
-        tj.slash_command_group(
-            'now-playing-msg', "Manages the bot's now playing messages"
-        )
-    )
-)
-
-
 @with_identifier(C.CONFIG_NOWPLAYINGMSG)
 # -
 @config_g_m.with_command
@@ -391,17 +377,24 @@ async def nowplayingmsg_sg_m(_: tj.abc.MessageContext):
     ...
 
 
+nowplayingmsg_sg_s = with_identifier(C.CONFIG_NOWPLAYINGMSG)(
+    config_g_s.with_command(
+        tj.slash_command_group(
+            'now-playing-msg', "Manages the bot's now playing messages"
+        )
+    )
+)
+
+
 ### /config nowplayingmsg toggle
 
 
 @with_author_permission_check(hkperms.MANAGE_GUILD)(C.CONFIG_NOWPLAYINGMSG_TOGGLE)
 # -
-@nowplayingmsg_sg_s.with_command
-@tj.as_slash_command(
+@nowplayingmsg_sg_m.as_sub_command('toggle', 'tggl', 't')
+@nowplayingmsg_sg_s.as_sub_command(
     'toggle', "Toggles the now playing messages to be automatically sent or not"
 )
-@nowplayingmsg_sg_m.with_command
-@tj.as_message_command('toggle', 'tggl', 't')
 async def nowplayingmsg_toggle_(
     ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]
 ):
@@ -428,15 +421,6 @@ async def nowplayingmsg_toggle_(
 ## /config restrict
 
 
-restrict_sg_s = with_identifier(C.CONFIG_RESTRICT)(
-    config_g_s.with_command(
-        tj.slash_command_group(
-            'restrict', "Manages the bot's restricted channels, roles and members"
-        )
-    )
-)
-
-
 @with_identifier(C.CONFIG_RESTRICT)
 # -
 @config_g_m.with_command
@@ -447,15 +431,24 @@ async def restrict_sg_m(_: tj.abc.MessageContext):
     ...
 
 
+restrict_sg_s = with_identifier(C.CONFIG_RESTRICT)(
+    config_g_s.with_command(
+        tj.slash_command_group(
+            'restrict', "Manages the bot's restricted channels, roles and members"
+        )
+    )
+)
+
+
 ### /config restrict list
 
 
 @with_identifier(C.CONFIG_RESTRICT_LIST)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command('list', "Shows the current restricted channels, roles and members")
-@restrict_sg_m.with_command
-@tj.as_message_command('list', 'ls', 'l', '.', 'all', '/')
+@restrict_sg_m.as_sub_command('list', 'ls', 'l', '.', 'all', '/')
+@restrict_sg_s.as_sub_command(
+    'list', "Shows the current restricted channels, roles and members"
+)
 async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]):
     """Shows the current restricted channels, roles and members"""
 
@@ -498,15 +491,13 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
 ### /config restrict add
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_restricts_cmd_check(C.CONFIG_RESTRICT_ADD)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command(
+@restrict_sg_m.as_sub_command('add', 'a', '+')
+@restrict_sg_s.as_sub_command(
     'add', "Adds new channels, roles or members to the restricted list"
 )
-@restrict_sg_m.with_command
-@tj.as_message_command('add', 'a', '+')
 # TODO: Remove tyoe casting when tanjun relaxed converter func sig
 async def restrict_add_(
     ctx: tj.abc.MessageContext,
@@ -536,15 +527,13 @@ async def restrict_add_(
 ### /config restrict remove
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_restricts_cmd_check(C.CONFIG_RESTRICT_REMOVE)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command(
+@restrict_sg_m.as_sub_command('remove', 'rm', 'del', 'r', 'd', '-')
+@restrict_sg_s.as_sub_command(
     'remove', "Removes existing channels, roles or members from the restricted list"
 )
-@restrict_sg_m.with_command
-@tj.as_message_command('remove', 'rm', 'del', 'r', 'd', '-')
 # TODO: Remove type casting when tanjun relaxed converter func sig
 async def restrict_remove_(
     ctx: tj.abc.MessageContext,
@@ -574,13 +563,13 @@ async def restrict_remove_(
 ### /config restrict blacklist
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_restricts_cmd_check(C.CONFIG_RESTRICT_BLACKLIST)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command('blacklist', "Sets a category's restriction mode to blacklisting")
-@restrict_sg_m.with_command
-@tj.as_message_command('blacklist', 'bl')
+@restrict_sg_m.as_sub_command('blacklist', 'bl')
+@restrict_sg_s.as_sub_command(
+    'blacklist', "Sets a category's restriction mode to blacklisting"
+)
 async def restrict_blacklist_(
     ctx: tj.abc.Context,
     cfg: al.Injected[LyraDBCollectionType],
@@ -598,13 +587,13 @@ async def restrict_blacklist_(
 ### /config restrict whitelist
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_restricts_cmd_check(C.CONFIG_RESTRICT_WHITELIST)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command('whitelist', "Sets a category's restriction mode to whitelisting")
-@restrict_sg_m.with_command
-@tj.as_message_command('whitelist', 'wl')
+@restrict_sg_m.as_sub_command('whitelist', 'wl')
+@restrict_sg_s.as_sub_command(
+    'whitelist', "Sets a category's restriction mode to whitelisting"
+)
 async def restrict_whitelist_(
     ctx: tj.abc.Context,
     cfg: al.Injected[LyraDBCollectionType],
@@ -622,13 +611,11 @@ async def restrict_whitelist_(
 ### /config restrict clear
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_restricts_cmd_check(C.CONFIG_RESTRICT_CLEAR)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command('clear', "Clears a category's restriction mode")
-@restrict_sg_m.with_command
-@tj.as_message_command('clear', 'clr')
+@restrict_sg_m.as_sub_command('clear', 'clr')
+@restrict_sg_s.as_sub_command('clear', "Clears a category's restriction mode")
 async def restrict_clear_(
     ctx: tj.abc.Context,
     cfg: al.Injected[LyraDBCollectionType],
@@ -653,10 +640,8 @@ async def restrict_clear_(
 
 @with_dangerous_restricts_cmd_check(C.CONFIG_RESTRICT_WIPE)
 # -
-@restrict_sg_s.with_command
-@tj.as_slash_command('wipe', "Wipes the restricted list of EVERY category")
-@restrict_sg_m.with_command
-@tj.as_message_command('wipe', 'reset', 'wp')
+@restrict_sg_m.as_sub_command('wipe', 'reset', 'wp')
+@restrict_sg_s.as_sub_command('wipe', "Wipes the restricted list of EVERY category")
 async def restrict_wipe_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionType]):
     """Wipes the restricted list of EVERY category"""
 

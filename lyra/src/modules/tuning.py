@@ -18,7 +18,7 @@ from ..lib.extras import Option, Panic
 from ..lib.utils import (
     say,
     err_say,
-    with_annotated_args,
+    with_annotated_args_wrapped,
     with_message_command_group_template,
 )
 from ..lib.errors import NotConnected
@@ -96,11 +96,7 @@ async def on_voice_state_update(
 # /volume
 
 
-volume_g_s = with_identifier(C.VOLUME)(
-    tj.slash_command_group('volume', "Manages the volume of this guild's player")
-)
-
-
+@with_annotated_args_wrapped
 @with_identifier(C.VOLUME)
 # -
 @tj.as_message_command_group('volume', 'v', 'vol', strict=True)
@@ -110,16 +106,19 @@ async def volume_g_m(_: tj.abc.MessageContext):
     ...
 
 
+volume_g_s = with_identifier(C.VOLUME)(
+    tj.slash_command_group('volume', "Manages the volume of this guild's player")
+)
+
+
 ## /volume set
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_stage_cmd_check(C.VOLUME_SET)
 # -
-@volume_g_s.with_command
-@tj.as_slash_command('set', "Set the volume of the bot from 0-10")
-@volume_g_m.with_command
-@tj.as_message_command('set', '=', '.')
+@volume_g_m.as_sub_command('set', '=', '.')
+@volume_g_s.as_sub_command('set', "Set the volume of the bot from 0-10")
 async def volume_set_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
@@ -142,22 +141,17 @@ async def volume_set_(
 ## /volume up
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_stage_cmd_check(C.VOLUME_UP)
 # -
-@volume_g_s.with_command
-@tj.with_int_slash_option(
-    'amount', "Increase by how much (If not given, by 1)", default=1
-)
-@tj.as_slash_command('up', "Increase the bot's volume")
-#
-@volume_g_m.with_command
-@tj.with_argument('amount', converters=int, default=1)
-@tj.as_message_command('up', 'u', '+', '^')
+@volume_g_m.as_sub_command('up', 'u', '+', '^')
+@volume_g_s.as_sub_command('up', "Increase the bot's volume")
 async def volume_up_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    amount: int,
+    amount: t.Annotated[
+        ja.Positional[ja.Int], "Increase by how much (If not given, by 1)"
+    ] = 1,
 ):
     """
     Increase the bot's volume
@@ -185,22 +179,17 @@ async def volume_up_(
 ## /volume down
 
 
-# TODO: Use annotation-based option declaration once declaring positional-only argument is possible
+@with_annotated_args_wrapped
 @with_stage_cmd_check(C.VOLUME_DOWN)
 # -
-@volume_g_s.with_command
-@tj.with_int_slash_option(
-    'amount', "Decrease by how much? (If not given, by 1)", default=1
-)
-@tj.as_slash_command('down', "Decrease the bot's volume")
-#
-@volume_g_m.with_command
-@tj.with_argument('amount', converters=int, default=1)
-@tj.as_message_command('down', 'd', '-', 'v')
+@volume_g_m.as_sub_command('down', 'd', '-', 'v')
+@volume_g_s.as_sub_command('down', "Decrease the bot's volume")
 async def volume_down_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
-    amount: int,
+    amount: t.Annotated[
+        ja.Positional[ja.Int], "Decrease by how much? (If not given, by 1)"
+    ] = 1,
 ):
     """
     Decrease the bot's volume"
@@ -270,11 +259,6 @@ async def mute_unmute_(ctx: tj.abc.Context, lvc: al.Injected[lv.Lavalink]):
 # /equalizer
 
 
-equalizer_g_s = with_identifier(C.EQUALIZER)(
-    tj.slash_command_group('equalizer', "Manages the bot's equalizer")
-)
-
-
 @with_identifier(C.EQUALIZER)
 # -
 @tj.as_message_command_group('equalizer', 'eq', strict=True)
@@ -282,6 +266,11 @@ equalizer_g_s = with_identifier(C.EQUALIZER)(
 async def equalizer_g_m(_: tj.abc.MessageContext):
     """Manages the bot's equalizer"""
     ...
+
+
+equalizer_g_s = with_identifier(C.EQUALIZER)(
+    tj.slash_command_group('equalizer', "Manages the bot's equalizer")
+)
 
 
 ## /equalizer preset
@@ -296,13 +285,11 @@ valid_presets: t.Final[dict[str, str]] = t.cast(
 ) | {'Flat': 'flat'}
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_stage_cmd_check(C.EQUALIZER_PRESET)
 # -
-@equalizer_g_s.with_command
-@tj.as_slash_command('preset', "Sets the bot's equalizer to a preset")
-@equalizer_g_m.with_command
-@tj.as_message_command('preset', 'pre', '=')
+@equalizer_g_m.as_sub_command('preset', 'pre', '=')
+@equalizer_g_s.as_sub_command('preset', "Sets the bot's equalizer to a preset")
 async def equalizer_preset_(
     ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],

@@ -8,8 +8,8 @@ import lavasnek_rs as lv
 
 from .utils import (
     ButtonBuilderType,
-    Contextish,
-    EitherContext,
+    ContextishType,
+    AnyContextType,
     edit_components,
     err_say,
     get_rest,
@@ -19,7 +19,7 @@ from .utils import (
 from .consts import ADD_TRACKS_WRAP_LIM
 from .extras import (
     NULL,
-    MaybeIterable,
+    IterableOr,
     Option,
     Result,
     Panic,
@@ -55,7 +55,7 @@ logger.setLevel(logging.DEBUG)
 
 
 async def to_tracks(
-    ctx: EitherContext,
+    ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
     value: str,
@@ -67,7 +67,7 @@ async def to_tracks(
     tracks: list[Trackish] = []
     errors: list[ValueError] = []
     songs = (*map(lambda s: s.strip("<>|"), value.split(' | ')),)
-    async with trigger_thinking(ctx):
+    async with trigger_thinking(t.cast(AnyContextType, ctx)):
         for song in songs:
             query = (
                 song if url_regex.fullmatch(song) else '%ssearch:%s' % (source, song)
@@ -89,7 +89,7 @@ async def play(
     ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
-    tracks: MaybeIterable[Trackish],
+    tracks: IterableOr[Trackish],
     *,
     respond: bool = False,
     shuffle: bool = False,
@@ -110,7 +110,7 @@ async def add_tracks_(
     ctx: tj.abc.Context,
     lvc: lv.Lavalink,
     /,
-    tracks_: MaybeIterable[Trackish],
+    tracks_: IterableOr[Trackish],
     queue: QueueList,
     *,
     respond: bool = False,
@@ -273,7 +273,7 @@ async def remove_tracks(
     return rm
 
 
-async def shuffle_abs(ctx_: Contextish, lvc: lv.Lavalink):
+async def shuffle_abs(ctx_: ContextishType, lvc: lv.Lavalink):
     async with access_queue(ctx_, lvc) as q:
         if not q.upcoming:
             await err_say(ctx_, content=f"❗ This is the end of the queue")
@@ -332,7 +332,7 @@ async def insert_track(
 
 
 async def repeat_abs(
-    ctx_: Contextish,
+    ctx_: ContextishType,
     mode: Option[RepeatMode],
     lvc: lv.Lavalink,
 ) -> Panic[None]:

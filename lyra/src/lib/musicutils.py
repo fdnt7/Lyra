@@ -5,8 +5,6 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from .extras.types import MaybeIterable
-
 from .utils import (
     Q_CHUNK,
     TIMEOUT,
@@ -17,7 +15,17 @@ from .utils import (
     err_say,
     say,
 )
-from .extras import Result, Option, MapSig, chunk, chunk_b, map_in_place, to_stamp, wr
+from .extras import (
+    Result,
+    Option,
+    MapSig,
+    IterableOr,
+    chunk,
+    chunk_b,
+    map_in_place,
+    to_stamp,
+    wr,
+)
 from .errors import (
     NotConnected,
     VotingTimeout,
@@ -41,8 +49,8 @@ def __init_component__(
     *,
     guild_check: bool = True,
     music_hook: bool = True,
-    other_checks: MaybeIterable[tj.abc.CheckSig] = (),
-    other_hooks: MaybeIterable[tj.abc.Hooks[tj.abc.Context]] = (),
+    other_checks: IterableOr[tj.abc.CheckSig] = (),
+    other_hooks: IterableOr[tj.abc.Hooks[tj.abc.Context]] = (),
 ):
     comp = tj.Component(name=dunder_name.split('.')[-1].capitalize(), strict=True)
     if guild_check:

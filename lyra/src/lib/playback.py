@@ -9,12 +9,12 @@ import lavasnek_rs as lv
 from .consts import TIMEOUT
 from .extras import Option, Result, Panic, MapSig, PredicateSig
 from .utils import (
+    IntCastable,
+    MaybeGuildIDAware,
     ButtonBuilderType,
-    Contextish,
+    ContextishType,
+    RESTAwareType,
     EmojiRefs,
-    GuildOrInferable,
-    GuildOrRESTInferable,
-    RESTInferable,
     edit_components,
     err_say,
     get_client,
@@ -35,19 +35,19 @@ from .lava.utils import (
 from .lava.events import TrackStoppedEvent
 
 
-async def stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, /) -> None:
-    async with access_queue(g_inf, lvc) as q:
+async def stop(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /) -> None:
+    async with access_queue(g_, lvc) as q:
         if np_pos := q.np_position:
             q.update_paused_np_position(np_pos)
         q.is_stopped = True
 
-    await lvc.stop(infer_guild(g_inf))
+    await lvc.stop(infer_guild(g_))
 
 
 async def stop_in_ctxmng(
-    g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, data: NodeData, /
 ) -> None:
-    g = infer_guild(g_inf)
+    g = infer_guild(g_)
 
     data.queue.is_stopped = True
     await set_data(g, lvc, data)
@@ -72,8 +72,10 @@ async def wait_for_track_finish_event_fire():
 
 
 @ctxlib.asynccontextmanager
-async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, /):
-    await stop_in_ctxmng(g_inf, lvc, data)
+async def while_stop(
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, data: NodeData, /
+):
+    await stop_in_ctxmng(g_, lvc, data)
     await wait_for_track_finish_event_fire()
     try:
         yield
@@ -82,7 +84,7 @@ async def while_stop(g_inf: GuildOrInferable, lvc: lv.Lavalink, data: NodeData, 
 
 
 async def set_pause(
-    g_r_inf: GuildOrRESTInferable,
+    g_r_: RESTAwareType | IntCastable,
     lvc: lv.Lavalink,
     /,
     *,
@@ -91,10 +93,10 @@ async def set_pause(
     strict: bool = False,
     update_controller: bool = False,
 ) -> Panic[bool]:
-    g = infer_guild(g_r_inf)
+    g = infer_guild(g_r_)
 
     try:
-        client = get_client(g_r_inf)
+        client = get_client(g_r_)
         erf = client.get_type_dependency(EmojiRefs)
         assert not isinstance(erf, al.abc.Undefined)
 
@@ -108,11 +110,13 @@ async def set_pause(
             pause = not q.is_paused
         if pause and q.is_paused:
             if respond:
-                await err_say(g_r_inf, content="❗ Already paused")
+                assert isinstance(g_r_, RESTAwareType)
+                await err_say(g_r_, content="❗ Already paused")
             return False
         if not (pause or q.is_paused):
             if respond:
-                await err_say(g_r_inf, content="❗ Already resumed")
+                assert isinstance(g_r_, RESTAwareType)
+                await err_say(g_r_, content="❗ Already resumed")
             return False
 
         np_pos = q.np_position
@@ -133,18 +137,18 @@ async def set_pause(
 
         await set_data(g, lvc, d)
         if respond:
-            if isinstance(g_r_inf, Contextish):
-                await say(g_r_inf, show_author=True, content=f"{e} {msg}")
+            if isinstance(g_r_, ContextishType):
+                await say(g_r_, show_author=True, content=f"{e} {msg}")
             else:
-                assert d.out_channel_id
-                await say(g_r_inf, channel=d.out_channel_id)
+                assert d.out_channel_id and not isinstance(g_r_, IntCastable)
+                await say(g_r_, channel=d.out_channel_id)
 
         if update_controller and d.nowplaying_msg:
-            if not isinstance(g_r_inf, RESTInferable):
+            if not isinstance(g_r_, RESTAwareType):
                 raise RuntimeError(
-                    "`g_r_inf` was not type `RESTInferable` but `update_controller` was passed `True`"
+                    "`g_r_` is not a `RESTAwareType` but `update_controller` was passed `True`"
                 )
-            rest = get_rest(g_r_inf)
+            rest = get_rest(g_r_)
 
             assert d.nowplaying_components
             edits: MapSig[ButtonBuilderType] = lambda x: x.set_emoji(
@@ -171,7 +175,7 @@ async def set_pause(
 
 
 async def skip(
-    g_inf: GuildOrInferable,
+    g_: IntCastable | ContextishType,
     lvc: lv.Lavalink,
     /,
     *,
@@ -179,11 +183,11 @@ async def skip(
     reset_repeat: bool = False,
     change_stop: bool = True,
 ) -> Option[lv.TrackQueue]:
-    async with access_queue(g_inf, lvc) as q:
+    async with access_queue(g_, lvc) as q:
         skip = q.current
         if reset_repeat:
             q.reset_repeat()
-        await lvc.stop(g := infer_guild(g_inf))
+        await lvc.stop(g := infer_guild(g_))
         if q.is_stopped:
             if next_t := q.next:
                 await lvc.play(g, next_t.track).start()
@@ -191,11 +195,11 @@ async def skip(
                 q.adv()
         if change_stop:
             q.is_stopped = False
-        await set_pause(g_inf, lvc, pause=False)
+        await set_pause(g_, lvc, pause=False)
         return skip
 
 
-async def skip_abs(ctx_: Contextish, lvc: lv.Lavalink):
+async def skip_abs(ctx_: ContextishType, lvc: lv.Lavalink):
     skip_t = await skip(ctx_, lvc, reset_repeat=True)
 
     assert skip_t is not None
@@ -203,7 +207,7 @@ async def skip_abs(ctx_: Contextish, lvc: lv.Lavalink):
 
 
 async def back(
-    ctx_: Contextish,
+    ctx_: ContextishType,
     lvc: lv.Lavalink,
     /,
     *,
@@ -237,7 +241,7 @@ async def back(
     return prev
 
 
-async def previous_abs(ctx_: Contextish, lvc: lv.Lavalink):
+async def previous_abs(ctx_: ContextishType, lvc: lv.Lavalink):
     if (
         q := await get_queue(ctx_, lvc)
     ).repeat_mode is RepeatMode.NONE and not q.history:

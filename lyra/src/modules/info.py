@@ -12,7 +12,7 @@ from ..lib.cmd.compose import with_identifier
 from ..lib.utils import (
     Q_CHUNK,
     TIMEOUT,
-    EitherContext,
+    AnyContextType,
     EmojiRefs,
     limit_img_size_by_guild,
     say,
@@ -20,7 +20,7 @@ from ..lib.utils import (
     extract_content,
     trigger_thinking,
     disable_components,
-    with_annotated_args,
+    with_annotated_args_wrapped,
 )
 from ..lib.music import stop, unstop
 from ..lib.musicutils import generate_queue_embeds, __init_component__
@@ -117,7 +117,7 @@ with_se_cmd_check_and_connect_vc = with_cmd_composer(
 )
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_se_cmd_check_and_connect_vc(C.SEARCH)
 # -
 @tj.as_message_command('search', 'se', 'f', 'yt', 'youtube')
@@ -126,7 +126,7 @@ with_se_cmd_check_and_connect_vc = with_cmd_composer(
     "Searches for tracks on youtube from your query and lets you hear a part of it",
 )
 async def search_(
-    ctx: EitherContext,
+    ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
     query: t.Annotated[ja.Greedy[ja.Str], "What to be queried?"],
 ):
@@ -148,7 +148,7 @@ async def search_c(
     await _search(ctx, cnt, lvc)
 
 
-async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[None]:
+async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Result[None]:
     from ..lib.music import play, add_tracks_
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
@@ -163,7 +163,7 @@ async def _search(ctx: EitherContext, query: str, lvc: lv.Lavalink) -> Result[No
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert not isinstance(bot, al.abc.Undefined)
 
-    async with trigger_thinking(ctx):
+    async with trigger_thinking(t.cast(AnyContextType, ctx)):
         results = await lvc.auto_search_tracks(query)
     if results.load_type in {'TRACK_LOADED', 'PLAYLIST_LOADED'}:
         play_r = get_full_cmd_repr_from_identifier(C.PLAY, ctx)
@@ -465,13 +465,13 @@ async def queue_(
 # /lyrics
 
 
-@with_annotated_args
+@with_annotated_args_wrapped
 @with_identifier(C.LYRICS)
 # -
 @tj.as_slash_command('lyrics', 'Attempts to find the lyrics of the current song')
 @tj.as_message_command('lyrics', 'ly')
 async def lyrics_(
-    ctx: EitherContext,
+    ctx: tj.abc.Context,
     lvc: al.Injected[lv.Lavalink],
     song: t.Annotated[
         Option[ja.Greedy[ja.Str]], "What song? (If not given, the current song)"
@@ -507,7 +507,7 @@ async def lyrics_(
     )
 
     try:
-        async with trigger_thinking(ctx):
+        async with trigger_thinking(t.cast(AnyContextType, ctx)):
             lyrics = await get_lyrics(song)
     except LyricsNotFound:
         await err_say(ctx, content=f"❓ Could not find any lyrics for the song")

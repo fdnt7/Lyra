@@ -12,7 +12,7 @@ from ..utils import (
     DJ_PERMS,
     TIMEOUT,
     BindSig,
-    Contextish,
+    ContextishType,
     ConnectionInfo,
     delete_after,
     fetch_permissions,
@@ -81,7 +81,7 @@ class Binds(AutoDocsFlag):
     VOTE = """Binds a voting prompt to be used when needed"""
 
 
-async def speaker_check(ctx_: Contextish, /) -> Result[bool]:
+async def speaker_check(ctx_: ContextishType, /) -> Result[bool]:
     assert ctx_.guild_id
 
     client = get_client(ctx_)

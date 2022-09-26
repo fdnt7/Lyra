@@ -21,7 +21,7 @@ from .types import (
     Panic,
     NULL,
     RGBTriplet,
-    MaybeIterable,
+    IterableOr,
     MapSig,
     AsyncVoidAnySig,
     URLstr,
