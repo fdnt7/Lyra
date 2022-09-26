@@ -258,16 +258,15 @@ async def remove_one_(
             ctx,
             content=f"❌ Please specify a track to remove or have a track playing first",
         )
+        return
     except IllegalArgument as xe:
         arg_exp = xe.arg.expected
         await err_say(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `{arg_exp[0]}` and `{arg_exp[1]}`**",
         )
-    else:
-        await say(
-            ctx, content=f"**`ー`** Removed `{rm.track.info.title}` from the queue"
-        )
+        return
+    await say(ctx, content=f"**`ー`** Removed `{rm.track.info.title}` from the queue")
 
 
 ## /remove bulk
@@ -305,20 +304,20 @@ async def remove_bulk_(
             delete_after=6.5,
             content=f"❌ Invalid start position or end position\n**Start position must be smaller or equal to end position *AND* both of them has to be in between 1 and the queue length **",
         )
-    else:
+        return
+    await say(
+        ctx,
+        content=f"**`≡⁻`** Removed track position `{start}-{end}` `({t_n} tracks)` from the queue",
+    )
+    if start == 1 and end == q_l:
+        remove_bulk_r = get_full_cmd_repr_from_identifier(C.REMOVE_BULK, ctx)
+        clear_r = get_full_cmd_repr_from_identifier(C.CLEAR, ctx)
         await say(
             ctx,
-            content=f"**`≡⁻`** Removed track position `{start}-{end}` `({t_n} tracks)` from the queue",
+            hidden=True,
+            follow_up=True,
+            content=f"💡 It is best to only remove a part of the queue when using {remove_bulk_r}. *For clearing the entire queue, use {clear_r} instead*",
         )
-        if start == 1 and end == q_l:
-            remove_bulk_r = get_full_cmd_repr_from_identifier(C.REMOVE_BULK, ctx)
-            clear_r = get_full_cmd_repr_from_identifier(C.CLEAR, ctx)
-            await say(
-                ctx,
-                hidden=True,
-                follow_up=True,
-                content=f"💡 It is best to only remove a part of the queue when using {remove_bulk_r}. *For clearing the entire queue, use {clear_r} instead*",
-            )
 
 
 # /clear
@@ -397,23 +396,20 @@ async def move_last_(
             content=f"❌ Please specify a track to move or have a track playing first",
         )
         return
-
     except IllegalArgument:
         await err_say(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `1` and `{len(q)}`**",
         )
         return
-
     except ValueError:
         await err_say(ctx, content=f"❗ This track is already at the end of the queue")
         return
 
-    else:
-        await say(
-            ctx,
-            content=f"⏬ Moved track `{mv.track.info.title}` to the end of the queue",
-        )
+    await say(
+        ctx,
+        content=f"⏬ Moved track `{mv.track.info.title}` to the end of the queue",
+    )
 
 
 ## /move swap

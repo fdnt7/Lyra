@@ -351,11 +351,9 @@ async def repeat_abs(
     elif mode is RepeatMode.ALL:
         msg = "Repeating the entire queue"
         e = '🔁'
-    elif mode is RepeatMode.ONE:
+    else:
         msg = "Repeating only this current track"
         e = '🔂'
-    else:
-        raise NotImplementedError
 
     from .lava.utils import get_repeat_emoji
 
