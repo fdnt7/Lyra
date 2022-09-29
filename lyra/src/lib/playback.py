@@ -37,8 +37,11 @@ from .lava.events import TrackStoppedEvent
 
 async def stop(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /) -> None:
     async with access_queue(g_, lvc) as q:
-        if np_pos := q.np_time:
-            q.update_paused_np_position(np_pos)
+        try:
+            if np_pos := q.np_time:
+                q.update_paused_np_position(np_pos)
+        except QueueEmpty:
+            pass
         q.is_stopped = True
 
     await lvc.stop(infer_guild(g_))
