@@ -61,18 +61,18 @@ async def on_voice_state_update(
     bot_u = bot.get_me()
     assert bot_u
 
-    async def users_in_vc() -> t.Collection[hk.VoiceState]:
+    async def users_in_vc() -> frozenset[hk.VoiceState]:
         _conn = conn()
         cache = client.cache
         if not _conn:
             return frozenset()
         assert cache
         ch_id: int = _conn['channel_id']
-        return (
-            await cache.get_voice_states_view_for_channel(event.guild_id, ch_id)
-            .iterator()
-            .filter(lambda v: not v.member.is_bot)
-            .collect(frozenset)
+        return frozenset(
+            filter(
+                lambda v: not v.member.is_bot,
+                cache.get_voice_states_view_for_channel(event.guild_id, ch_id).values(),
+            )
         )
 
     new_vc_id = new.channel_id

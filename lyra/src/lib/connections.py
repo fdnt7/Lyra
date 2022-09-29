@@ -260,10 +260,11 @@ async def others_not_in_vc_check_impl(
     voice_states = client.cache.get_voice_states_view_for_channel(
         ctx_.guild_id, channel
     )
-    others_in_voice = (
-        await voice_states.iterator()
-        .filter(lambda v: not v.member.is_bot and v.member.id != member.id)
-        .collect(frozenset)
+    others_in_voice = frozenset(
+        filter(
+            lambda v: not v.member.is_bot and v.member.id != member.id,
+            voice_states.values(),
+        )
     )
 
     if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and others_in_voice:

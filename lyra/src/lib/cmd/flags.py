@@ -169,11 +169,8 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         voice_states = client.cache.get_voice_states_view_for_channel(
             ctx.guild_id, channel
         )
-
-        author_in_voice = (
-            await voice_states.iterator()
-            .filter(lambda v: v.member.id == member.id)
-            .collect(frozenset)
+        author_in_voice = frozenset(
+            filter(lambda v: v.member.id == member.id, voice_states.values())
         )
 
         if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
