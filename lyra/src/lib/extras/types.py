@@ -26,8 +26,8 @@ _KE = t.TypeVar('_KE')
 
 Coro = t.Coroutine[t.Any, t.Any, _T]
 Option = _T | None
-Result = t.Annotated[_T | t.NoReturn, ...]
-OptionResult = Option[Result[_T]]
+Fallible = t.Annotated[_T | t.NoReturn, ...]
+OptionFallible = Option[Fallible[_T]]
 Panic = t.Annotated[_T | t.NoReturn, ...]
 Require = t.Annotated[_T_co, ...]
 AnyOr = t.Any | _T

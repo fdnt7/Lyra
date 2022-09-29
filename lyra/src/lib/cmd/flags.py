@@ -33,7 +33,7 @@ from ..errors import (
     VotingTimeout,
 )
 from ..errors.expects import BindErrorExpects, CheckErrorExpects
-from ..extras import AutoDocsFlag, Result, Option, Panic
+from ..extras import AutoDocsFlag, Fallible, Option, Panic
 from ..lava.utils import get_queue
 from ..connections import others_not_in_vc_check_impl
 
@@ -81,7 +81,7 @@ class Binds(AutoDocsFlag):
     VOTE = """Binds a voting prompt to be used when needed"""
 
 
-async def speaker_check(ctx_: ContextishType, /) -> Result[bool]:
+async def speaker_check(ctx_: ContextishType, /) -> Fallible[bool]:
     assert ctx_.guild_id
 
     client = get_client(ctx_)
@@ -102,7 +102,7 @@ async def speaker_check(ctx_: ContextishType, /) -> Result[bool]:
     return True
 
 
-async def developer_check(ctx: tj.abc.Context, /) -> Result[bool]:
+async def developer_check(ctx: tj.abc.Context, /) -> Fallible[bool]:
     from .. import consts as c
 
     if int(ctx.author.id) not in c.__developers__:
@@ -157,7 +157,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 
     async def __check_in_vc(
         ctx: tj.abc.Context, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
-    ) -> Result[bool]:
+    ) -> Fallible[bool]:
         member = ctx.member
         assert ctx.guild_id
 
@@ -197,7 +197,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 
     async def ___as_np_yours_check(
         ctx: tj.abc.Context, /, *, lvc: lv.Lavalink
-    ) -> Result[bool]:
+    ) -> Fallible[bool]:
         assert ctx.member
 
         auth_perms = await fetch_permissions(ctx)
@@ -211,7 +211,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
 
     async def ___as_can_seek_any_check(
         ctx: tj.abc.Context, /, *, lvc: lv.Lavalink
-    ) -> Result[bool]:
+    ) -> Fallible[bool]:
         assert ctx.member
 
         auth_perms = await fetch_permissions(ctx)
@@ -228,7 +228,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         /,
         *,
         lvc: lv.Lavalink,
-    ) -> Result[bool]:
+    ) -> Fallible[bool]:
         if (cmd := ctx.command) and Binds.VOTE in cmd.metadata.get('binds', set()):
             try:
                 from ..musicutils import start_listeners_voting
@@ -367,12 +367,13 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
         else:
             return True
 
-    async def _as_connect_vc(ctx: tj.abc.Context, /) -> Panic[bool]:
+    async def _as_connect_vc(
+        ctx: tj.abc.Context, /, lvc: al.Injected[lv.Lavalink]
+    ) -> Panic[bool]:
         assert ctx.guild_id
 
         ch = ctx.get_channel()
-        lvc = ctx.client.get_type_dependency(lv.Lavalink)
-        assert not isinstance(lvc, al.abc.Undefined) and ch
+        assert ch
 
         conn = lvc.get_guild_gateway_connection_info(ctx.guild_id)
         if conn:

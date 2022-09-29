@@ -6,7 +6,7 @@ LOG_PAD: t.Final = 16
 """Left aligned padding for each lib's logger name"""
 TIMEOUT: t.Final = 60
 """Base timeout time for buttons, drop-downs and command's wait for responses in seconds"""
-Q_CHUNK: t.Final = 15
+Q_CHUNK: t.Final = 10
 """Amount of tracks in the queue to be displayed per page in the `/queue` command"""
 RETRIES: t.Final = 3
 """Amount of tries to retry when some over-the-web operations failed"""

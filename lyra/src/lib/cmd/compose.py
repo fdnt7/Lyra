@@ -26,7 +26,7 @@ from ..utils import (
     fetch_permissions,
     start_confirmation_prompt,
 )
-from ..extras import NULL, DecorateSig, ArgsDecorateSig, Option, Result, Panic
+from ..extras import NULL, DecorateSig, ArgsDecorateSig, Option, Fallible, Panic
 from ..errors import (
     AlreadyConnected,
     BaseLyraException,
@@ -48,7 +48,7 @@ from ..lava.utils import get_queue
 
 async def others_not_in_vc_check(
     ctx_: ContextishType, lvc: lv.Lavalink, /
-) -> Result[bool]:
+) -> Fallible[bool]:
     assert ctx_.guild_id
 
     conn = t.cast(

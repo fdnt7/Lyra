@@ -11,12 +11,13 @@ import collections as cl
 # pyright: reportUnusedImport=false
 from .types import (
     Option,
-    Result,
+    Fallible,
     KeySig,
     PredicateSig,
     DecorateSig,
     ArgsDecorateSig,
     # -
+    AnyOr,
     Coro,
     Panic,
     NULL,
@@ -143,7 +144,7 @@ def to_stamp(ms: int, /) -> str:
     )
 
 
-def to_ms(str_: str, /) -> Result[int]:
+def to_ms(str_: str, /) -> Fallible[int]:
     VALID_FORMAT = "00:00.204 1:57 2:00:09 400ms 7m51s 5h2s99ms".split()
     singl_z = ['0']
     if match := time_regex.fullmatch(str_):
@@ -181,8 +182,15 @@ def wr(
     )
 
 
+_F = t.TypeVar('_F', bound=e.Flag)
+
+
+def split_flags(flags: _F, /) -> frozenset[_F]:
+    return frozenset(f for f in flags.__class__ if f & flags)
+
+
 def format_flags(flags: e.Flag, /) -> str:
-    return ' & '.join(f.replace('_', ' ').title() for f in str(flags).split('|'))
+    return ' & '.join(str(f).replace('_', ' ').title() for f in split_flags(flags))
 
 
 _TE = t.TypeVar('_TE')
@@ -217,6 +225,17 @@ _CE = t.TypeVar('_CE')
 
 def uniquify(iter_: t.Iterable[_CE], /) -> t.Iterable[_CE]:
     return (*(k for k, _ in it.groupby(iter_)),)
+
+
+def join_truthy(
+    str_iter: t.Iterable[str],
+    /,
+    sep: str,
+    *,
+    predicate: Option[PredicateSig[str]] = None,
+) -> str:
+    predicate = predicate or (lambda s: bool(s))
+    return sep.join((*filter(lambda e: predicate(e), str_iter),))
 
 
 def join_and(

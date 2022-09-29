@@ -20,7 +20,7 @@ from .utils import (
     get_client,
     say,
 )
-from .extras import Option, Result, lgfmt
+from .extras import Option, Fallible, lgfmt
 from .errors import (
     AlreadyConnected,
     ChannelMoved,
@@ -50,7 +50,7 @@ async def join(
     channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel],
     lvc: lv.Lavalink,
     /,
-) -> Result[hk.Snowflake]:
+) -> Fallible[hk.Snowflake]:
     """Joins your voice channel."""
     assert ctx.guild_id and ctx.member
 
@@ -160,7 +160,7 @@ async def join(
     return new_ch
 
 
-async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Result[hk.Snowflakeish]:
+async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowflakeish]:
     assert ctx.guild_id
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
@@ -250,7 +250,7 @@ async def join_impl_precaught(
 
 async def others_not_in_vc_check_impl(
     ctx_: ContextishType, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
-) -> Result[bool]:
+) -> Fallible[bool]:
     auth_perms = await fetch_permissions(ctx_)
     member = ctx_.member
     client = get_client(ctx_)

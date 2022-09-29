@@ -257,9 +257,9 @@ async def fastforward_(
     ] = 10.0,
 ):
     async with access_queue(ctx, lvc) as q:
-        assert not ((q.current is None) or (q.np_position is None))
+        assert not ((q.current is None) or (q.np_time is None))
         np_info = q.current.track.info
-        old_np_ms = q.np_position
+        old_np_ms = q.np_time
         new_np_ms = old_np_ms + int(seconds * 1000)
 
         try:
@@ -294,8 +294,8 @@ async def rewind_(
     ] = 10.0,
 ):
     async with access_queue(ctx, lvc) as q:
-        assert not ((q.current is None) or (q.np_position is None))
-        old_np_ms = q.np_position
+        assert not ((q.current is None) or (q.np_time is None))
+        old_np_ms = q.np_time
         new_np_ms = old_np_ms - int(seconds * 1000)
 
         try:
@@ -463,8 +463,8 @@ async def seek_(
 ):
     async with access_queue(ctx, lvc) as q:
         try:
-            assert q.np_position is not None
-            old_np_ms = q.np_position
+            assert q.np_time is not None
+            old_np_ms = q.np_time
             await seek(ctx, lvc, timestamp)
         except IllegalArgument as xe:
             await err_say(

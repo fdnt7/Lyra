@@ -7,7 +7,7 @@ import alluka as al
 import lavasnek_rs as lv
 
 from .consts import TIMEOUT
-from .extras import Option, Result, Panic, MapSig, PredicateSig
+from .extras import Option, Fallible, Panic, MapSig, PredicateSig
 from .utils import (
     IntCastable,
     MaybeGuildIDAware,
@@ -37,7 +37,7 @@ from .lava.events import TrackStoppedEvent
 
 async def stop(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /) -> None:
     async with access_queue(g_, lvc) as q:
-        if np_pos := q.np_position:
+        if np_pos := q.np_time:
             q.update_paused_np_position(np_pos)
         q.is_stopped = True
 
@@ -119,7 +119,7 @@ async def set_pause(
                 await err_say(g_r_, content="❗ Already resumed")
             return False
 
-        np_pos = q.np_position
+        np_pos = q.np_time
         if np_pos is None:
             raise NotPlaying
 
@@ -252,7 +252,9 @@ async def previous_abs(ctx_: ContextishType, lvc: lv.Lavalink):
     await say(ctx_, show_author=True, content=f"⏮️ **`{prev.track.info.title}`**")
 
 
-async def seek(ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /) -> Result[int]:
+async def seek(
+    ctx: tj.abc.Context, lvc: lv.Lavalink, total_ms: int, /
+) -> Fallible[int]:
     assert ctx.guild_id
     if total_ms < 0:
         raise IllegalArgument(Argument(total_ms, 0))

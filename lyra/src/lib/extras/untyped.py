@@ -17,7 +17,7 @@ import lavasnek_rs as lv
 
 from PIL import Image as pil_img
 
-from .types import Option, OptionResult, URLstr, RGBTriplet
+from .types import Option, OptionFallible, URLstr, RGBTriplet
 from .vars import (
     ytm_api,
     gn_api,
@@ -181,7 +181,7 @@ def get_img_pallete(
 
 
 @mz.cached
-def get_thumbnail(t_info: lv.Info, /) -> OptionResult[URLstr | bytes]:
+def get_thumbnail(t_info: lv.Info, /) -> OptionFallible[URLstr | bytes]:
     uri = t_info.uri
     id_ = t_info.identifier
 

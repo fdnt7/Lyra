@@ -1,4 +1,5 @@
 import typing as t
+import itertools as it
 
 import hikari as hk
 import tanjun as tj
@@ -15,8 +16,9 @@ from .utils import (
     err_say,
     say,
 )
+from .utils.fmt import ANSI_BLOCK, Fore, Style, cl
 from .extras import (
-    Result,
+    Fallible,
     Option,
     MapSig,
     IterableOr,
@@ -86,7 +88,7 @@ async def post_execution(
 
 async def start_listeners_voting(
     ctx: tj.abc.Context, lvc: lv.Lavalink, /
-) -> Result[None]:
+) -> Fallible[None]:
     assert ctx.member and ctx.guild_id and ctx.client.cache
 
     cmd_r = get_full_cmd_repr(ctx)
@@ -178,19 +180,32 @@ async def start_listeners_voting(
 
 async def generate_queue_embeds(
     ctx: tj.abc.Context, lvc: lv.Lavalink, /
-) -> tuple[hk.Embed, ...]:
+) -> it.chain[hk.Embed]:
     assert not ((ctx.guild_id is None) or (ctx.cache is None))
     q = await get_queue(ctx, lvc)
+    _empty = cl(f"{'---':^63}", fore=Fore.D)
+
     if np := q.current:
         np_info = np.track.info
         req = ctx.cache.get_member(ctx.guild_id, np.requester)
         assert req is not None
-        np_text = f"```arm\n{q.pos+1: >2}. {to_stamp(np_info.length):>6} | {wr(np_info.title, 50)} |\n```📨 {req.mention}"
+        np_text = ''.join(
+            (
+                ANSI_BLOCK
+                % "{} {} {} {}".format(
+                    cl(f"{q.pos+1: >2}.", fore=Fore.M),
+                    cl(f"{to_stamp(np_info.length):>6}", fore=Fore.W),
+                    cl('|', fore=Fore.D),
+                    cl(f"{wr(np_info.title, 50)}", style=Style.B, fore=Fore.M),
+                ),
+                f"📨 {req.mention}",
+            )
+        )
     else:
-        np_text = f"```yaml\n{'---':^63}\n```"
+        np_text = ANSI_BLOCK % _empty
 
-    queue_durr = sum(t.track.info.length for t in q)
-    queue_elapsed = sum(t.track.info.length for t in q.history) + (q.np_position or 0)
+    queue_durr = q.total_durr
+    queue_elapsed = sum(t.track.info.length for t in q.history) + (q.np_time or 0)
     queue_eta = queue_durr - queue_elapsed
 
     q = await get_queue(ctx, lvc)
@@ -200,24 +215,27 @@ async def generate_queue_embeds(
     desc = (
         ""
         if q.repeat_mode is RepeatMode.NONE
-        else (
-            "**```diff\n+| Repeating this entire queue\n```**"
+        else ANSI_BLOCK
+        % (
+            "{} {} {}".format(
+                cl('⮎⮌', style=Style.B, fore=Fore.G),
+                cl('•', fore=Fore.D),
+                cl("Repeating this entire queue", fore=Fore.G),
+            )
             if q.repeat_mode is RepeatMode.ALL
-            else "**```diff\n-| Repeating the current track\n```**"
+            else "{} {} {}".format(
+                cl('⮎₁⮌', style=Style.B, fore=Fore.C),
+                cl('•', fore=Fore.D),
+                cl("Repeating the current track", fore=Fore.C),
+            )
         )
     )
 
     color = q.curr_t_palette[2] if q.is_playing else None
 
     _base_embed = hk.Embed(title="≡♪ Queue", description=desc, color=color,).set_footer(
-        f"⌛ {to_stamp(queue_elapsed)} (-{to_stamp(queue_eta)}) / {to_stamp(queue_durr)}ㅤ•ㅤ{q.pos+1} (-{len(q)-q.pos-1}) / {len(q)}"
+        f"⌛ {to_stamp(queue_elapsed)} (-{to_stamp(queue_eta)}) / {to_stamp(queue_durr)}ㅤ•ㅤ{q.sane_pos+1} (-{len(q)-q.sane_pos-1}) / {len(q)}"
     )
-
-    _format = f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'css'}\n%s\n```"
-    _format_prev = (
-        f"```{'brainfuck' if q.repeat_mode is RepeatMode.ONE else 'yaml'}\n%s\n```"
-    )
-    _empty = f"{'---':^63}"
 
     import copy
 
@@ -225,9 +243,15 @@ async def generate_queue_embeds(
         copy.deepcopy(_base_embed)
         .add_field(
             "Previous",
-            _format_prev
+            ANSI_BLOCK
             % (
-                f"{q.pos: >2}․ {to_stamp(prev.track.info.length):>6} # {wr(prev.track.info.title, 51)}"
+                "{} {}".format(
+                    cl(f"{q.pos: >2}.", fore=Fore.W),
+                    cl(
+                        f"{to_stamp(prev.track.info.length):>6} | {wr(prev.track.info.title, 50)}",
+                        fore=Fore.D,
+                    ),
+                )
                 if prev
                 else _empty
             ),
@@ -238,10 +262,15 @@ async def generate_queue_embeds(
         )
         .add_field(
             "Next up",
-            _format
+            ANSI_BLOCK
             % (
                 "\n".join(
-                    f"{j: >2}․ {to_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
+                    "{} {} {} {}".format(
+                        cl(f"{j: >2}.", fore=Fore.B),
+                        cl(f"{to_stamp(t_.track.info.length):>6}"),
+                        cl('|', fore=Fore.D),
+                        cl(f"{wr(t_.track.info.title, 50)}", fore=Fore.B),
+                    )
                     for j, t_ in enumerate(upcoming[:Q_CHUNK], q.pos + 2)
                 )
                 or _empty,
@@ -252,9 +281,15 @@ async def generate_queue_embeds(
     prev_embeds = (
         copy.deepcopy(_base_embed).add_field(
             "Previous",
-            _format_prev
+            ANSI_BLOCK
             % "\n".join(
-                f"{j: >2}․ {to_stamp(t_.track.info.length):>6} # {wr(t_.track.info.title, 51)}"
+                "{} {}".format(
+                    cl(f"{j: >2}.", fore=Fore.W),
+                    cl(
+                        f"{to_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 50)}",
+                        fore=Fore.D,
+                    ),
+                )
                 for j, t_ in enumerate(
                     prev_slice,
                     1
@@ -270,9 +305,14 @@ async def generate_queue_embeds(
     next_embeds = (
         copy.deepcopy(_base_embed).add_field(
             "Next up",
-            _format
+            ANSI_BLOCK
             % "\n".join(
-                f"{j: >2}․ {to_stamp(t_.track.info.length):>6} | {wr(t_.track.info.title, 51)}"
+                "{} {} {} {}".format(
+                    cl(f"{j: >2}.", fore=Fore.B),
+                    cl(f"{to_stamp(t_.track.info.length):>6}"),
+                    cl('|', fore=Fore.D),
+                    cl(f"{wr(t_.track.info.title, 50)}", fore=Fore.B),
+                )
                 for j, t_ in enumerate(next_slice, q.pos + 2 + i * Q_CHUNK)
             ),
         )
@@ -280,4 +320,4 @@ async def generate_queue_embeds(
         if next_slice
     )
 
-    return (*prev_embeds, np_embed, *next_embeds)
+    return it.chain(prev_embeds, (np_embed,), next_embeds)

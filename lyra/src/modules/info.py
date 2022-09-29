@@ -22,10 +22,11 @@ from ..lib.utils import (
     disable_components,
     with_annotated_args_wrapped,
 )
+from ..lib.utils.fmt import ANSI_BLOCK, Fore, cl
 from ..lib.music import stop, unstop
 from ..lib.musicutils import generate_queue_embeds, __init_component__
 from ..lib.errors import QueryEmpty, LyricsNotFound
-from ..lib.extras import Option, Result, to_stamp, wr, get_lyrics
+from ..lib.extras import Option, Fallible, to_stamp, wr, get_lyrics
 from ..lib.lava.utils import get_queue, access_queue
 from ..lib.cmd.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
 
@@ -61,7 +62,7 @@ async def nowplaying_(
 
     curr_t = q.current
     assert curr_t
-    assert q.np_position
+    assert q.np_time
 
     t_info = curr_t.track.info
     req = ctx.cache.get_member(ctx.guild_id, curr_t.requester)
@@ -72,11 +73,10 @@ async def nowplaying_(
     padding = min(54, max(title_pad, username_pad)) - 2
 
     song_len = to_stamp(t_info.length)
-    np_pos = to_stamp(q.np_position)
+    np_pos = to_stamp(q.np_time)
 
     progress = round(
-        (q.np_position / t_info.length)
-        * (padding + 12 - len(''.join((np_pos, song_len))))
+        (q.np_time / t_info.length) * (padding + 12 - len(''.join((np_pos, song_len))))
     )
 
     desc = (
@@ -148,7 +148,7 @@ async def search_c(
     await _search(ctx, cnt, lvc)
 
 
-async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Result[None]:
+async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Fallible[None]:
     from ..lib.music import play, add_tracks_
 
     erf = ctx.client.get_type_dependency(EmojiRefs)
@@ -181,9 +181,14 @@ async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Result[N
     if not queried:
         raise QueryEmpty(query)
 
-    queried_msg = "```css\n%s\n```" % (
+    queried_msg = ANSI_BLOCK % (
         "\n".join(
-            f"{i: >2}. {to_stamp(t.info.length):>9} | {wr(t.info.title, 48)}"
+            "{} {} {} {}".format(
+                cl(f"{i: >2}.", fore=Fore.C),
+                cl(f"{to_stamp(t.info.length):>8}"),
+                cl('|', fore=Fore.D),
+                cl(f"{wr(t.info.title, 48)}", fore=Fore.C),
+            )
             for i, t in enumerate(queried[:QUERIED_N], 1)
         )
     )
@@ -353,43 +358,41 @@ with_q_cmd_check = with_cmd_checks(Checks.QUEUE | Checks.CONN)
 @tj.as_message_command('queue', 'q', 'all')
 async def queue_(
     ctx: tj.abc.Context,
+    bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
+    erf: al.Injected[EmojiRefs],
 ):
     q = await get_queue(ctx, lvc)
-    pages = await generate_queue_embeds(ctx, lvc)
+    pages = (*(await generate_queue_embeds(ctx, lvc)),)
     pages_n = len(pages)
-
-    erf = ctx.client.get_type_dependency(EmojiRefs)
-    bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert not isinstance(bot, al.abc.Undefined) and not isinstance(
-        erf, al.abc.Undefined
-    )
 
     def _page_row(*, cancel_b: bool = False):
         row = ctx.rest.build_action_row()
 
-        row.add_button(hk.ButtonStyle.SECONDARY, 'start').set_emoji(
-            '⏪'
+        row.add_button(hk.ButtonStyle.SECONDARY, 'first').set_emoji(
+            erf['first_b']
         ).add_to_container()
 
         row.add_button(hk.ButtonStyle.SECONDARY, 'prev').set_emoji(
-            '◀️'
+            erf['prev_b']
         ).add_to_container()
 
         if cancel_b:
-            _3rd_b = row.add_button(hk.ButtonStyle.DANGER, 'delete').set_emoji(
+            _3rd_b = row.add_button(hk.ButtonStyle.DANGER, 'exit').set_emoji(
                 erf['exit_b']
             )
         else:
-            _3rd_b = row.add_button(hk.ButtonStyle.PRIMARY, 'main').set_emoji('⏺️')
+            _3rd_b = row.add_button(hk.ButtonStyle.PRIMARY, 'back').set_emoji(
+                erf['back_b']
+            )
         _3rd_b.add_to_container()
 
         row.add_button(hk.ButtonStyle.SECONDARY, 'next').set_emoji(
-            '▶️'
+            erf['next_b']
         ).add_to_container()
 
-        row.add_button(hk.ButtonStyle.SECONDARY, 'end').set_emoji(
-            '⏩'
+        row.add_button(hk.ButtonStyle.SECONDARY, 'last').set_emoji(
+            erf['last_b']
         ).add_to_container()
 
         return row
@@ -399,10 +402,10 @@ async def queue_(
 
     def _update_buttons(b: hk.api.ButtonBuilder[hk.api.ActionRowBuilder]):
         return (
-            (not pages[:i] and b.emoji == '◀️')
-            or (not pages[i + 1 :] and b.emoji == '▶️')
-            or (i == 0 and b.emoji == '⏪')
-            or (i == pages_n - 1 and b.emoji == '⏩')
+            (not pages[:i] and b.emoji == erf['prev_b'])
+            or (not pages[i + 1 :] and b.emoji == erf['next_b'])
+            or (i == 0 and b.emoji == erf['first_b'])
+            or (i == pages_n - 1 and b.emoji == erf['last_b'])
         )
 
     embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
@@ -431,17 +434,17 @@ async def queue_(
 
             key = inter.custom_id
 
-            if key == 'main':
+            if key == 'back':
                 i = _i_ori
             elif key == 'next':
                 i += 1
             elif key == 'prev':
                 i -= 1
-            elif key == 'start':
+            elif key == 'first':
                 i = 0
-            elif key == 'end':
+            elif key == 'last':
                 i = pages_n - 1
-            elif key == 'delete':
+            elif key == 'exit':
                 await inter.delete_initial_response()
                 return
 
@@ -472,15 +475,15 @@ async def queue_(
 @tj.as_message_command('lyrics', 'ly')
 async def lyrics_(
     ctx: tj.abc.Context,
+    bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
+    erf: al.Injected[EmojiRefs],
     song: t.Annotated[
         Option[ja.Greedy[ja.Str]], "What song? (If not given, the current song)"
     ] = None,
 ):
     """Attempts to find the lyrics of the current song"""
 
-    bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    erf = ctx.client.get_type_dependency(EmojiRefs)
     assert not isinstance(bot, al.abc.Undefined) and not isinstance(
         erf, al.abc.Undefined
     )
