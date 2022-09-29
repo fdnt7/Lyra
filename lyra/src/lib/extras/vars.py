@@ -11,7 +11,7 @@ from ytmusicapi import YTMusic
 
 
 ytm_api: t.Final = YTMusic()
-sc_api: t.Final = sc.SoundcloudAPI()
+sc_api: t.Final = sc.SoundcloudAPI(os.environ['SOUNDCLOUD_CLIENT_ID'])
 gn_api: t.Final = lg.Genius(
     os.environ['GENIUS_ACCESS_TOKEN'], remove_section_headers=True, retries=3, timeout=8
 )
