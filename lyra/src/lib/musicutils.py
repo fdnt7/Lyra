@@ -111,8 +111,11 @@ async def start_listeners_voting(
     voice_states = ctx.client.cache.get_voice_states_view_for_channel(
         ctx.guild_id, channel
     )
-    listeners = await (
-        voice_states.iterator().filter(lambda v: not v.member.is_bot).collect(frozenset)
+    listeners = frozenset(
+        filter(
+            lambda v: not v.member.is_bot,
+            voice_states.values(),
+        )
     )
 
     voted = {ctx.author.id}

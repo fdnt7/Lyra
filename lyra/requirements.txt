@@ -1,6 +1,6 @@
 alluka==0.1.1
 attrs
-hikari==2.0.0.dev110
+hikari==2.0.0.dev111
 hikari-tanjun==2.7.0a1
 lyricsgenius==3.0.1
 PyYAML
