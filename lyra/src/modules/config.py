@@ -34,6 +34,7 @@ from ..lib.utils import (
     say,
     err_say,
 )
+from ..lib.utils.fmt import ANSI_BLOCK, Fore, cl
 
 
 config = __init_component__(__name__)
@@ -284,7 +285,8 @@ async def prefix_list_(
     )
     embed.add_field(
         'Guild-specific',
-        '\n'.join('`%s`' % prf for prf in g_prefixes) or '```diff\n-Empty-\n```',
+        '\n'.join('`%s`' % prf for prf in g_prefixes)
+        or ANSI_BLOCK % cl("Empty", fore=Fore.D),
         inline=True,
     )
     await say(ctx, embed=embed)
@@ -465,7 +467,7 @@ async def restrict_list_(ctx: tj.abc.Context, cfg: al.Injected[LyraDBCollectionT
     u_wl: BlacklistMode = res_u.get('wl_mode', 0)
 
     def empty_or(str_: str):
-        return str_ or '```diff\n-Empty-\n```'
+        return str_ or ANSI_BLOCK % cl("Empty", fore=Fore.D)
 
     embed = (
         hk.Embed(

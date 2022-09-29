@@ -17,7 +17,7 @@ from ..consts import STOP_REFRESH
 from ..extras import (
     List,
     Option,
-    Result,
+    Fallible,
     Panic,
     RGBTriplet,
     get_img_pallete,
@@ -84,7 +84,7 @@ class QueueList(List[lv.TrackQueue]):
         )
 
     @property
-    def np_position(self) -> Option[int]:
+    def np_time(self) -> Fallible[Option[int]]:
         if not self.is_playing:
             return self._paused_np_position
         if not self.current:
@@ -93,7 +93,7 @@ class QueueList(List[lv.TrackQueue]):
         return curr_time_ms() - self._curr_t_started
 
     @property
-    def current(self) -> Result[Option[lv.TrackQueue]]:
+    def current(self) -> Fallible[Option[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
@@ -103,18 +103,28 @@ class QueueList(List[lv.TrackQueue]):
         return None
 
     @property
-    def is_playing(self) -> bool:
+    def sane_pos(self) -> int:
+        if not self.current:
+            return self.pos - 1
+        return self.pos
+
+    @property
+    def total_durr(self) -> int:
+        return sum(t.track.info.length for t in self)
+
+    @property
+    def is_playing(self) -> Fallible[bool]:
         return not (self.is_paused or self.is_stopped) and bool(self.current)
 
     @property
-    def upcoming(self) -> Result[list[lv.TrackQueue]]:
+    def upcoming(self) -> Fallible[list[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
         return self[self.pos + 1 :]
 
     @property
-    def history(self) -> Result[list[lv.TrackQueue]]:
+    def history(self) -> Fallible[list[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
@@ -130,7 +140,7 @@ class QueueList(List[lv.TrackQueue]):
         self.pos -= 1
 
     @property
-    def next(self) -> Result[Option[lv.TrackQueue]]:
+    def next(self) -> Fallible[Option[lv.TrackQueue]]:
         if not self:
             raise QueueEmpty
 
@@ -151,7 +161,7 @@ class QueueList(List[lv.TrackQueue]):
 
         return self[pos]
 
-    def shuffle(self) -> Result[None]:
+    def shuffle(self) -> Fallible[None]:
         if not self:
             raise QueueEmpty
 

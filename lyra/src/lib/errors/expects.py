@@ -28,7 +28,7 @@ from . import (
 from ..cmd import get_full_cmd_repr_from_identifier
 from ..cmd.ids import CommandIdentifier
 from ..utils import ContextishType, dj_perms_fmt, err_say, get_rest, say
-from ..extras import Result, format_flags
+from ..extras import Fallible, format_flags
 
 
 ExpectSig = t.Callable[[], t.Awaitable[None]]
@@ -39,7 +39,7 @@ class BaseErrorExpects(abc.ABC):
     context: ContextishType
 
     @abc.abstractmethod
-    def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
+    def match_expect(self, error: Exception, /) -> Fallible[ExpectSig]:
         ...
 
     @abc.abstractmethod
@@ -149,7 +149,7 @@ class CheckErrorExpects(BaseErrorExpects):
     async def expect_not_developer(self):
         await err_say(self.context, content="🚫⚙️ Reserved for bot's developers only")
 
-    def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
+    def match_expect(self, error: Exception, /) -> Fallible[ExpectSig]:
         match error:
             case lv.NetworkError():
                 return lambda: self.expect_network_error()
@@ -212,7 +212,7 @@ class BindErrorExpects(BaseErrorExpects):
             content=f"❌ Please join a voice channel first. You can also do {join_r} `channel:` `[🔊 ...]`",
         )
 
-    def match_expect(self, error: Exception, /) -> Result[ExpectSig]:
+    def match_expect(self, error: Exception, /) -> Fallible[ExpectSig]:
         match error:
             case NotInVoice():
                 return lambda: self.expect_not_in_voice()

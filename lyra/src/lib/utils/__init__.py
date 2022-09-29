@@ -7,7 +7,6 @@ import contextlib as ctxlib
 import hikari as hk
 import tanjun as tj
 import alluka as al
-from ..extras.types import AnyOr
 
 import src.lib.globs as globs
 
@@ -15,7 +14,7 @@ from hikari.permissions import Permissions as hkperms
 from hikari.messages import MessageFlag as msgflag
 
 # pyright: reportUnusedImport=false
-from .vars import RESTRICTOR, base_h, EmojiRefs, DJ_PERMS, dj_perms_fmt, guild_c
+from .vars import RESTRICTOR, EmojiRefs, DJ_PERMS, base_h, dj_perms_fmt, guild_c
 from .types import (
     ChannelAware,
     RESTAware,
@@ -39,6 +38,7 @@ from .types import (
     RESTAwareType,
     with_annotated_args_wrapped,
 )
+from .fmt import ANSI_BLOCK, Fore, Style, cl
 from ..cmd import get_full_cmd_repr
 from ..cmd.types import (
     GenericMenuCommandType,
@@ -50,10 +50,11 @@ from ..consts import TIMEOUT, Q_CHUNK
 from ..errors import BaseLyraException, CommandCancelled
 from ..extras import (
     Option,
-    Result,
+    Fallible,
     Panic,
     URLstr,
     MapSig,
+    AnyOr,
     DecorateSig,
     PredicateSig,
     join_and,
@@ -397,7 +398,7 @@ def extract_content(msg: hk.Message):
     return msg.content
 
 
-async def start_confirmation_prompt(ctx: tj.abc.Context) -> Result[None]:
+async def start_confirmation_prompt(ctx: tj.abc.Context) -> Fallible[None]:
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     assert not isinstance(bot, al.abc.Undefined)
 
@@ -537,13 +538,19 @@ async def on_parser_error(ctx: tj.abc.Context, error: tj.errors.ParserError) -> 
     msg = f"❌ You've given an invalid input: `{error}` "
 
     if related_errs := error.errors if isinstance(error, tj.ConversionError) else None:
-        err_msg = '\n'.join(
-            f'Cause-{i}: {next(iter(e.args))}' for i, e in enumerate(related_errs, 1)
+        err_msg = ANSI_BLOCK % '\n'.join(
+            "{}{} {}".format(
+                cl(f"Cause-{i}", style=Style.B, fore=Fore.R),
+                cl(':', fore=Fore.D, reset=True),
+                next(iter(e.args)),
+            )
+            for i, e in enumerate(related_errs, 1)
         )
-        msg += f"```arm\n{err_msg}```"
+    else:
+        err_msg = ""
     await err_say(
         ctx,
-        content=msg,
+        content=''.join((msg, err_msg)),
         delete_after=3.5 if not related_errs else 6.5,
     )
 

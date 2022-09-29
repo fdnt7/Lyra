@@ -21,7 +21,7 @@ from .extras import (
     NULL,
     IterableOr,
     Option,
-    Result,
+    Fallible,
     Panic,
     url_regex,
     lgfmt,
@@ -116,7 +116,7 @@ async def add_tracks_(
     respond: bool = False,
     shuffle: bool = False,
     ignore_stop: bool = False,
-) -> Result[tuple[lv.Track, ...]]:
+) -> Fallible[tuple[lv.Track, ...]]:
     assert ctx.guild_id
     flttn_t: t.Iterable[lv.Track] = []
     if isinstance(tracks_, Trackish):
@@ -193,7 +193,7 @@ async def add_tracks_(
 
 async def remove_track(
     ctx: tj.abc.Context, track: Option[str], lvc: lv.Lavalink, /
-) -> Result[lv.TrackQueue]:
+) -> Fallible[lv.TrackQueue]:
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
@@ -243,7 +243,7 @@ async def remove_track(
 
 async def remove_tracks(
     ctx: tj.abc.Context, start: int, end: int, lvc: lv.Lavalink, /
-) -> Result[list[lv.TrackQueue]]:
+) -> Fallible[list[lv.TrackQueue]]:
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
@@ -289,7 +289,7 @@ async def shuffle_abs(ctx_: ContextishType, lvc: lv.Lavalink):
 
 async def insert_track(
     ctx: tj.abc.Context, insert: int, track: Option[int], lvc: lv.Lavalink, /
-) -> Result[lv.TrackQueue]:
+) -> Fallible[lv.TrackQueue]:
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
