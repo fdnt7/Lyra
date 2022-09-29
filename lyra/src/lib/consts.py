@@ -22,4 +22,4 @@ lyricfind_icon: t.Final = 'https://scontent.furt2-1.fna.fbcdn.net/v/t39.30808-6/
 
 __developers__: t.Final = frozenset((548850193202675713, 626062879531204618))
 """Who the `debug` commands can be used"""
-__version__: t.Final = '2.4.1a1'
+__version__: t.Final = '2.4.2a1'
