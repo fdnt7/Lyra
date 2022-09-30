@@ -12,7 +12,6 @@ import hikari as hk
 import lavasnek_rs as lv
 
 from ..utils import MaybeGuildIDAware, IntCastable, infer_guild, limit_img_size_by_guild
-from ..errors import NotConnected, QueueEmpty
 from ..consts import STOP_REFRESH
 from ..extras import (
     List,
@@ -27,6 +26,7 @@ from ..extras import (
     inj_glob,
     to_stamp,
 )
+from ..errors import QueueEmptyError, NotConnectedError
 
 
 all_repeat_modes: t.Final = split_preset('off|0,one|o|1,all|a|q')
@@ -95,7 +95,7 @@ class QueueList(List[lv.TrackQueue]):
     @property
     def current(self) -> Fallible[Option[lv.TrackQueue]]:
         if not self:
-            raise QueueEmpty
+            raise QueueEmptyError
 
         if self.pos <= len(self) - 1:
             return self[self.pos]
@@ -119,14 +119,14 @@ class QueueList(List[lv.TrackQueue]):
     @property
     def upcoming(self) -> Fallible[list[lv.TrackQueue]]:
         if not self:
-            raise QueueEmpty
+            raise QueueEmptyError
 
         return self[self.pos + 1 :]
 
     @property
     def history(self) -> Fallible[list[lv.TrackQueue]]:
         if not self:
-            raise QueueEmpty
+            raise QueueEmptyError
 
         return self[: self.pos]
 
@@ -142,7 +142,7 @@ class QueueList(List[lv.TrackQueue]):
     @property
     def next(self) -> Fallible[Option[lv.TrackQueue]]:
         if not self:
-            raise QueueEmpty
+            raise QueueEmptyError
 
         pos = self.pos
 
@@ -163,7 +163,7 @@ class QueueList(List[lv.TrackQueue]):
 
     def shuffle(self) -> Fallible[None]:
         if not self:
-            raise QueueEmpty
+            raise QueueEmptyError
 
         upcoming = self.upcoming
         rd.shuffle(upcoming)
@@ -335,7 +335,7 @@ class BaseEventHandler(abc.ABC):
 async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, /) -> Panic[NodeData]:
     node = await lvc.get_guild_node(guild)
     if not node:
-        raise NotConnected
+        raise NotConnectedError
     data = t.cast(NodeData, node.get_data() or NodeData())
     return data
 
@@ -345,7 +345,7 @@ async def set_data(
 ) -> Panic[None]:
     node = await lvc.get_guild_node(guild)
     if not node:
-        raise NotConnected
+        raise NotConnectedError
     node.set_data(data)
 
 

@@ -28,6 +28,7 @@ from .vars import (
     soundcloud_regex,
 )
 
+
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 
@@ -91,12 +92,12 @@ async def get_lyrics_ge(song: str, /) -> Option[LyricsData]:
 
 
 async def get_lyrics(song: str, /) -> dict[str, LyricsData]:
-    from ..errors import LyricsNotFound
+    from ..errors import LyricsNotFoundError
 
     # tests = (get_lyrics_ge(song), get_lyrics_yt(song))
     tests = (get_lyrics_yt(song),)
     if not any(lyrics := await asyncio.gather(*tests)):
-        raise LyricsNotFound
+        raise LyricsNotFoundError
     return {l.source: l for l in lyrics if l}
 
 

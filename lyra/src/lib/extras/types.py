@@ -32,6 +32,7 @@ Panic = t.Annotated[_T | t.NoReturn, ...]
 Require = t.Annotated[_T_co, ...]
 AnyOr = t.Any | _T
 IterableOr = _T | t.Iterable[_T]
+SequenceOr = _T | t.Sequence[_T]
 
 KeySig = t.Callable[[__E], _KE]
 MapSig = t.Callable[[_T], _T]

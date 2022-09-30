@@ -6,16 +6,6 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from .utils import (
-    ButtonBuilderType,
-    ContextishType,
-    AnyContextType,
-    edit_components,
-    err_say,
-    get_rest,
-    say,
-    trigger_thinking,
-)
 from .consts import ADD_TRACKS_WRAP_LIM
 from .extras import (
     NULL,
@@ -27,16 +17,27 @@ from .extras import (
     lgfmt,
     join_and,
 )
+from .dataimpl import LyraDBClientType
 from .errors import (
     Argument,
-    IllegalArgument,
-    InvalidArgument,
-    NoPlayableTracks,
-    OthersInVoice,
+    IllegalArgumentError,
+    InvalidArgumentError,
+    NoPlayableTracksError,
+    OthersInVoiceError,
     PlaybackChangeRefused,
 )
-from .cmd.compose import others_not_in_vc_check
-from .lava.utils import (
+from .utils import (
+    ButtonBuilderType,
+    ContextishType,
+    AnyContextType,
+    edit_components,
+    err_say,
+    get_rest,
+    say,
+    trigger_thinking,
+)
+from .cmd import others_not_in_vc_check
+from .lava import (
     QueueList,
     RepeatMode,
     Trackish,
@@ -45,9 +46,9 @@ from .lava.utils import (
     access_queue,
     get_data,
     set_data,
+    get_repeat_emoji,
 )
 from .playback import back, skip, while_stop, set_pause
-from .dataimpl import LyraDBClientType
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -137,7 +138,7 @@ async def add_tracks_(
 
     safe_flttn_t = (*(t_ for t_ in flttn_t if t_.info.identifier not in upt_),)
     if not safe_flttn_t:
-        raise NoPlayableTracks
+        raise NoPlayableTracksError
 
     players = (
         *(
@@ -201,13 +202,13 @@ async def remove_track(
     np = q.current
     if track is None:
         if not np:
-            raise InvalidArgument(Argument(track, None))
+            raise InvalidArgumentError(Argument(track, None))
         rm = np
         i = q.pos
     elif track.isdigit():
         t = int(track)
         if not (1 <= t <= len(q)):
-            raise IllegalArgument(Argument(t, (1, len(q))))
+            raise IllegalArgumentError(Argument(t, (1, len(q))))
         i = t - 1
         rm = q[i]
     else:
@@ -221,7 +222,7 @@ async def remove_track(
 
     try:
         await others_not_in_vc_check(ctx, lvc)
-    except OthersInVoice:
+    except OthersInVoiceError:
         if rm.requester != ctx.author.id:
             raise PlaybackChangeRefused
 
@@ -249,7 +250,7 @@ async def remove_tracks(
     d = await get_data(ctx.guild_id, lvc)
     q = d.queue
     if not (1 <= start <= end <= len(q)):
-        raise IllegalArgument(Argument((start, end), (1, len(q))))
+        raise IllegalArgumentError(Argument((start, end), (1, len(q))))
 
     i_s = start - 1
     i_e = end - 1
@@ -298,7 +299,7 @@ async def insert_track(
     p_ = q.pos
     if track is None:
         if not np:
-            raise InvalidArgument(Argument(np, track))
+            raise InvalidArgumentError(Argument(np, track))
         t_ = p_
         ins = np
     else:
@@ -309,7 +310,7 @@ async def insert_track(
     if t_ in {i_, insert}:
         raise ValueError
     if not ((0 <= t_ < len(q)) and (0 <= i_ < len(q))):
-        raise IllegalArgument(Argument((track, insert), (1, len(q))))
+        raise IllegalArgumentError(Argument((track, insert), (1, len(q))))
 
     if t_ < p_ <= i_:
         q.decr()
@@ -354,8 +355,6 @@ async def repeat_abs(
     else:
         msg = "Repeating only this current track"
         e = '🔂'
-
-    from .lava.utils import get_repeat_emoji
 
     await say(ctx_, show_author=True, content=f"{e} {msg}")
     if d.nowplaying_msg:

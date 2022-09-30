@@ -3,8 +3,6 @@ import typing as t
 import hikari as hk
 import tanjun as tj
 
-from hikari.permissions import Permissions as hkperms
-
 from ..extras import format_flags
 
 
@@ -14,6 +12,6 @@ guild_c = tj.checks.GuildCheck(
     error_message="🙅 Commands can only be used in guild channels"
 )
 
-RESTRICTOR = hkperms.MANAGE_CHANNELS | hkperms.MANAGE_ROLES
-DJ_PERMS: t.Final = hkperms.MOVE_MEMBERS
+RESTRICTOR = hk.Permissions.MANAGE_CHANNELS | hk.Permissions.MANAGE_ROLES
+DJ_PERMS: t.Final = hk.Permissions.MOVE_MEMBERS
 dj_perms_fmt: t.Final = format_flags(DJ_PERMS)

@@ -6,23 +6,23 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.compose import (
-    DJ_PERMS,
-    Checks,
-    with_cmd_composer,
-    with_identifier,
-)
-from ..lib.musicutils import __init_component__
 from ..lib.extras import Option, Panic
+from ..lib.errors import NotConnectedError
 from ..lib.utils import (
+    DJ_PERMS,
     say,
     err_say,
     with_annotated_args_wrapped,
     with_message_command_group_template,
 )
-from ..lib.errors import NotConnected
-from ..lib.lava.utils import Bands, access_equalizer
+from ..lib.cmd import (
+    CommandIdentifier as C,
+    Checks,
+    with_cmd_composer,
+    with_identifier,
+)
+from ..lib.lava import Bands, access_equalizer
+from ..lib.music import __init_component__
 
 
 tuning = __init_component__(__name__)
@@ -89,7 +89,7 @@ async def on_voice_state_update(
     try:
         async with access_equalizer(event.guild_id, lvc) as eq:
             eq.is_muted = event.state.is_guild_muted
-    except NotConnected:
+    except NotConnectedError:
         return
 
 

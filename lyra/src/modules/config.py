@@ -5,17 +5,6 @@ import tanjun as tj
 import alluka as al
 import tanjun.annotations as ja
 
-from hikari.permissions import Permissions as hkperms
-
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.compose import (
-    Binds,
-    with_author_permission_check,
-    with_cmd_composer,
-    with_identifier,
-)
-from ..lib.musicutils import __init_component__
-from ..lib.dataimpl import LyraDBCollectionType
 from ..lib.extras import (
     Panic,
     flatten,
@@ -25,16 +14,27 @@ from ..lib.extras import (
     uniquify,
     split_preset,
 )
+from ..lib.dataimpl import LyraDBCollectionType
 from ..lib.utils import (
+    Fore,
     RESTRICTOR,
+    ANSI_BLOCK,
     MentionableType,
     PartialMentionableType,
     with_annotated_args_wrapped,
     with_message_command_group_template,
     say,
     err_say,
+    cl,
 )
-from ..lib.utils.fmt import ANSI_BLOCK, Fore, cl
+from ..lib.music import __init_component__
+from ..lib.cmd import (
+    CommandIdentifier as C,
+    Binds,
+    with_author_permission_check,
+    with_cmd_composer,
+    with_identifier,
+)
 
 
 config = __init_component__(__name__)
@@ -53,7 +53,7 @@ all_mentionable_categories = split_preset(
 )
 
 with_dangerous_restricts_cmd_check = with_cmd_composer(Binds.CONFIRM, perms=RESTRICTOR)
-with_admin_cmd_check = with_author_permission_check(hkperms.ADMINISTRATOR)
+with_admin_cmd_check = with_author_permission_check(hk.Permissions.ADMINISTRATOR)
 with_restricts_cmd_check = with_author_permission_check(RESTRICTOR)
 
 
@@ -391,7 +391,9 @@ nowplayingmsg_sg_s = with_identifier(C.CONFIG_NOWPLAYINGMSG)(
 ### /config nowplayingmsg toggle
 
 
-@with_author_permission_check(hkperms.MANAGE_GUILD)(C.CONFIG_NOWPLAYINGMSG_TOGGLE)
+@with_author_permission_check(hk.Permissions.MANAGE_GUILD)(
+    C.CONFIG_NOWPLAYINGMSG_TOGGLE
+)
 # -
 @nowplayingmsg_sg_m.as_sub_command('toggle', 'tggl', 't')
 @nowplayingmsg_sg_s.as_sub_command(
