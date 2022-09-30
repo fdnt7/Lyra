@@ -5,30 +5,30 @@ import asyncio
 import attr as a
 import lavasnek_rs as lv
 
-from . import (
-    CommandCancelled,
-    ErrorNotRecognized,
-    InternalError,
-    NotInVoice,
-    PlaybackChangeRefused,
-    Unauthorized,
-    OthersListening,
-    OthersInVoice,
-    AlreadyConnected,
-    NotConnected,
-    QueueEmpty,
-    NotYetSpeaker,
-    NotPlaying,
-    TrackPaused,
-    QueryEmpty,
-    TrackStopped,
-    NoPlayableTracks,
-    NotDeveloper,
-)
-from ..cmd import get_full_cmd_repr_from_identifier
-from ..cmd.ids import CommandIdentifier
+if t.TYPE_CHECKING:
+    from ..extras import Fallible
 from ..utils import ContextishType, dj_perms_fmt, err_say, get_rest, say
-from ..extras import Fallible, format_flags
+from ..cmd import CommandIdentifier, get_full_cmd_repr_from_identifier
+from .errors import (
+    CommandCancelledError,
+    ErrorNotRecognizedError,
+    InternalError,
+    NotInVoiceError,
+    PlaybackChangeRefused,
+    UnauthorizedError,
+    OthersListeningError,
+    OthersInVoiceError,
+    AlreadyConnectedError,
+    NotConnectedError,
+    QueueEmptyError,
+    NotYetSpeakerError,
+    NotPlayingError,
+    TrackPausedError,
+    QueryEmptyError,
+    TrackStoppedError,
+    NoPlayableTracksError,
+    NotDeveloperError,
+)
 
 
 ExpectSig = t.Callable[[], t.Awaitable[None]]
@@ -39,7 +39,7 @@ class BaseErrorExpects(abc.ABC):
     context: ContextishType
 
     @abc.abstractmethod
-    def match_expect(self, error: Exception, /) -> Fallible[ExpectSig]:
+    def match_expect(self, error: Exception, /) -> 'Fallible[ExpectSig]':
         ...
 
     @abc.abstractmethod
@@ -47,7 +47,7 @@ class BaseErrorExpects(abc.ABC):
         expect = self.match_expect(error)
         try:
             await expect()
-        except ErrorNotRecognized:
+        except ErrorNotRecognizedError:
             return False
         return True
 
@@ -71,25 +71,27 @@ class CheckErrorExpects(BaseErrorExpects):
             content=f"🚫 You are not the current song requester\n**You bypass this by having the {dj_perms_fmt} permissions**",
         )
 
-    async def expect_unauthorized(self, error: Unauthorized, /):
+    async def expect_unauthorized(self, error: UnauthorizedError, /):
+        from ..extras import format_flags
+
         await err_say(
             self.context,
             content=f"🚫 You lack the `{format_flags(error.perms)}` permissions to use this command",
         )
 
-    async def expect_others_listening(self, error: OthersListening, /):
+    async def expect_others_listening(self, error: OthersListeningError, /):
         await err_say(
             self.context,
             content=f"🚫 You can only do this if you are alone in <#{error.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
         )
 
-    async def expect_others_in_voice(self, error: OthersInVoice, /):
+    async def expect_others_in_voice(self, error: OthersInVoiceError, /):
         await err_say(
             self.context,
             content=f"🚫 Someone else is already in <#{error.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",
         )
 
-    async def expect_already_connected(self, error: AlreadyConnected, /):
+    async def expect_already_connected(self, error: AlreadyConnectedError, /):
         await err_say(
             self.context,
             content=f"🚫 Join <#{error.channel}> first. **You bypass this by having the {dj_perms_fmt} permissions**",
@@ -109,7 +111,7 @@ class CheckErrorExpects(BaseErrorExpects):
     async def expect_queue_empty(self):
         await err_say(self.context, content="❗ The queue is empty")
 
-    async def expect_not_yet_speaker(self, error: NotYetSpeaker, /):
+    async def expect_not_yet_speaker(self, error: NotYetSpeakerError, /):
         rest = get_rest(ctx := self.context)
         await err_say(
             ctx,
@@ -138,7 +140,7 @@ class CheckErrorExpects(BaseErrorExpects):
             content=f"❗ The current track had been stopped. Use {skip_r}, {restart_r} or {remove_r} for the current track first",
         )
 
-    async def expect_query_empty(self, error: QueryEmpty, /):
+    async def expect_query_empty(self, error: QueryEmptyError, /):
         await err_say(
             self.context, content=f"❓ No tracks found for `{error.query_str}`"
         )
@@ -149,7 +151,7 @@ class CheckErrorExpects(BaseErrorExpects):
     async def expect_not_developer(self):
         await err_say(self.context, content="🚫⚙️ Reserved for bot's developers only")
 
-    def match_expect(self, error: Exception, /) -> Fallible[ExpectSig]:
+    def match_expect(self, error: Exception, /) -> 'Fallible[ExpectSig]':
         match error:
             case lv.NetworkError():
                 return lambda: self.expect_network_error()
@@ -157,34 +159,34 @@ class CheckErrorExpects(BaseErrorExpects):
                 return lambda: self.expect_internal_error()
             case PlaybackChangeRefused():
                 return lambda: self.expect_playback_change_refused()
-            case Unauthorized():
+            case UnauthorizedError():
                 return lambda: self.expect_unauthorized(error)
-            case OthersListening():
+            case OthersListeningError():
                 return lambda: self.expect_others_listening(error)
-            case OthersInVoice():
+            case OthersInVoiceError():
                 return lambda: self.expect_others_in_voice(error)
-            case AlreadyConnected():
+            case AlreadyConnectedError():
                 return lambda: self.expect_already_connected(error)
-            case NotConnected():
+            case NotConnectedError():
                 return lambda: self.expect_not_connected()
-            case QueueEmpty():
+            case QueueEmptyError():
                 return lambda: self.expect_queue_empty()
-            case NotYetSpeaker():
+            case NotYetSpeakerError():
                 return lambda: self.expect_not_yet_speaker(error)
-            case NotPlaying():
+            case NotPlayingError():
                 return lambda: self.expect_not_playing()
-            case TrackPaused():
+            case TrackPausedError():
                 return lambda: self.expect_track_paused()
-            case TrackStopped():
+            case TrackStoppedError():
                 return lambda: self.expect_track_stopped()
-            case QueryEmpty():
+            case QueryEmptyError():
                 return lambda: self.expect_query_empty(error)
-            case NoPlayableTracks():
+            case NoPlayableTracksError():
                 return lambda: self.expect_no_playable_tracks()
-            case NotDeveloper():
+            case NotDeveloperError():
                 return lambda: self.expect_not_developer()
             case _:
-                raise ErrorNotRecognized
+                raise ErrorNotRecognizedError
 
     async def expect(self, error: Exception, /) -> bool:
         return await super().expect(error)
@@ -212,16 +214,16 @@ class BindErrorExpects(BaseErrorExpects):
             content=f"❌ Please join a voice channel first. You can also do {join_r} `channel:` `[🔊 ...]`",
         )
 
-    def match_expect(self, error: Exception, /) -> Fallible[ExpectSig]:
+    def match_expect(self, error: Exception, /) -> 'Fallible[ExpectSig]':
         match error:
-            case NotInVoice():
+            case NotInVoiceError():
                 return lambda: self.expect_not_in_voice()
-            case CommandCancelled():
+            case CommandCancelledError():
                 return lambda: self.expect_command_cancelled()
             case asyncio.TimeoutError():
                 return lambda: self.expect_timeout_error()
             case _:
-                raise ErrorNotRecognized
+                raise ErrorNotRecognizedError
 
     async def expect(self, error: Exception, /) -> bool:
         return await super().expect(error)

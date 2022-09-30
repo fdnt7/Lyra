@@ -2,22 +2,27 @@ import asyncio
 import typing as t
 import functools as ft
 
+import hikari as hk
 import tanjun as tj
 import lavasnek_rs as lv
 
-from hikari.permissions import Permissions as hkperms
-
-from .ids import CommandIdentifier
-from .types import GenericCommandType
-from .flags import (
-    Binds,
-    Checks,
-    DJ_PERMS,
-    ConnectionInfo,
-    others_not_in_vc_check_impl,
-    parse_binds,
-    parse_checks,
-    speaker_check,
+from ..extras import NULL, DecorateSig, ArgsDecorateSig, Option, Fallible, Panic
+from ..errors import (
+    AlreadyConnectedError,
+    BaseLyraError,
+    CommandCancelledError,
+    OthersInVoiceError,
+    PlaybackChangeRefused,
+    TrackStoppedError,
+    NotConnectedError,
+    UnauthorizedError,
+    NotPlayingError,
+    QueueEmptyError,
+    TrackPausedError,
+    OthersListeningError,
+    VotingTimeoutError,
+    CheckErrorExpects,
+    BindErrorExpects,
 )
 from ..utils import (
     BindSig,
@@ -26,29 +31,26 @@ from ..utils import (
     fetch_permissions,
     start_confirmation_prompt,
 )
-from ..extras import NULL, DecorateSig, ArgsDecorateSig, Option, Fallible, Panic
-from ..errors import (
-    AlreadyConnected,
-    BaseLyraException,
-    CommandCancelled,
-    OthersInVoice,
-    PlaybackChangeRefused,
-    TrackStopped,
-    NotConnected,
-    Unauthorized,
-    NotPlaying,
-    QueueEmpty,
-    TrackPaused,
-    OthersListening,
-    VotingTimeout,
+from ..lava import get_queue
+from ..music import start_listeners_voting
+from .types import GenericCommandType
+from .ids import CommandIdentifier
+from .flags import (
+    Binds,
+    Checks,
+    DJ_PERMS,
+    ConnectionInfo,
+    parse_binds,
+    parse_checks,
+    speaker_check,
 )
-from ..errors.expects import BindErrorExpects, CheckErrorExpects
-from ..lava.utils import get_queue
 
 
 async def others_not_in_vc_check(
     ctx_: ContextishType, lvc: lv.Lavalink, /
 ) -> Fallible[bool]:
+    from ..connections import others_not_in_vc_check_impl
+
     assert ctx_.guild_id
 
     conn = t.cast(
@@ -65,16 +67,18 @@ def with_cb_check(
     checks: Checks = Checks.CATCH_ALL,
     /,
     *,
-    perms: hkperms = hkperms.NONE,
+    perms: hk.Permissions = hk.Permissions.NONE,
     vote: bool = False,
     prompt: bool = False,
 ):
-    from ..musicutils import start_listeners_voting
-
     P = t.ParamSpec('P')
 
     async def _check_in_vc(
-        ctx_: ContextishType, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
+        ctx_: ContextishType,
+        conn: ConnectionInfo,
+        /,
+        *,
+        perms: hk.Permissions = DJ_PERMS,
     ):
         member = ctx_.member
         assert ctx_.guild_id
@@ -91,8 +95,11 @@ def with_cb_check(
             filter(lambda v: v.member.id == member.id, voice_states.values())
         )
 
-        if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
-            raise AlreadyConnected(channel)
+        if (
+            not (auth_perms & (perms | hk.Permissions.ADMINISTRATOR))
+            and not author_in_voice
+        ):
+            raise AlreadyConnectedError(channel)
 
     async def check_in_vc(ctx_: ContextishType, lvc: lv.Lavalink):
         assert ctx_.guild_id
@@ -110,7 +117,7 @@ def with_cb_check(
         q = await get_queue(ctx_, lvc)
         assert q.current is not None
         if ctx_.member.id != q.current.requester and not auth_perms & (
-            DJ_PERMS | hkperms.ADMINISTRATOR
+            DJ_PERMS | hk.Permissions.ADMINISTRATOR
         ):
             raise PlaybackChangeRefused(q.current)
 
@@ -118,34 +125,34 @@ def with_cb_check(
         assert ctx_.member
 
         auth_perms = await fetch_permissions(ctx_)
-        if not (auth_perms & (DJ_PERMS | hkperms.ADMINISTRATOR)):
+        if not (auth_perms & (DJ_PERMS | hk.Permissions.ADMINISTRATOR)):
             if not (np := (await get_queue(ctx_, lvc)).current):
-                raise Unauthorized(DJ_PERMS)
+                raise UnauthorizedError(DJ_PERMS)
             if ctx_.member.id != np.requester:
                 raise PlaybackChangeRefused(np)
 
     async def check_stop(ctx_: ContextishType, lvc: lv.Lavalink):
         if (await get_queue(ctx_, lvc)).is_stopped:
-            raise TrackStopped
+            raise TrackStoppedError
 
     async def check_conn(ctx_: ContextishType, lvc: lv.Lavalink):
         assert ctx_.guild_id
 
         conn = lvc.get_guild_gateway_connection_info(ctx_.guild_id)
         if not conn:
-            raise NotConnected
+            raise NotConnectedError
 
     async def check_queue(ctx_: ContextishType, lvc: lv.Lavalink):
         if not await get_queue(ctx_, lvc):
-            raise QueueEmpty
+            raise QueueEmptyError
 
     async def check_playing(ctx_: ContextishType, lvc: lv.Lavalink):
         if not (await get_queue(ctx_, lvc)).current:
-            raise NotPlaying
+            raise NotPlayingError
 
     async def check_pause(ctx_: ContextishType, lvc: lv.Lavalink):
         if (await get_queue(ctx_, lvc)).is_paused:
-            raise TrackPaused
+            raise TrackPausedError
 
     def callback(
         func: t.Callable[P, t.Awaitable[None]]
@@ -165,8 +172,8 @@ def with_cb_check(
             try:
                 if perms:
                     auth_perms = await fetch_permissions(ctx_)
-                    if not (auth_perms & (perms | hkperms.ADMINISTRATOR)):
-                        raise Unauthorized(perms)
+                    if not (auth_perms & (perms | hk.Permissions.ADMINISTRATOR)):
+                        raise UnauthorizedError(perms)
                 if not lvc:
                     await inj_func(*args, **kwargs)
                     return
@@ -184,24 +191,24 @@ def with_cb_check(
                 if Checks.OTHERS_NOT_IN_VC & checks:
                     try:
                         await others_not_in_vc_check(ctx_, lvc)
-                    except OthersInVoice as exc:
+                    except OthersInVoiceError as exc:
                         try:
                             if Checks.CAN_SEEK_ANY & checks:
                                 await check_can_seek_any(ctx_, lvc)
                             if Checks.NP_YOURS & checks:
                                 await check_np_yours(ctx_, lvc)
                             if not (Checks.NP_YOURS | Checks.CAN_SEEK_ANY) & checks:
-                                raise OthersListening(exc.channel) from exc
+                                raise OthersListeningError(exc.channel) from exc
                         except (
-                            OthersListening,
+                            OthersListeningError,
                             PlaybackChangeRefused,
-                            Unauthorized,
+                            UnauthorizedError,
                         ) as exc_:
                             if vote:
                                 assert isinstance(ctx_, tj.abc.Context)
                                 try:
                                     await start_listeners_voting(ctx_, lvc)
-                                except VotingTimeout:
+                                except VotingTimeoutError:
                                     raise exc_
                             else:
                                 raise
@@ -215,11 +222,11 @@ def with_cb_check(
                     assert isinstance(ctx_, tj.abc.Context)
                     try:
                         await start_confirmation_prompt(ctx_)
-                    except (CommandCancelled, asyncio.TimeoutError) as exc:
+                    except (CommandCancelledError, asyncio.TimeoutError) as exc:
                         await BindErrorExpects(ctx_).expect(exc)
                         return
                 await inj_func(*args, **kwargs)
-            except BaseLyraException as exc:
+            except BaseLyraError as exc:
                 await CheckErrorExpects(ctx_).expect(exc)
 
         return inner
@@ -233,12 +240,14 @@ IdentifiedCommandDecorateSig = DecorateSig[_CMD]
 
 
 async def _as_author_permission_check(
-    ctx: tj.abc.Context, perms: hkperms | int
+    ctx: tj.abc.Context, perms: hk.Permissions | int
 ) -> Panic[bool]:
     assert perms
     check = tj.checks.AuthorPermissionCheck(perms, error_message=None)
     if not await check(ctx):
-        await CheckErrorExpects(ctx).expect_unauthorized(Unauthorized(hkperms(perms)))
+        await CheckErrorExpects(ctx).expect_unauthorized(
+            UnauthorizedError(hk.Permissions(perms))
+        )
         raise tj.HaltExecution
     return True
 
@@ -260,7 +269,7 @@ def with_cmd_composer(
     binds: Option[Binds] = None,
     checks: Option[Checks] = None,
     *,
-    perms: Option[hkperms] = None,
+    perms: Option[hk.Permissions] = None,
 ) -> CommandDecorateSig[_CMD]:
 
     _checks_binds: list[tj.abc.CheckSig | BindSig] = []
@@ -311,7 +320,9 @@ def with_cmd_checks(checks: Checks, /) -> CommandDecorateSig[_CMD]:
     return _with_checks
 
 
-def with_author_permission_check(perms: hkperms | int, /) -> CommandDecorateSig[_CMD]:
+def with_author_permission_check(
+    perms: hk.Permissions | int, /
+) -> CommandDecorateSig[_CMD]:
     def _with_author_permission_check(
         identifier: CommandIdentifier, /
     ) -> IdentifiedCommandDecorateSig[_CMD]:

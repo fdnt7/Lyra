@@ -6,20 +6,18 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from ..lib.connections import logger, cleanup, join_impl_precaught, leave
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.compose import with_identifier
 from ..lib.extras import Option, Panic
 from ..lib.utils import ConnectionInfo, JoinableChannelType, dj_perms_fmt, say, err_say
-from ..lib.lava.utils import get_data
-from ..lib.lava.events import ConnectionCommandsInvokedEvent
-from ..lib.musicutils import __init_component__
 from ..lib.errors import (
-    NotInVoice,
-    OthersInVoice,
+    NotInVoiceError,
+    OthersInVoiceError,
     RequestedToSpeak,
-    NotConnected,
+    NotConnectedError,
 )
+from ..lib.cmd import CommandIdentifier as C, with_identifier
+from ..lib.lava import ConnectionCommandsInvokedEvent, get_data
+from ..lib.music import __init_component__
+from ..lib.connections import logger, cleanup, join_impl_precaught, leave
 
 
 conns = __init_component__(__name__)
@@ -186,7 +184,7 @@ async def join_(
             ctx,
             content=f"🎭📎 <#{sig.channel}> `(Sent a request to speak. Waiting to become a speaker...)`",
         )
-    except NotInVoice:
+    except NotInVoiceError:
         await err_say(
             ctx,
             content="❌ Please specify a voice channel or join one",
@@ -212,9 +210,9 @@ async def leave_(
 
     try:
         vc = await leave(ctx, lvc)
-    except NotConnected:
+    except NotConnectedError:
         await err_say(ctx, content="❗ Not currently connected yet")
-    except OthersInVoice as exc:
+    except OthersInVoiceError as exc:
         await err_say(
             ctx,
             content=f"🚫 Someone else is already in <#{exc.channel}>.\n **You bypass this by having the {dj_perms_fmt} permissions**",

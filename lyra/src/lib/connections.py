@@ -6,10 +6,9 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from hikari.permissions import Permissions as hkperms
+from .extras import Option, Fallible, lgfmt
+from .dataimpl import LyraDBCollectionType
 
-from .cmd import get_full_cmd_repr_from_identifier
-from .cmd.ids import CommandIdentifier
 from .utils import (
     DJ_PERMS,
     RESTRICTOR,
@@ -20,22 +19,8 @@ from .utils import (
     get_client,
     say,
 )
-from .extras import Option, Fallible, lgfmt
-from .errors import (
-    AlreadyConnected,
-    ChannelMoved,
-    Forbidden,
-    InternalError,
-    NotConnected,
-    NotInVoice,
-    OthersInVoice,
-    RequestedToSpeak,
-    Restricted,
-)
-from .dataimpl import LyraDBCollectionType
-from .lava.utils import access_data, access_queue
-from .lava.events import ConnectionCommandsInvokedEvent
-from .errors.expects import CheckErrorExpects
+from .cmd import CommandIdentifier, get_full_cmd_repr_from_identifier
+from .lava import ConnectionCommandsInvokedEvent, access_data, access_queue
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -52,6 +37,16 @@ async def join(
     /,
 ) -> Fallible[hk.Snowflake]:
     """Joins your voice channel."""
+    from .errors import (
+        AlreadyConnectedError,
+        ChannelMoved,
+        ForbiddenError,
+        InternalError,
+        NotInVoiceError,
+        RequestedToSpeak,
+        RestrictedError,
+    )
+
     assert ctx.guild_id and ctx.member
 
     if not (ctx.cache and ctx.shards):
@@ -68,7 +63,7 @@ async def join(
             # Join the current voice channel
             new_ch = voice_state.channel_id
         else:
-            raise NotInVoice
+            raise NotInVoiceError
     else:
         new_ch = channel.id
         # Join the specified voice channel
@@ -85,7 +80,7 @@ async def join(
         # If it's the same channel
         assert old_ch
         if old_ch == new_ch:
-            raise AlreadyConnected(old_ch)
+            raise AlreadyConnectedError(old_ch)
 
         await others_not_in_vc_check_impl(ctx, old_conn)
     else:
@@ -98,8 +93,8 @@ async def join(
     assert bot_m
 
     my_perms = await tj.permissions.fetch_permissions(ctx.client, bot_m, channel=new_ch)
-    if not (my_perms & (p := hkperms.CONNECT)):
-        raise Forbidden(p, channel=new_ch)
+    if not (my_perms & (p := hk.Permissions.CONNECT)):
+        raise ForbiddenError(p, channel=new_ch)
 
     cfg = ctx.client.get_type_dependency(LyraDBCollectionType)
     assert not isinstance(cfg, al.abc.Undefined)
@@ -125,8 +120,8 @@ async def join(
     if (
         (ch_wl == 1 and new_ch not in res_ch_all)
         or (ch_wl == -1 and new_ch in res_ch_all)
-    ) and not (author_perms & (hkperms.ADMINISTRATOR | RESTRICTOR)):
-        raise Restricted(ch_wl, obj=new_ch)
+    ) and not (author_perms & (hk.Permissions.ADMINISTRATOR | RESTRICTOR)):
+        raise RestrictedError(ch_wl, obj=new_ch)
 
     # Connect to the channel
     await ctx.shards.update_voice_state(ctx.guild_id, new_ch, self_deaf=True)
@@ -161,6 +156,8 @@ async def join(
 
 
 async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowflakeish]:
+    from .errors import NotConnectedError
+
     assert ctx.guild_id
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
@@ -171,7 +168,7 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowfla
             ConnectionInfo, lvc.get_guild_gateway_connection_info(ctx.guild_id)
         )
     ):
-        raise NotConnected
+        raise NotConnectedError
 
     curr_channel: int = t.cast(int, conn['channel_id'])
 
@@ -210,6 +207,15 @@ async def join_impl_precaught(
     *,
     channel: Option[hk.GuildVoiceChannel | hk.GuildStageChannel] = None,
 ):
+    from .errors import (
+        AlreadyConnectedError,
+        ChannelMoved,
+        ForbiddenError,
+        InternalError,
+        RestrictedError,
+        CheckErrorExpects,
+    )
+
     try:
         vc = await join(ctx, channel, lvc)
         await say(ctx, content=f"🖇️ <#{vc}>")
@@ -222,7 +228,7 @@ async def join_impl_precaught(
         )
         await say(ctx, content=msg)
         return sig.new_channel
-    except Restricted as exc:
+    except RestrictedError as exc:
         cmd_r = get_full_cmd_repr_from_identifier(
             CommandIdentifier.CONFIG_RESTRICT_LIST, ctx
         )
@@ -230,9 +236,9 @@ async def join_impl_precaught(
             ctx,
             content=f"🚷 This voice channel is {'blacklisted from being' if exc.mode == -1 else 'not whitelisted to be'} connected. Consider checking the restricted channels list from {cmd_r}",
         )
-    except AlreadyConnected as exc:
+    except AlreadyConnectedError as exc:
         await err_say(ctx, content=f"❗ Already connected to <#{exc.channel}>")
-    except Forbidden as exc:
+    except ForbiddenError as exc:
         await err_say(
             ctx,
             content=f"⛔ Not sufficient permissions to join channel <#{exc.channel}>",
@@ -249,8 +255,10 @@ async def join_impl_precaught(
 
 
 async def others_not_in_vc_check_impl(
-    ctx_: ContextishType, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
+    ctx_: ContextishType, conn: ConnectionInfo, /, *, perms: hk.Permissions = DJ_PERMS
 ) -> Fallible[bool]:
+    from .errors import OthersInVoiceError
+
     auth_perms = await fetch_permissions(ctx_)
     member = ctx_.member
     client = get_client(ctx_)
@@ -267,6 +275,6 @@ async def others_not_in_vc_check_impl(
         )
     )
 
-    if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and others_in_voice:
-        raise OthersInVoice(channel)
+    if not (auth_perms & (perms | hk.Permissions.ADMINISTRATOR)) and others_in_voice:
+        raise OthersInVoiceError(channel)
     return True

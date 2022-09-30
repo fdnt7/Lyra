@@ -8,6 +8,13 @@ import lavasnek_rs as lv
 
 from .consts import TIMEOUT
 from .extras import Option, Fallible, Panic, MapSig, PredicateSig
+from .errors import (
+    Argument,
+    IllegalArgumentError,
+    QueueEmptyError,
+    NotPlayingError,
+    TrackStoppedError,
+)
 from .utils import (
     IntCastable,
     MaybeGuildIDAware,
@@ -22,17 +29,16 @@ from .utils import (
     infer_guild,
     say,
 )
-from .errors import Argument, IllegalArgument, NotPlaying, QueueEmpty, TrackStopped
-from .lava.utils import (
+from .lava import (
+    TrackStoppedEvent,
     NodeData,
     RepeatMode,
     access_data,
     access_queue,
     get_data,
-    get_queue,
     set_data,
+    get_queue,
 )
-from .lava.events import TrackStoppedEvent
 
 
 async def stop(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /) -> None:
@@ -40,7 +46,7 @@ async def stop(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /) -> None
         try:
             if np_pos := q.np_time:
                 q.update_paused_np_position(np_pos)
-        except QueueEmpty:
+        except QueueEmptyError:
             pass
         q.is_stopped = True
 
@@ -107,7 +113,7 @@ async def set_pause(
         q = d.queue
         if q.is_stopped:
             if strict:
-                raise TrackStopped
+                raise TrackStoppedError
             return False
         if pause is None:
             pause = not q.is_paused
@@ -124,7 +130,7 @@ async def set_pause(
 
         np_pos = q.np_time
         if np_pos is None:
-            raise NotPlaying
+            raise NotPlayingError
 
         q.is_paused = pause
         if pause:
@@ -170,7 +176,7 @@ async def set_pause(
             )
 
             await d.edit_now_playing_components(rest, components)
-    except (QueueEmpty, NotPlaying):
+    except (QueueEmptyError, NotPlayingError):
         if strict:
             raise
         return False
@@ -260,11 +266,11 @@ async def seek(
 ) -> Fallible[int]:
     assert ctx.guild_id
     if total_ms < 0:
-        raise IllegalArgument(Argument(total_ms, 0))
+        raise IllegalArgumentError(Argument(total_ms, 0))
     async with access_queue(ctx, lvc) as q:
         assert q.current is not None
         if total_ms >= (song_len := q.current.track.info.length):
-            raise IllegalArgument(Argument(total_ms, song_len))
+            raise IllegalArgumentError(Argument(total_ms, song_len))
         q.update_curr_t_started(-total_ms)
         await lvc.seek_millis(ctx.guild_id, total_ms)
         return total_ms

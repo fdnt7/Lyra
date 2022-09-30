@@ -2,26 +2,23 @@ import hikari as hk
 import alluka as al
 import lavasnek_rs as lv
 
-from ..lib.musicutils import __init_component__
-from ..lib.errors import NotConnected
 from ..lib.extras import void
-from ..lib.cmd.flags import (
+from ..lib.errors import NotConnectedError
+from ..lib.cmd import (
+    Checks,
     ALONE__SPEAK__CAN_SEEK_ANY,
     ALONE__SPEAK__NP_YOURS,
     IN_VC_ALONE,
-)
-from ..lib.cmd.compose import (
-    Checks,
     with_cb_check,
 )
-from ..lib.lava.utils import get_data
+from ..lib.lava import get_data
+from ..lib.music import __init_component__
+from .queue import repeat_abs, shuffle_abs
+from .playback import skip_abs, previous_abs, play_pause_abs
 
 
 control = __init_component__(__name__)
 
-
-from .queue import repeat_abs, shuffle_abs
-from .playback import skip_abs, previous_abs, play_pause_abs
 
 play_pause_impl = with_cb_check(
     Checks.PLAYING
@@ -55,7 +52,7 @@ async def on_interaction_create(
         d = await get_data(inter.guild_id, lvc)
         if inter.channel_id != d.out_channel_id:
             return
-    except NotConnected:
+    except NotConnectedError:
         return
 
     btt = inter.custom_id

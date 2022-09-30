@@ -6,14 +6,15 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.cmd import get_full_cmd_repr_from_identifier
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.compose import with_identifier
+from ..lib.consts import Q_CHUNK, TIMEOUT
+from ..lib.extras import Option, Fallible, to_stamp, wr, get_lyrics
+from ..lib.errors import QueryEmptyError, LyricsNotFoundError
 from ..lib.utils import (
-    Q_CHUNK,
-    TIMEOUT,
+    Fore,
     AnyContextType,
     EmojiRefs,
+    ANSI_BLOCK,
+    cl,
     limit_img_size_by_guild,
     say,
     err_say,
@@ -22,13 +23,19 @@ from ..lib.utils import (
     disable_components,
     with_annotated_args_wrapped,
 )
-from ..lib.utils.fmt import ANSI_BLOCK, Fore, cl
-from ..lib.music import stop, unstop
-from ..lib.musicutils import generate_queue_embeds, __init_component__
-from ..lib.errors import QueryEmpty, LyricsNotFound
-from ..lib.extras import Option, Fallible, to_stamp, wr, get_lyrics
-from ..lib.lava.utils import get_queue, access_queue
-from ..lib.cmd.compose import Binds, Checks, with_cmd_checks, with_cmd_composer
+from ..lib.cmd import (
+    CommandIdentifier as C,
+    Binds,
+    Checks,
+    with_cmd_checks,
+    with_cmd_composer,
+    with_identifier,
+    get_full_cmd_repr_from_identifier,
+)
+from ..lib.lava import get_queue, access_queue
+from ..lib.music import generate_queue_embeds, __init_component__
+from ..lib.playback import stop, unstop
+from ..lib.queue import play, add_tracks_
 
 
 info = __init_component__(__name__)
@@ -149,8 +156,6 @@ async def search_c(
 
 
 async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Fallible[None]:
-    from ..lib.music import play, add_tracks_
-
     erf = ctx.client.get_type_dependency(EmojiRefs)
     assert ctx.guild_id and not isinstance(erf, al.abc.Undefined)
 
@@ -179,7 +184,7 @@ async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Fallible
 
     queried = results.tracks
     if not queried:
-        raise QueryEmpty(query)
+        raise QueryEmptyError(query)
 
     queried_msg = ANSI_BLOCK % (
         "\n".join(
@@ -512,7 +517,7 @@ async def lyrics_(
     try:
         async with trigger_thinking(t.cast(AnyContextType, ctx)):
             lyrics = await get_lyrics(song)
-    except LyricsNotFound:
+    except LyricsNotFoundError:
         await err_say(ctx, content=f"❓ Could not find any lyrics for the song")
         return
 

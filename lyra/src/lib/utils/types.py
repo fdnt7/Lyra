@@ -3,7 +3,7 @@ import typing as t
 import hikari as hk
 import tanjun as tj
 
-from ..extras.types import Coro
+from ..extras import Coro
 
 
 AnyContextType = tj.abc.MessageContext | tj.abc.AppCommandContext

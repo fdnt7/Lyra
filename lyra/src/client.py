@@ -13,6 +13,7 @@ import src.lib.globs as globs
 
 from .lib import (
     EventHandler,
+    LyraConfig,
     LyraDBClientType,
     LyraDBCollectionType,
     repeat_emojis,
@@ -36,27 +37,28 @@ fn = next(inj_glob('./config.yml'))
 with open(fn.resolve(), 'r') as f:
     _d = yaml.load(f, yaml.Loader)
 
-    PREFIX: list[str] = _d['prefixes']
-
-    _dev: bool = _d['dev_mode']
-    TOKEN: str = os.environ['LYRA_DEV_TOKEN' if _dev else 'LYRA_TOKEN']
-
-    decl_glob_cmds: list[int] | t.Literal[True] = _d['guilds'] if _dev else True
-    emoji_guild: int = _d['emoji_guild']
+    lyra_config = LyraConfig(
+        prefixes=_d['prefixes'],
+        is_dev_mode=(_dev := _d['dev_mode']),
+        token=os.environ['LYRA_DEV_TOKEN' if _dev else 'LYRA_TOKEN'],
+        decl_glob_cmds=_d['guilds'] if _dev else True,
+        emoji_guild=_d['emoji_guild'],
+    )
 
 _client = globs.__init_client__(
     tj.Client.from_gateway_bot(
-        bot := hk.GatewayBot(token=TOKEN),
-        declare_global_commands=(decl_glob_cmds),
+        bot := hk.GatewayBot(token=lyra_config.token),
+        declare_global_commands=(lyra_config.decl_glob_cmds),
         mention_prefix=True,
     )
-    .add_prefix(PREFIX)
+    .add_prefix(lyra_config.prefixes)
     .set_hooks(base_h)
     .add_check(restricts_c)
     .load_modules(
         *('src.modules.' + p.stem for p in pl.Path('.').glob('./src/modules/*.py'))
     )
     .set_dms_enabled_for_app_cmds(False)
+    .set_type_dependency(LyraConfig, lyra_config)
 )
 
 activity = hk.Activity(
@@ -90,7 +92,7 @@ async def on_started(
     _: hk.StartedEvent,
     client: al.Injected[tj.Client],
 ):
-    emojis = await client.rest.fetch_guild_emojis(emoji_guild)
+    emojis = await client.rest.fetch_guild_emojis(lyra_config.emoji_guild)
     emoji_refs.update({e.name: e for e in emojis})
     logger.info("Fetched emojis from Lýra's Emoji Server")
 
@@ -122,7 +124,7 @@ async def on_shard_ready(
     )
 
     builder = (
-        lv.LavalinkBuilder(event.my_user.id, TOKEN)
+        lv.LavalinkBuilder(event.my_user.id, lyra_config.token)
         .set_host(host)
         .set_password(os.environ['LAVALINK_PWD'])
         .set_port(int(os.environ['LAVALINK_PORT']))

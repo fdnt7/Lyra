@@ -3,7 +3,7 @@ import typing as t
 import hikari as hk
 import tanjun as tj
 
-from ..extras.types import AsyncVoidAnySig
+from ..extras import AsyncVoidAnySig
 
 
 CommandType = tj.abc.ExecutableCommand

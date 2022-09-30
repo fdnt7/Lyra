@@ -8,17 +8,24 @@ import hikari as hk
 import tanjun as tj
 import alluka as al
 
-from ..lib.cmd import recurse_cmds, get_cmd_name, get_full_cmd_repr_from_identifier
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.types import AlmostGenericAnyCommandType, GenericCommandType
-from ..lib.cmd.compose import Binds, with_identifier
-from ..lib.musicutils import __init_component__
 from ..lib.extras import groupby
 from ..lib.utils import (
+    LyraConfig,
     EmojiRefs,
     color_hash_obj,
     say,
 )
+from ..lib.cmd import (
+    CommandIdentifier as C,
+    Binds,
+    AlmostGenericAnyCommandType,
+    GenericCommandType,
+    with_identifier,
+    recurse_cmds,
+    get_cmd_name,
+    get_full_cmd_repr_from_identifier,
+)
+from ..lib.music import __init_component__
 
 
 misc = __init_component__(__name__, guild_check=False)
@@ -57,16 +64,32 @@ async def commands_autocomplete(ctx: tj.abc.AutocompleteContext, value: str, /):
 
 @misc.with_listener()
 async def on_started(
-    _: hk.StartedEvent, client: al.Injected[tj.Client], bot: al.Injected[hk.GatewayBot]
+    _: hk.StartedEvent,
+    client: al.Injected[tj.Client],
+    bot: al.Injected[hk.GatewayBot],
+    lfg: al.Injected[LyraConfig],
 ):
     me = bot.get_me()
     assert me
+
+    decl_glob_cmds = lfg.decl_glob_cmds
+    g = (
+        (
+            decl_glob_cmds[0]
+            if isinstance(decl_glob_cmds, t.Sequence)
+            else (
+                decl_glob_cmds if not isinstance(decl_glob_cmds, bool) else hk.UNDEFINED
+            )
+        )
+        if lfg.is_dev_mode
+        else hk.UNDEFINED
+    )
 
     slash = sorted(client.iter_slash_commands(), key=lambda cmd: cmd.name)
     slash_ = sorted(
         filter(
             lambda cmd: cmd.type is hk.CommandType.SLASH,
-            await bot.rest.fetch_application_commands(me.id, 777069316247126036),
+            await bot.rest.fetch_application_commands(me.id, g),
         ),
         key=lambda cmd: cmd.name,
     )

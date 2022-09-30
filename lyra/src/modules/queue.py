@@ -6,18 +6,38 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.cmd import get_full_cmd_repr_from_identifier
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.flags import IN_VC_ALONE
-from ..lib.cmd.compose import (
+from ..lib.extras import Option, Panic, flatten, fmt_str
+from ..lib.errors import (
+    IllegalArgumentError,
+    InvalidArgumentError,
+)
+from ..lib.utils import (
+    with_annotated_args_wrapped,
+    with_message_command_group_template,
+    extract_content,
+    err_say,
+    say,
+)
+from ..lib.cmd import (
+    CommandIdentifier as C,
+    IN_VC_ALONE,
     Checks,
     Binds,
     with_identifier,
     with_cmd_composer,
     with_cmd_checks,
+    get_full_cmd_repr_from_identifier,
 )
-from ..lib.musicutils import __init_component__
-from ..lib.music import while_stop
+from ..lib.lava import (
+    RepeatMode,
+    all_repeat_modes,
+    get_data,
+    set_data,
+    access_data,
+    get_queue,
+)
+from ..lib.music import __init_component__
+from ..lib.playback import while_stop, set_pause
 from ..lib.queue import (
     RepeatMode,
     to_tracks,
@@ -27,25 +47,6 @@ from ..lib.queue import (
     shuffle_abs,
     repeat_abs,
     play,
-)
-from ..lib.utils import (
-    with_annotated_args_wrapped,
-    with_message_command_group_template,
-    extract_content,
-    err_say,
-    say,
-)
-from ..lib.extras import Option, Panic, flatten, fmt_str
-from ..lib.lava.utils import (
-    RepeatMode,
-    get_data,
-    set_data,
-    access_data,
-    get_queue,
-)
-from ..lib.errors import (
-    IllegalArgument,
-    InvalidArgument,
 )
 
 
@@ -75,8 +76,6 @@ def to_source(value: str, /) -> Panic[str]:
 
 
 def to_repeat_mode(value: str, /) -> Panic[RepeatMode]:
-    from ..lib.lava.utils import all_repeat_modes
-
     if value in all_repeat_modes[0]:
         return RepeatMode.NONE
     elif value in all_repeat_modes[1]:
@@ -253,13 +252,13 @@ async def remove_one_(
 
     try:
         rm = await remove_track(ctx, track, lvc)
-    except InvalidArgument:
+    except InvalidArgumentError:
         await err_say(
             ctx,
             content=f"❌ Please specify a track to remove or have a track playing first",
         )
         return
-    except IllegalArgument as xe:
+    except IllegalArgumentError as xe:
         arg_exp = xe.arg.expected
         await err_say(
             ctx,
@@ -298,7 +297,7 @@ async def remove_bulk_(
 
     try:
         await remove_tracks(ctx, start, end, lvc)
-    except IllegalArgument:
+    except IllegalArgumentError:
         await err_say(
             ctx,
             delete_after=6.5,
@@ -390,13 +389,13 @@ async def move_last_(
     q = await get_queue(ctx, lvc)
     try:
         mv = await insert_track(ctx, len(q), track, lvc)
-    except InvalidArgument:
+    except InvalidArgumentError:
         await err_say(
             ctx,
             content=f"❌ Please specify a track to move or have a track playing first",
         )
         return
-    except IllegalArgument:
+    except IllegalArgumentError:
         await err_say(
             ctx,
             content=f"❌ Invalid position. **The track position must be between `1` and `{len(q)}`**",
@@ -432,8 +431,6 @@ async def move_swap_(
     """
     Swaps positions of two tracks in a queue
     """
-    from .playback import while_stop, set_pause
-
     assert ctx.guild_id
 
     d = await get_data(ctx.guild_id, lvc)
@@ -505,13 +502,13 @@ async def move_insert_(
     except ValueError:
         await err_say(ctx, content=f"❗ Cannot insert a track after its own position")
         return
-    except InvalidArgument:
+    except InvalidArgumentError:
         await err_say(
             ctx,
             content=f"❌ Please specify a track to insert or have a track playing first",
         )
         return
-    except IllegalArgument as xe:
+    except IllegalArgumentError as xe:
         expected = xe.arg.expected
         await err_say(
             ctx,

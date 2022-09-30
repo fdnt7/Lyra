@@ -7,28 +7,30 @@ import alluka as al
 import lavasnek_rs as lv
 import tanjun.annotations as ja
 
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.flags import (
+from ..lib.extras import Option, to_stamp, to_ms
+from ..lib.errors import IllegalArgumentError
+from ..lib.utils import (
+    ConnectionInfo,
+    say,
+    err_say,
+    with_annotated_args_wrapped,
+)
+from ..lib.cmd import (
+    CommandIdentifier as C,
+    Checks,
+    Binds,
     ALONE__SPEAK__CAN_SEEK_ANY,
     ALONE__SPEAK__NP_YOURS,
-    Checks,
-)
-from ..lib.cmd.compose import (
-    Binds,
     with_cmd_composer,
     with_cmd_checks,
 )
-from ..lib.musicutils import __init_component__
-from ..lib.extras import to_stamp, to_ms
-from ..lib.errors import (
-    IllegalArgument,
-)
-from ..lib.lava.utils import (
+from ..lib.lava import (
     get_data,
     set_data,
     get_queue,
     access_queue,
 )
+from ..lib.music import __init_component__
 from ..lib.playback import (
     previous_abs,
     set_pause,
@@ -37,13 +39,6 @@ from ..lib.playback import (
     skip_abs,
     stop,
     while_stop,
-)
-from ..lib.utils import (
-    Option,
-    ConnectionInfo,
-    say,
-    err_say,
-    with_annotated_args_wrapped,
 )
 
 
@@ -264,7 +259,7 @@ async def fastforward_(
 
         try:
             await seek(ctx, lvc, new_np_ms)
-        except IllegalArgument:
+        except IllegalArgumentError:
             await skip(ctx, lvc, change_stop=False)
             await say(
                 ctx,
@@ -300,7 +295,7 @@ async def rewind_(
 
         try:
             await seek(ctx, lvc, new_np_ms)
-        except IllegalArgument:
+        except IllegalArgumentError:
             await seek(ctx, lvc, 0)
             await say(
                 ctx,
@@ -466,7 +461,7 @@ async def seek_(
             assert q.np_time is not None
             old_np_ms = q.np_time
             await seek(ctx, lvc, timestamp)
-        except IllegalArgument as xe:
+        except IllegalArgumentError as xe:
             await err_say(
                 ctx,
                 content=f"❌ Invalid timestamp position given; The track's length is `{to_stamp(xe.arg.expected)}` but was given `{to_stamp(xe.arg.got)}`",

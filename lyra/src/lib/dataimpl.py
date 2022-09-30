@@ -5,8 +5,6 @@ import logging
 import pymongo.collection as mg_co
 import pymongo.mongo_client as mg_cl
 
-import src.lib.globs as globs
-
 from .extras import lgfmt
 
 # import firebase_admin as fb
@@ -54,5 +52,7 @@ _client: LyraDBClientType = mg_cl.MongoClient(conn_str % pwd)
 
 
 def __init_mongo_client__():
+    import src.lib.globs as globs
+
     logger.info("Connected to MongoDB Database")
     return globs.__init_mongo_client__(_client)

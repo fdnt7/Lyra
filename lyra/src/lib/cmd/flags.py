@@ -6,11 +6,25 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
-from hikari.permissions import Permissions as hkperms
-
+from ..consts import TIMEOUT, __developers__
+from ..extras import AutoDocsFlag, Fallible, Option, Panic
+from ..errors import (
+    NotDeveloperError,
+    NotYetSpeakerError,
+    AlreadyConnectedError,
+    OthersInVoiceError,
+    OthersListeningError,
+    PlaybackChangeRefused,
+    UnauthorizedError,
+    VotingTimeoutError,
+    CommandCancelledError,
+    NotInVoiceError,
+    RequestedToSpeak,
+    CheckErrorExpects,
+    BindErrorExpects,
+)
 from ..utils import (
     DJ_PERMS,
-    TIMEOUT,
     BindSig,
     ContextishType,
     ConnectionInfo,
@@ -19,23 +33,8 @@ from ..utils import (
     get_client,
     start_confirmation_prompt,
 )
-from ..errors import (
-    AlreadyConnected,
-    CommandCancelled,
-    NotDeveloper,
-    NotInVoice,
-    NotYetSpeaker,
-    OthersInVoice,
-    OthersListening,
-    PlaybackChangeRefused,
-    RequestedToSpeak,
-    Unauthorized,
-    VotingTimeout,
-)
-from ..errors.expects import BindErrorExpects, CheckErrorExpects
-from ..extras import AutoDocsFlag, Fallible, Option, Panic
-from ..lava.utils import get_queue
-from ..connections import others_not_in_vc_check_impl
+from ..lava import get_queue
+from ..music import start_listeners_voting
 
 
 class Checks(AutoDocsFlag):
@@ -98,22 +97,20 @@ async def speaker_check(ctx_: ContextishType, /) -> Fallible[bool]:
         and state.user_id == bot_u.id
         and state.is_suppressed
     ):
-        raise NotYetSpeaker(vc_id)
+        raise NotYetSpeakerError(vc_id)
     return True
 
 
 async def developer_check(ctx: tj.abc.Context, /) -> Fallible[bool]:
-    from .. import consts as c
-
-    if int(ctx.author.id) not in c.__developers__:
-        raise NotDeveloper
+    if int(ctx.author.id) not in __developers__:
+        raise NotDeveloperError
     return True
 
 
 async def as_developer_check(ctx: tj.abc.Context, /) -> Panic[bool]:
     try:
         return await developer_check(ctx)
-    except NotDeveloper:
+    except NotDeveloperError:
         await CheckErrorExpects(ctx).expect_not_developer()
     raise tj.HaltExecution
 
@@ -143,7 +140,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
     async def _as_speaker_check(ctx: tj.abc.Context, /) -> Panic[bool]:
         try:
             return await speaker_check(ctx)
-        except NotYetSpeaker as exc:
+        except NotYetSpeakerError as exc:
             await CheckErrorExpects(ctx).expect_not_yet_speaker(exc)
         raise tj.HaltExecution
 
@@ -156,7 +153,11 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         return True
 
     async def __check_in_vc(
-        ctx: tj.abc.Context, conn: ConnectionInfo, /, *, perms: hkperms = DJ_PERMS
+        ctx: tj.abc.Context,
+        conn: ConnectionInfo,
+        /,
+        *,
+        perms: hk.Permissions = DJ_PERMS,
     ) -> Fallible[bool]:
         member = ctx.member
         assert ctx.guild_id
@@ -173,8 +174,11 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
             filter(lambda v: v.member.id == member.id, voice_states.values())
         )
 
-        if not (auth_perms & (perms | hkperms.ADMINISTRATOR)) and not author_in_voice:
-            raise AlreadyConnected(channel)
+        if (
+            not (auth_perms & (perms | hk.Permissions.ADMINISTRATOR))
+            and not author_in_voice
+        ):
+            raise AlreadyConnectedError(channel)
         return True
 
     async def _as_in_vc_check(
@@ -188,7 +192,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         assert conn is not None
         try:
             return await __check_in_vc(ctx, conn)
-        except AlreadyConnected as exc:
+        except AlreadyConnectedError as exc:
             await CheckErrorExpects(ctx).expect_already_connected(exc)
         raise tj.HaltExecution
 
@@ -201,7 +205,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         q = await get_queue(ctx, lvc)
         assert q.current is not None
         if ctx.member.id != q.current.requester and not auth_perms & (
-            DJ_PERMS | hkperms.ADMINISTRATOR
+            DJ_PERMS | hk.Permissions.ADMINISTRATOR
         ):
             raise PlaybackChangeRefused(q.current)
         return True
@@ -212,26 +216,24 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         assert ctx.member
 
         auth_perms = await fetch_permissions(ctx)
-        if not (auth_perms & (DJ_PERMS | hkperms.ADMINISTRATOR)):
+        if not (auth_perms & (DJ_PERMS | hk.Permissions.ADMINISTRATOR)):
             if not (np := (await get_queue(ctx, lvc)).current):
-                raise Unauthorized(DJ_PERMS)
+                raise UnauthorizedError(DJ_PERMS)
             if ctx.member.id != np.requester:
                 raise PlaybackChangeRefused(np)
         return True
 
     async def ___handles_voting(
         ctx: tj.abc.Context,
-        exc_: OthersListening | PlaybackChangeRefused | Unauthorized,
+        exc_: OthersListeningError | PlaybackChangeRefused | UnauthorizedError,
         /,
         *,
         lvc: lv.Lavalink,
     ) -> Fallible[bool]:
         if (cmd := ctx.command) and Binds.VOTE in cmd.metadata.get('binds', set()):
             try:
-                from ..musicutils import start_listeners_voting
-
                 await start_listeners_voting(ctx, lvc)
-            except VotingTimeout:
+            except VotingTimeoutError:
                 raise exc_
             else:
                 return True
@@ -239,7 +241,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
             raise
 
     async def __handles_advanced_case(
-        ctx: tj.abc.Context, exc: OthersInVoice, /, *, lvc: lv.Lavalink
+        ctx: tj.abc.Context, exc: OthersInVoiceError, /, *, lvc: lv.Lavalink
     ) -> Panic[bool]:
         try:
             assert checks
@@ -248,22 +250,28 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
             if Checks.NP_YOURS & checks:
                 return await ___as_np_yours_check(ctx, lvc=lvc)
             if not (Checks.NP_YOURS | Checks.CAN_SEEK_ANY) & checks:
-                raise OthersListening(exc.channel) from exc
+                raise OthersListeningError(exc.channel) from exc
             return True
         except (
-            OthersListening,
+            OthersListeningError,
             PlaybackChangeRefused,
-            Unauthorized,
+            UnauthorizedError,
         ) as exc_:
             try:
                 return await ___handles_voting(ctx, exc_, lvc=lvc)
-            except (OthersListening, PlaybackChangeRefused, Unauthorized) as _exc:
+            except (
+                OthersListeningError,
+                PlaybackChangeRefused,
+                UnauthorizedError,
+            ) as _exc:
                 await CheckErrorExpects(ctx).expect(_exc)
             raise tj.HaltExecution
 
     async def _as_others_not_in_vc_check(
         ctx: tj.abc.Context, /, *, lvc: al.Injected[lv.Lavalink]
     ) -> Panic[bool]:
+        from ..connections import others_not_in_vc_check_impl
+
         assert ctx.guild_id
 
         conn = t.cast(
@@ -272,7 +280,7 @@ def parse_checks(checks: Checks, /) -> tuple[tj.abc.CheckSig, ...]:
         assert conn is not None
         try:
             return await others_not_in_vc_check_impl(ctx, conn, perms=DJ_PERMS)
-        except OthersInVoice as exc:
+        except OthersInVoiceError as exc:
             return await __handles_advanced_case(ctx, exc, lvc=lvc)
 
     async def _as_stop_check(
@@ -319,7 +327,7 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
     async def _as_confirm_bind(ctx: tj.abc.Context, /) -> Panic[bool]:
         try:
             await start_confirmation_prompt(ctx)
-        except (CommandCancelled, asyncio.TimeoutError) as exc:
+        except (CommandCancelledError, asyncio.TimeoutError) as exc:
             await BindErrorExpects(ctx).expect(exc)
             raise tj.HaltExecution
         return True
@@ -367,6 +375,8 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
     async def _as_connect_vc(
         ctx: tj.abc.Context, /, lvc: al.Injected[lv.Lavalink]
     ) -> Panic[bool]:
+        from ..connections import join_impl_precaught
+
         assert ctx.guild_id
 
         ch = ctx.get_channel()
@@ -377,12 +387,10 @@ def parse_binds(binds: Binds, /) -> tuple[BindSig, ...]:
             return True
         async with ch.trigger_typing():
             try:
-                from ..connections import join_impl_precaught
-
                 vc = await join_impl_precaught(ctx, lvc)
             except RequestedToSpeak as sig:
                 return await __wait_until_speaker(ctx, sig)
-            except NotInVoice:
+            except NotInVoiceError:
                 await BindErrorExpects(ctx).expect_not_in_voice()
                 raise tj.HaltExecution
             else:

@@ -4,15 +4,8 @@ import pathlib as pl
 
 import hikari as hk
 import tanjun as tj
-import alluka as al
 import tanjun.annotations as ja
 
-from hikari.permissions import Permissions as hkperms
-
-from ..lib.cmd.ids import CommandIdentifier as C
-from ..lib.cmd.flags import as_developer_check
-from ..lib.cmd.compose import with_identifier
-from ..lib.musicutils import __init_component__
 from ..lib.extras import lgfmt
 from ..lib.utils import (
     say,
@@ -20,13 +13,15 @@ from ..lib.utils import (
     with_annotated_args_wrapped,
     with_message_command_group_template,
 )
+from ..lib.cmd import CommandIdentifier as C, as_developer_check, with_identifier
+from ..lib.music import __init_component__
 
 
 debug = (
     __init_component__(
         __name__, guild_check=False, music_hook=False, other_checks=as_developer_check
     )
-    .set_default_app_command_permissions(hkperms.ADMINISTRATOR)
+    .set_default_app_command_permissions(hk.Permissions.ADMINISTRATOR)
     .set_dms_enabled_for_app_cmds(True)
 )
 
@@ -195,17 +190,11 @@ command_sg_s = with_identifier(C.DEBUG_COMMAND)(
 # -
 @command_sg_m.as_sub_command('delete-all', 'deleteall', 'delall', 'wipe', 'wp')
 @command_sg_s.as_sub_command('delete-all', "Deletes all application commands")
-async def delete_all_app_commands(ctx: tj.abc.Context, bot: al.Injected[hk.GatewayBot]):
+async def delete_all_app_commands(ctx: tj.abc.Context):
     """Deletes all global commands"""
 
-    me = bot.get_me()
-    assert me
-    cmds = await bot.rest.fetch_application_commands(me.id)
-    L = len(cmds)
     await say(ctx, content="⏳⚙️🗑️ Deleting all app commands...")
-    for i, cmd in enumerate(cmds, 1):
-        await cmd.delete()
-        logger.debug(f"Deleting global application commands {i}/{L} ({cmd.name})")
+    await ctx.client.clear_application_commands()
     await say(ctx, follow_up=True, content="⚙️🗑️ Done")
 
 
