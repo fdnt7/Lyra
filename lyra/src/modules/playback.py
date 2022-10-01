@@ -26,7 +26,7 @@ from ..lib.cmd import (
 )
 from ..lib.lava import (
     get_data,
-    set_data,
+    access_data,
     get_queue,
     access_queue,
 )
@@ -87,30 +87,35 @@ async def on_voice_state_update(
     bot_u = bot.get_me()
     assert bot_u
 
-    async def users_in_vc() -> frozenset[hk.VoiceState]:
+    async def get_members_in_vc() -> frozenset[hk.VoiceState]:
         _conn = conn()
         cache = client.cache
         if not _conn:
             return frozenset()
-        assert conn is not None and cache
-        ch_id: int = _conn['channel_id']
+        assert cache
+        bot_vc_id: int = _conn['channel_id']
         return frozenset(
             filter(
                 lambda v: not v.member.is_bot,
-                cache.get_voice_states_view_for_channel(event.guild_id, ch_id).values(),
+                cache.get_voice_states_view_for_channel(
+                    event.guild_id, bot_vc_id
+                ).values(),
             )
         )
 
     new_vc_id = new.channel_id
-    out_ch = (await get_data(event.guild_id, lvc)).out_channel_id
-    assert out_ch
 
     if not (_conn := conn()):
         return
-    assert _conn is not None
+
+    out_ch = (d := await get_data(event.guild_id, lvc)).out_channel_id
+    assert out_ch
+
+    if d.queue.is_paused:  # TODO: Remove this once it's fixed
+        await lvc.pause(event.guild_id)
 
     old_is_stage = (
-        None
+        False
         if not (old and old.channel_id)
         else isinstance(
             bot.cache.get_guild_channel(old.channel_id), hk.GuildStageChannel
@@ -119,16 +124,17 @@ async def on_voice_state_update(
 
     if (
         new_vc_id
-        and isinstance(bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel)
         and new.user_id == bot_u.id
+        and isinstance(bot.cache.get_guild_channel(new_vc_id), hk.GuildStageChannel)
     ):
+        # Bot just joined stage / has been in stage
         old_suppressed = old.is_suppressed if old else True
         old_requested = old.requested_to_speak_at if old else None
 
         if (
-            not old_suppressed
+            old_is_stage
+            and not old_suppressed
             and new.is_suppressed
-            and old_is_stage
             and await set_pause(event, lvc, pause=True, update_controller=True)
         ):
             await client.rest.create_message(
@@ -138,15 +144,15 @@ async def on_voice_state_update(
         elif old_suppressed and not new.is_suppressed:
             await client.rest.create_message(
                 out_ch,
-                f"🎭🗣️ Became a speaker",
+                f"🎭🗣️ Promoted to speaker",
             )
         elif not new.requested_to_speak_at and old_requested:
             await client.rest.create_message(
                 out_ch, f"❕🎭 Bot's request to speak was dismissed"
             )
 
-    in_voice = await users_in_vc()
-    node_vc_id: int = _conn['channel_id']
+    members_in_vc = await get_members_in_vc()
+    bot_vc_id: int = _conn['channel_id']
     # if new.channel_id == vc and len(in_voice) == 1 and new.user_id != bot_u.id:
     #     # Someone rejoined
     #     try:
@@ -155,11 +161,19 @@ async def on_voice_state_update(
     #     except NotConnected:
     #         pass
 
+    last_member_left_vc = (
+        bool(old) and old.channel_id == bot_vc_id and new_vc_id != bot_vc_id
+    )
+    bot_moved_to_new_vc = (
+        new.user_id == bot_u.id
+        and bool(old)
+        and old.channel_id != bot_vc_id
+        and new_vc_id == bot_vc_id
+    )
+
     if (
-        new_vc_id != node_vc_id
-        and not in_voice
-        and old
-        and old.channel_id == node_vc_id
+        not members_in_vc
+        and (last_member_left_vc or bot_moved_to_new_vc)
         and await set_pause(event, lvc, pause=True, update_controller=True)
     ):
         # Everyone left
@@ -349,27 +363,26 @@ async def play_at_(
 ):
     assert ctx.guild_id
 
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    q.reset_repeat()
-    if not (1 <= position <= len(q)):
-        await err_say(
+    async with access_data(ctx.guild_id, lvc) as d:
+        q = d.queue
+        q.reset_repeat()
+        if not (1 <= position <= len(q)):
+            await err_say(
+                ctx,
+                content=f"❌ Invalid position. **The position must be between `1` and `{len(q)}`**",
+            )
+            return
+
+        async with while_stop(ctx, lvc, d):
+            t = q[position - 1]
+            q.pos = position - 1
+            await lvc.play(ctx.guild_id, t.track).start()
+            await set_pause(ctx, lvc, pause=False)
+
+        await say(
             ctx,
-            content=f"❌ Invalid position. **The position must be between `1` and `{len(q)}`**",
+            content=f"🎿 Playing the track at position `{position}` (`{t.track.info.title}`)",
         )
-        return
-
-    async with while_stop(ctx, lvc, d):
-        t = q[position - 1]
-        q.pos = position - 1
-        await lvc.play(ctx.guild_id, t.track).start()
-        await set_pause(ctx, lvc, pause=False)
-
-    await say(
-        ctx,
-        content=f"🎿 Playing the track at position `{position}` (`{t.track.info.title}`)",
-    )
-    await set_data(ctx.guild_id, lvc, d)
 
 
 # /next

@@ -8,7 +8,7 @@ import lavasnek_rs as lv
 from ..extras import Panic, lgfmt
 from ..dataimpl import LyraDBClientType, LyraDBCollectionType
 from ..errors import QueueEmptyError
-from ..utils import EmojiRefs, get_client
+from ..utils import EmojiCache, get_client
 from ..playback import while_stop, skip
 from .utils import (
     BaseEventHandler,
@@ -54,10 +54,10 @@ class EventHandler(BaseEventHandler):
             client = get_client()
 
             cfg = client.get_type_dependency(LyraDBCollectionType)
-            erf = client.get_type_dependency(EmojiRefs)
+            emj = client.get_type_dependency(EmojiCache)
 
             assert not isinstance(cfg, al.abc.Undefined) and not isinstance(
-                erf, al.abc.Undefined
+                emj, al.abc.Undefined
             )
 
             g_cfg = cfg.find_one({'id': str(event.guild_id)})
@@ -74,16 +74,16 @@ class EventHandler(BaseEventHandler):
             controls = (
                 client.rest.build_action_row()
                 .add_button(hk.ButtonStyle.SECONDARY, 'lyra_shuffle')
-                .set_emoji(erf['shuffle_b'])
+                .set_emoji(emj['shuffle_b'])
                 .add_to_container()
                 .add_button(hk.ButtonStyle.SECONDARY, 'lyra_previous')
-                .set_emoji(erf['previous_b'])
+                .set_emoji(emj['previous_b'])
                 .add_to_container()
                 .add_button(hk.ButtonStyle.PRIMARY, 'lyra_playpause')
-                .set_emoji(erf['resume_b'])
+                .set_emoji(emj['resume_b'])
                 .add_to_container()
                 .add_button(hk.ButtonStyle.SECONDARY, 'lyra_skip')
-                .set_emoji(erf['skip_b'])
+                .set_emoji(emj['skip_b'])
                 .add_to_container()
                 .add_button(hk.ButtonStyle.SUCCESS, 'lyra_repeat')
                 .set_emoji(get_repeat_emoji(q))
@@ -102,7 +102,7 @@ class EventHandler(BaseEventHandler):
         t = (await lvc.decode_track(event.track)).title
         if not await lvc.get_guild_node(event.guild_id):
             return
-        async with access_data(event.guild_id, lvc) as d:
+        async with access_data(event.guild_id, lvc, strict=False) as d:
             q = d.queue
             l = len(q)
 

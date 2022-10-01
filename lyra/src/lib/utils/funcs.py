@@ -26,7 +26,7 @@ from ..dataimpl import LyraDBCollectionType
 from .vars import RESTRICTOR, base_h
 from .types import (
     ChannelAware,
-    RESTAware,
+    PurelyRESTAware,
     RESTAwareAware,
     ClientAware,
     ClientAwareGuildContextish,
@@ -591,10 +591,10 @@ async def pre_execution(
 
     assert ctx.guild_id and ctx.cache
 
-    bot_u = ctx.cache.get_me()
-    assert bot_u
+    g = ctx.get_guild()
+    assert g
 
-    bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
+    bot_m = g.get_my_member()
     assert bot_m
 
     bot_perms = await tj.permissions.fetch_permissions(
@@ -635,8 +635,8 @@ def get_client(_c_inf: AnyOr[ClientAware] = None, /) -> tj.abc.Client:
     return _c
 
 
-def get_rest(g_r_inf: RESTAware | RESTAwareAware, /):
-    if isinstance(g_r_inf, RESTAware):
+def get_rest(g_r_inf: PurelyRESTAware | RESTAwareAware, /):
+    if isinstance(g_r_inf, PurelyRESTAware):
         return g_r_inf.rest
     return g_r_inf.app.rest
 

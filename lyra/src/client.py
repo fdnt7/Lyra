@@ -14,10 +14,11 @@ import src.lib.globs as globs
 from .lib import (
     EventHandler,
     LyraConfig,
+    NodeRef,
     LyraDBClientType,
     LyraDBCollectionType,
     repeat_emojis,
-    EmojiRefs,
+    EmojiCache,
     base_h,
     __init_mongo_client__,
     restricts_c,
@@ -66,7 +67,7 @@ activity = hk.Activity(
     type=hk.ActivityType.LISTENING,
 )
 
-emoji_refs = EmojiRefs({})
+emoji_cache = EmojiCache({})
 
 
 @_client.with_prefix_getter
@@ -93,7 +94,7 @@ async def on_started(
     client: al.Injected[tj.Client],
 ):
     emojis = await client.rest.fetch_guild_emojis(lyra_config.emoji_guild)
-    emoji_refs.update({e.name: e for e in emojis})
+    emoji_cache.update({e.name: e for e in emojis})
     logger.info("Fetched emojis from Lýra's Emoji Server")
 
     mongo_client = __init_mongo_client__()
@@ -101,13 +102,16 @@ async def on_started(
     prefs_db = mongo_client.get_database('prefs')
     guilds_co = prefs_db.get_collection('guilds')
 
+    node_ref = NodeRef({})
+
     (
         client.set_type_dependency(LyraDBClientType, mongo_client)
         .set_type_dependency(LyraDBCollectionType, guilds_co)
-        .set_type_dependency(EmojiRefs, emoji_refs)
+        .set_type_dependency(EmojiCache, emoji_cache)
+        .set_type_dependency(NodeRef, node_ref)
     )
 
-    repeat_emojis.extend(emoji_refs[f'repeat{n}_b'] for n in range(3))
+    repeat_emojis.extend(emoji_cache[f'repeat{n}_b'] for n in range(3))
 
 
 @_client.with_listener()

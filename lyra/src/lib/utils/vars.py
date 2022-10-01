@@ -6,7 +6,7 @@ import tanjun as tj
 from ..extras import format_flags
 
 
-EmojiRefs = t.NewType('EmojiRefs', dict[str, hk.KnownCustomEmoji])
+EmojiCache = t.NewType('EmojiCache', dict[str, hk.KnownCustomEmoji])
 base_h = tj.AnyHooks()
 guild_c = tj.checks.GuildCheck(
     error_message="🙅 Commands can only be used in guild channels"

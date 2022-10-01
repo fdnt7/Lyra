@@ -21,7 +21,7 @@ from ..lib.cmd import (
     with_cmd_composer,
     with_identifier,
 )
-from ..lib.lava import Bands, access_equalizer
+from ..lib.lava import Bands, get_data, access_equalizer
 from ..lib.music import __init_component__
 
 
@@ -84,11 +84,21 @@ with_stage_cmd_check = with_cmd_composer(
 
 @tuning.with_listener()
 async def on_voice_state_update(
-    event: hk.VoiceStateUpdateEvent, lvc: al.Injected[lv.Lavalink]
+    event: hk.VoiceStateUpdateEvent,
+    bot: al.Injected[hk.GatewayBot],
+    lvc: al.Injected[lv.Lavalink],
 ):
     try:
+        out_ch = (await get_data(event.guild_id, lvc)).out_channel_id
+        assert out_ch
+
         async with access_equalizer(event.guild_id, lvc) as eq:
-            eq.is_muted = event.state.is_guild_muted
+            if eq.is_muted != event.state.is_guild_muted:
+                eq.is_muted = event.state.is_guild_muted
+                await bot.rest.create_message(
+                    out_ch,
+                    f"❕{'🔇' if eq.is_muted else '🔊'} `(Bot was forcefully {'muted' if eq.is_muted else 'unmuted'})`",
+                )
     except NotConnectedError:
         return
 

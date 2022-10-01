@@ -309,6 +309,9 @@ class NodeData:
             await rest.edit_message(self.out_channel_id, _np_msg, components=components)
 
 
+NodeRef = t.NewType('NodeRef', dict[int, NodeData])
+
+
 class BaseEventHandler(abc.ABC):
     @abc.abstractmethod
     async def track_start(
@@ -341,39 +344,56 @@ async def get_data(guild: hk.Snowflakeish, lvc: lv.Lavalink, /) -> Panic[NodeDat
 
 
 async def set_data(
-    guild: hk.Snowflakeish, lvc: lv.Lavalink, data: NodeData, /
+    guild: hk.Snowflakeish,
+    lvc: lv.Lavalink,
+    data: NodeData,
+    /,
+    *,
+    strict: bool = False,
 ) -> Panic[None]:
     node = await lvc.get_guild_node(guild)
     if not node:
-        raise NotConnectedError
-    node.set_data(data)
+        if strict:
+            raise NotConnectedError
+        return
+    try:
+        node.set_data(data)
+    except NotConnectedError:
+        if strict:
+            raise
 
 
 @ctxlib.asynccontextmanager
-async def access_queue(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /):
+async def access_queue(
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /, *, strict: bool = True
+):
     data = await get_data(g := infer_guild(g_), lvc)
     try:
         yield data.queue
     finally:
-        await set_data(g, lvc, data)
+        await set_data(g, lvc, data, strict=strict)
 
 
 @ctxlib.asynccontextmanager
-async def access_equalizer(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /):
+async def access_equalizer(
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /, *, strict: bool = True
+):
     data = await get_data(g := infer_guild(g_), lvc)
     try:
         yield data.equalizer
     finally:
-        await set_data(g, lvc, data)
+        await set_data(g, lvc, data, strict=strict)
 
 
 @ctxlib.asynccontextmanager
-async def access_data(g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /):
+async def access_data(
+    g_: IntCastable | MaybeGuildIDAware, lvc: lv.Lavalink, /, *, strict: bool = True
+):
     data = await get_data(g := infer_guild(g_), lvc)
     try:
         yield data
     finally:
-        await set_data(g, lvc, data)
+        await set_data(g, lvc, data, strict=strict)
 
 
 async def get_queue(

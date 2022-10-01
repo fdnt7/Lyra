@@ -1,9 +1,10 @@
 # pyright: reportUnusedImport=false
 from .extras import inj_glob, lgfmt
-from .utils import LyraConfig, EmojiRefs, base_h, restricts_c
+from .utils import LyraConfig, EmojiCache, base_h, restricts_c
 from .connections import cleanup
 from .lava import (
     EventHandler,
+    NodeRef,
     repeat_emojis,
     access_data,
     get_data,

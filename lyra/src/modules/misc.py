@@ -11,7 +11,7 @@ import alluka as al
 from ..lib.extras import groupby
 from ..lib.utils import (
     LyraConfig,
-    EmojiRefs,
+    EmojiCache,
     color_hash_obj,
     say,
 )
@@ -163,7 +163,7 @@ async def ping_(ctx: tj.abc.Context):
 async def help_(
     ctx: tj.abc.Context,
     command: list[GenericCommandType],
-    erf: al.Injected[EmojiRefs],
+    emj: al.Injected[EmojiCache],
 ):
     # await err_say(ctx, content="⚡ This command is coming soon!")
     cmd = command[-1]
@@ -176,13 +176,13 @@ async def help_(
     if any(
         isinstance(_cmd, tj.SlashCommand | tj.SlashCommandGroup) for _cmd in command
     ):
-        avail_in.append(erf['slash'])
+        avail_in.append(emj['slash'])
     if any(
         isinstance(_cmd, tj.MessageCommand | tj.MessageCommandGroup) for _cmd in command
     ):
-        avail_in.append(erf['prefix'])
+        avail_in.append(emj['prefix'])
     if any(isinstance(_cmd, tj.MenuCommand) for _cmd in command):
-        avail_in.append(erf['menu'])
+        avail_in.append(emj['menu'])
 
     desc = f"{' '.join(map(str, avail_in))}\n```{docs}```\n**Command Category**: `{component.name}`"
 

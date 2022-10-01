@@ -21,7 +21,7 @@ from .utils import (
     ButtonBuilderType,
     ContextishType,
     RESTAwareType,
-    EmojiRefs,
+    EmojiCache,
     edit_components,
     err_say,
     get_client,
@@ -35,7 +35,6 @@ from .lava import (
     RepeatMode,
     access_data,
     access_queue,
-    get_data,
     set_data,
     get_queue,
 )
@@ -106,45 +105,43 @@ async def set_pause(
 
     try:
         client = get_client(g_r_)
-        erf = client.get_type_dependency(EmojiRefs)
-        assert not isinstance(erf, al.abc.Undefined)
+        emj = client.get_type_dependency(EmojiCache)
+        assert not isinstance(emj, al.abc.Undefined)
 
-        d = await get_data(g, lvc)
-        q = d.queue
-        if q.is_stopped:
-            if strict:
-                raise TrackStoppedError
-            return False
-        if pause is None:
-            pause = not q.is_paused
-        if pause and q.is_paused:
-            if respond:
-                assert isinstance(g_r_, RESTAwareType)
-                await err_say(g_r_, content="❗ Already paused")
-            return False
-        if not (pause or q.is_paused):
-            if respond:
-                assert isinstance(g_r_, RESTAwareType)
-                await err_say(g_r_, content="❗ Already resumed")
-            return False
+        async with access_data(g, lvc) as d:
+            q = d.queue
+            if q.is_stopped:
+                if strict:
+                    raise TrackStoppedError
+                return False
+            if pause is None:
+                pause = not q.is_paused
+            if pause and q.is_paused:
+                if respond:
+                    assert isinstance(g_r_, RESTAwareType)
+                    await err_say(g_r_, content="❗ Already paused")
+                return False
+            if not (pause or q.is_paused):
+                if respond:
+                    assert isinstance(g_r_, RESTAwareType)
+                    await err_say(g_r_, content="❗ Already resumed")
+                return False
 
-        np_pos = q.np_time
-        if np_pos is None:
-            raise NotPlayingError
+            np_pos = q.np_time
+            if np_pos is None:
+                raise NotPlayingError
 
-        q.is_paused = pause
-        if pause:
-            q.update_paused_np_position(np_pos)
-            await lvc.pause(g)
-            e = '▶️'
-            msg = "Paused"
-        else:
-            q.update_curr_t_started(-np_pos)
-            await lvc.resume(g)
-            e = '⏸️'
-            msg = "Resumed"
-
-        await set_data(g, lvc, d)
+            q.is_paused = pause
+            if pause:
+                q.update_paused_np_position(np_pos)
+                await lvc.pause(g)
+                e = '▶️'
+                msg = "Paused"
+            else:
+                q.update_curr_t_started(-np_pos)
+                await lvc.resume(g)
+                e = '⏸️'
+                msg = "Resumed"
         if respond:
             if isinstance(g_r_, ContextishType):
                 await say(g_r_, show_author=True, content=f"{e} {msg}")
@@ -161,11 +158,11 @@ async def set_pause(
 
             assert d.nowplaying_components
             edits: MapSig[ButtonBuilderType] = lambda x: x.set_emoji(
-                erf[f"{msg[:-1].casefold()}_b"]
+                emj[f"{msg[:-1].casefold()}_b"]
             )
             predicates: PredicateSig[ButtonBuilderType] = lambda x: x.emoji in {
-                erf["pause_b"],
-                erf["resume_b"],
+                emj["pause_b"],
+                emj["resume_b"],
             }
 
             components = edit_components(
