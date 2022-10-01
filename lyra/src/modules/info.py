@@ -12,7 +12,7 @@ from ..lib.errors import QueryEmptyError, LyricsNotFoundError
 from ..lib.utils import (
     Fore,
     AnyContextType,
-    EmojiRefs,
+    EmojiCache,
     ANSI_BLOCK,
     cl,
     limit_img_size_by_guild,
@@ -156,8 +156,8 @@ async def search_c(
 
 
 async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Fallible[None]:
-    erf = ctx.client.get_type_dependency(EmojiRefs)
-    assert ctx.guild_id and not isinstance(erf, al.abc.Undefined)
+    emj = ctx.client.get_type_dependency(EmojiCache)
+    assert ctx.guild_id and not isinstance(emj, al.abc.Undefined)
 
     query = query.strip("<>|")
 
@@ -225,7 +225,7 @@ async def _search(ctx: tj.abc.Context, query: str, lvc: lv.Lavalink) -> Fallible
         .set_label("Get Link")
         .add_to_container()
         .add_button(hk.ButtonStyle.DANGER, 'cancel')
-        .set_emoji(erf['exit_b'])
+        .set_emoji(emj['exit_b'])
         .add_to_container()
     )
     components.append(ops_row)
@@ -365,7 +365,7 @@ async def queue_(
     ctx: tj.abc.Context,
     bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
-    erf: al.Injected[EmojiRefs],
+    emj: al.Injected[EmojiCache],
 ):
     q = await get_queue(ctx, lvc)
     pages = (*(await generate_queue_embeds(ctx, lvc)),)
@@ -375,29 +375,29 @@ async def queue_(
         row = ctx.rest.build_action_row()
 
         row.add_button(hk.ButtonStyle.SECONDARY, 'first').set_emoji(
-            erf['first_b']
+            emj['first_b']
         ).add_to_container()
 
         row.add_button(hk.ButtonStyle.SECONDARY, 'prev').set_emoji(
-            erf['prev_b']
+            emj['prev_b']
         ).add_to_container()
 
         if cancel_b:
             _3rd_b = row.add_button(hk.ButtonStyle.DANGER, 'exit').set_emoji(
-                erf['exit_b']
+                emj['exit_b']
             )
         else:
             _3rd_b = row.add_button(hk.ButtonStyle.PRIMARY, 'back').set_emoji(
-                erf['back_b']
+                emj['back_b']
             )
         _3rd_b.add_to_container()
 
         row.add_button(hk.ButtonStyle.SECONDARY, 'next').set_emoji(
-            erf['next_b']
+            emj['next_b']
         ).add_to_container()
 
         row.add_button(hk.ButtonStyle.SECONDARY, 'last').set_emoji(
-            erf['last_b']
+            emj['last_b']
         ).add_to_container()
 
         return row
@@ -407,10 +407,10 @@ async def queue_(
 
     def _update_buttons(b: hk.api.ButtonBuilder[hk.api.ActionRowBuilder]):
         return (
-            (not pages[:i] and b.emoji == erf['prev_b'])
-            or (not pages[i + 1 :] and b.emoji == erf['next_b'])
-            or (i == 0 and b.emoji == erf['first_b'])
-            or (i == pages_n - 1 and b.emoji == erf['last_b'])
+            (not pages[:i] and b.emoji == emj['prev_b'])
+            or (not pages[i + 1 :] and b.emoji == emj['next_b'])
+            or (i == 0 and b.emoji == emj['first_b'])
+            or (i == pages_n - 1 and b.emoji == emj['last_b'])
         )
 
     embed = pages[i].set_author(name=f"Page {i+1}/{pages_n}")
@@ -482,7 +482,7 @@ async def lyrics_(
     ctx: tj.abc.Context,
     bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
-    erf: al.Injected[EmojiRefs],
+    emj: al.Injected[EmojiCache],
     song: t.Annotated[
         Option[ja.Greedy[ja.Str]], "What song? (If not given, the current song)"
     ] = None,
@@ -490,7 +490,7 @@ async def lyrics_(
     """Attempts to find the lyrics of the current song"""
 
     assert not isinstance(bot, al.abc.Undefined) and not isinstance(
-        erf, al.abc.Undefined
+        emj, al.abc.Undefined
     )
 
     if song is None:
@@ -511,7 +511,7 @@ async def lyrics_(
 
     ly_sel = sel_row.add_select_menu('ly_sel')
     cancel_b = act_row.add_button(hk.ButtonStyle.DANGER, 'delete').set_emoji(
-        erf['exit_b']
+        emj['exit_b']
     )
 
     try:
@@ -524,12 +524,12 @@ async def lyrics_(
     for source in lyrics:
         (
             ly_sel.add_option(source, source)
-            .set_emoji(erf[source.casefold()])
+            .set_emoji(emj[source.casefold()])
             .set_description(f"The lyrics fetched from {source}")
             .add_to_menu()
         )
 
-    icons: tuple[str] = (*(erf[source.casefold()].url for source in lyrics),)
+    icons: tuple[str] = (*(emj[source.casefold()].url for source in lyrics),)
 
     # (
     #     ly_sel.add_option('Cancel', 'cancel')

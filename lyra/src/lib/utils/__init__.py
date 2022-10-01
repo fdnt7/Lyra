@@ -32,5 +32,5 @@ from .funcs import (
     with_message_command_group_template,
     color_hash_obj,
 )
-from .vars import RESTRICTOR, EmojiRefs, DJ_PERMS, dj_perms_fmt, guild_c, base_h
+from .vars import RESTRICTOR, EmojiCache, DJ_PERMS, dj_perms_fmt, guild_c, base_h
 from .fmt import Style, Fore, ANSI_BLOCK, cl

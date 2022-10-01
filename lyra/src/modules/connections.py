@@ -6,6 +6,7 @@ import tanjun as tj
 import alluka as al
 import lavasnek_rs as lv
 
+from ..lib.consts import INACTIVITY_TIMEOUT, INACTIVITY_REFRESH
 from ..lib.extras import Option, Panic
 from ..lib.utils import ConnectionInfo, JoinableChannelType, dj_perms_fmt, say, err_say
 from ..lib.errors import (
@@ -15,7 +16,7 @@ from ..lib.errors import (
     NotConnectedError,
 )
 from ..lib.cmd import CommandIdentifier as C, with_identifier
-from ..lib.lava import ConnectionCommandsInvokedEvent, get_data
+from ..lib.lava import ConnectionCommandsInvokedEvent, NodeRef, get_data
 from ..lib.music import __init_component__
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
 
@@ -43,6 +44,7 @@ async def on_voice_state_update(
     client: al.Injected[tj.Client],
     bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
+    nodes: al.Injected[NodeRef],
 ):
     def conn():
         return t.cast(
@@ -59,17 +61,19 @@ async def on_voice_state_update(
     bot_u = bot.get_me()
     assert bot_u
 
-    async def users_in_vc() -> frozenset[hk.VoiceState]:
+    async def get_members_in_vc() -> frozenset[hk.VoiceState]:
         _conn = conn()
         cache = client.cache
         if not _conn:
             return frozenset()
         assert cache
-        ch_id: int = _conn['channel_id']
+        bot_vc_id: int = _conn['channel_id']
         return frozenset(
             filter(
                 lambda v: not v.member.is_bot,
-                cache.get_voice_states_view_for_channel(event.guild_id, ch_id).values(),
+                cache.get_voice_states_view_for_channel(
+                    event.guild_id, bot_vc_id
+                ).values(),
             )
         )
 
@@ -84,30 +88,30 @@ async def on_voice_state_update(
     except asyncio.TimeoutError:
         conn_cmd_invoked = None
 
-    # print(conn_cmd_invoked)
     if not conn_cmd_invoked and old and old.user_id == bot_u.id:
         if not new.channel_id:
-            await cleanup(event.guild_id, client.shards, lvc, also_disconn=False)
+            await cleanup(event.guild_id, nodes, lvc, bot=bot, also_disconn=False)
             await bot.rest.create_message(
                 out_ch,
-                f"🥀📎 ~~<#{(_vc := old.channel_id)}>~~ `(Bot was forcefully disconnected)`",
+                f"❕📎 ~~<#{(_vc := old.channel_id)}>~~ `(Bot was forcefully disconnected)`",
             )
             logger.warning(
                 f"In guild {event.guild_id} left    channel {_vc} forcefully"
             )
             return
-        is_stage = isinstance(
-            bot.cache.get_guild_channel(new.channel_id), hk.GuildStageChannel
-        )
-        ch_type = 'stage' if is_stage else 'channel'
-        await bot.rest.create_message(
-            out_ch,
-            f"🥀📎🖇️ ~~<#{old.channel_id}>~~ ➜ __<#{new_vc_id}>__ `(Bot was forcefully moved)`",
-        )
-        logger.warning(
-            f"In guild {event.guild_id} moved   from    {old.channel_id} > {ch_type: <7} {new_vc_id} forcefully"
-        )
-        return
+        if new.channel_id != old.channel_id:
+            is_stage = isinstance(
+                bot.cache.get_guild_channel(new.channel_id), hk.GuildStageChannel
+            )
+            ch_type = 'stage' if is_stage else 'voice'
+            await bot.rest.create_message(
+                out_ch,
+                f"❕📎🖇️ ~~<#{old.channel_id}>~~ ➜ __<#{new_vc_id}>__ `(Bot was forcefully moved)`",
+            )
+            logger.warning(
+                f"In guild {event.guild_id} moved   from    {old.channel_id} > {ch_type: <7} {new_vc_id} forcefully"
+            )
+            return
 
     if not (_conn := conn()):
         return
@@ -116,18 +120,19 @@ async def on_voice_state_update(
         logger.debug(
             f"In guild {event.guild_id} started channel {_conn['channel_id']} inactivity timeout"
         )
-        for _ in range(10):
-            if len(await users_in_vc()) >= 1 or not conn():
+        for _ in range(INACTIVITY_REFRESH):
+            if len(await get_members_in_vc()) >= 1 or not conn():
                 logger.debug(
                     f"In guild {event.guild_id} stopped channel {_conn['channel_id']} inactivity timeout"
                 )
                 return False
-            await asyncio.sleep(60)
+            await asyncio.sleep(INACTIVITY_TIMEOUT / INACTIVITY_REFRESH)
 
         __conn = conn()
         assert __conn
 
-        await cleanup(event.guild_id, client.shards, lvc)
+        await cleanup(event.guild_id, nodes, lvc, bot=bot, also_del_np_msg=False)
+
         _vc: int = __conn['channel_id']
         logger.info(
             f"In guild {event.guild_id} left    channel {_vc} due to inactivity"
@@ -138,15 +143,20 @@ async def on_voice_state_update(
 
         return True
 
-    in_voice = await users_in_vc()
-    node_vc_id: int = _conn['channel_id']
+    members_in_vc = await get_members_in_vc()
+    bot_vc_id: int = _conn['channel_id']
 
-    if (
-        new_vc_id != node_vc_id
-        and not in_voice
-        and old
-        and old.channel_id == node_vc_id
-    ):
+    last_member_left_vc = (
+        bool(old) and old.channel_id == bot_vc_id and new_vc_id != bot_vc_id
+    )
+    bot_moved_to_new_vc = (
+        new.user_id == bot_u.id
+        and bool(old)
+        and old.channel_id != bot_vc_id
+        and new_vc_id == bot_vc_id
+    )
+
+    if not members_in_vc and (last_member_left_vc or bot_moved_to_new_vc):
         # Everyone left
         await asyncio.wait(
             (asyncio.create_task(on_everyone_leaves_vc()),),

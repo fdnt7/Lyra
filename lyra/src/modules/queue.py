@@ -20,9 +20,9 @@ from ..lib.utils import (
 )
 from ..lib.cmd import (
     CommandIdentifier as C,
-    IN_VC_ALONE,
     Checks,
     Binds,
+    IN_VC_ALONE,
     with_identifier,
     with_cmd_composer,
     with_cmd_checks,
@@ -31,8 +31,6 @@ from ..lib.cmd import (
 from ..lib.lava import (
     RepeatMode,
     all_repeat_modes,
-    get_data,
-    set_data,
     access_data,
     get_queue,
 )
@@ -433,40 +431,38 @@ async def move_swap_(
     """
     assert ctx.guild_id
 
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    np = q.current
-    if second is None:
-        if not np:
+    async with access_data(ctx, lvc) as d:
+        q = d.queue
+        np = q.current
+        if second is None:
+            if not np:
+                await err_say(
+                    ctx,
+                    content=f"❌ Please specify a track to swap or have a track playing first",
+                )
+                return
+            i_2nd = q.pos
+        else:
+            i_2nd = second - 1
+
+        i_1st = first - 1
+        if i_1st == i_2nd:
+            await err_say(ctx, content=f"❗ Cannot swap a track with itself")
+            return
+        if not ((0 <= i_1st < len(q)) and (0 <= i_2nd < len(q))):
             await err_say(
                 ctx,
-                content=f"❌ Please specify a track to swap or have a track playing first",
+                content=f"❌ Invalid position. **Both tracks' position must be between `1` and `{len(q)}`**",
             )
             return
-        i_2nd = q.pos
-    else:
-        i_2nd = second - 1
 
-    i_1st = first - 1
-    if i_1st == i_2nd:
-        await err_say(ctx, content=f"❗ Cannot swap a track with itself")
-        return
-    if not ((0 <= i_1st < len(q)) and (0 <= i_2nd < len(q))):
-        await err_say(
-            ctx,
-            content=f"❌ Invalid position. **Both tracks' position must be between `1` and `{len(q)}`**",
-        )
-        return
-
-    q[i_1st], q[i_2nd] = q[i_2nd], q[i_1st]
-    q.reset_repeat()
-    if q.pos in {i_1st, i_2nd}:
-        async with while_stop(ctx, lvc, d):
-            swapped = q[i_1st] if q.pos == i_1st else q[i_2nd]
-            await set_pause(ctx, lvc, pause=False)
-            await lvc.play(ctx.guild_id, swapped.track).start()
-
-    await set_data(ctx.guild_id, lvc, d)
+        q[i_1st], q[i_2nd] = q[i_2nd], q[i_1st]
+        q.reset_repeat()
+        if q.pos in {i_1st, i_2nd}:
+            async with while_stop(ctx, lvc, d):
+                swapped = q[i_1st] if q.pos == i_1st else q[i_2nd]
+                await set_pause(ctx, lvc, pause=False)
+                await lvc.play(ctx.guild_id, swapped.track).start()
 
     await say(
         ctx,

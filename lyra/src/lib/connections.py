@@ -20,7 +20,7 @@ from .utils import (
     say,
 )
 from .cmd import CommandIdentifier, get_full_cmd_repr_from_identifier
-from .lava import ConnectionCommandsInvokedEvent, access_data, access_queue
+from .lava import ConnectionCommandsInvokedEvent, NodeRef, get_data, access_data
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -53,7 +53,13 @@ async def join(
         raise InternalError
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert not isinstance(bot, al.abc.Undefined)
+    cfg = ctx.client.get_type_dependency(LyraDBCollectionType)
+    nodes = ctx.client.get_type_dependency(NodeRef)
+    assert (
+        not isinstance(bot, al.abc.Undefined)
+        and not isinstance(cfg, al.abc.Undefined)
+        and not isinstance(nodes, al.abc.Undefined)
+    )
 
     if channel is None:
         # If user is connected to a voice channel
@@ -86,18 +92,15 @@ async def join(
     else:
         old_ch = None
 
-    bot_u = ctx.cache.get_me()
-    assert bot_u
+    g = ctx.get_guild()
+    assert g
 
-    bot_m = ctx.cache.get_member(ctx.guild_id, bot_u)
+    bot_m = g.get_my_member()
     assert bot_m
 
     my_perms = await tj.permissions.fetch_permissions(ctx.client, bot_m, channel=new_ch)
     if not (my_perms & (p := hk.Permissions.CONNECT)):
         raise ForbiddenError(p, channel=new_ch)
-
-    cfg = ctx.client.get_type_dependency(LyraDBCollectionType)
-    assert not isinstance(cfg, al.abc.Undefined)
 
     g_cfg = cfg.find_one({'id': str(ctx.guild_id)})
     assert g_cfg
@@ -133,6 +136,7 @@ async def join(
     await lvc.create_session(sess_conn)
 
     async with access_data(ctx, lvc) as d:
+        nodes.setdefault(ctx.guild_id, d)
         d.out_channel_id = ctx.channel_id
 
     is_stage = isinstance(ctx.cache.get_guild_channel(new_ch), hk.GuildStageChannel)
@@ -161,7 +165,10 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowfla
     assert ctx.guild_id
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    assert not isinstance(bot, al.abc.Undefined)
+    nodes = ctx.client.get_type_dependency(NodeRef)
+    assert not isinstance(bot, al.abc.Undefined) and not isinstance(
+        nodes, al.abc.Undefined
+    )
 
     if not (
         conn := t.cast(
@@ -174,28 +181,76 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowfla
 
     await others_not_in_vc_check_impl(ctx, conn)
 
-    await cleanup(ctx.guild_id, ctx.client.shards, lvc)
+    await cleanup(ctx.guild_id, nodes, lvc, bot=bot, also_del_np_msg=False)
 
     bot.dispatch(ConnectionCommandsInvokedEvent(bot))
     logger.info(f"In guild {ctx.guild_id} left    channel {curr_channel} gracefully")
     return curr_channel
 
 
+@t.overload
 async def cleanup(
     guild: hk.Snowflakeish,
-    shards: Option[hk.ShardAware],
+    nodes: NodeRef,
     lvc: lv.Lavalink,
     /,
+    bot: hk.GatewayBot = ...,
+    *,
+    also_disconn: t.Literal[True] = True,
+    also_del_np_msg: t.Literal[False] = False,
+) -> None:
+    ...
+
+
+@t.overload
+async def cleanup(
+    guild: hk.Snowflakeish,
+    nodes: NodeRef,
+    lvc: lv.Lavalink,
+    /,
+    bot: hk.GatewayBot = ...,
+    *,
+    also_disconn: t.Literal[False] = False,
+    also_del_np_msg: t.Literal[True] = True,
+) -> None:
+    ...
+
+
+@t.overload
+async def cleanup(
+    guild: hk.Snowflakeish,
+    nodes: NodeRef,
+    lvc: lv.Lavalink,
+    /,
+    bot: Option[hk.GatewayBot] = None,
+    *,
+    also_disconn: t.Literal[False] = False,
+    also_del_np_msg: t.Literal[False] = False,
+) -> None:
+    ...
+
+
+async def cleanup(
+    guild: hk.Snowflakeish,
+    nodes: NodeRef,
+    lvc: lv.Lavalink,
+    /,
+    bot: Option[hk.GatewayBot] = None,
     *,
     also_disconn: bool = True,
+    also_del_np_msg: bool = True,
 ) -> None:
-    async with access_queue(guild, lvc) as q:
-        q.clr()
     await lvc.destroy(guild)
-    if shards:
-        if also_disconn:
-            await shards.update_voice_state(guild, None)
-        await lvc.wait_for_connection_info_remove(guild)
+    if also_disconn:
+        assert bot
+        await bot.update_voice_state(guild, None)
+    if also_del_np_msg:
+        assert bot
+        d = await get_data(guild, lvc)
+        if d.out_channel_id and d.nowplaying_msg:
+            await bot.rest.delete_messages(d.out_channel_id, d.nowplaying_msg)
+    await lvc.wait_for_connection_info_remove(guild)
+    nodes.pop(guild)
     await lvc.remove_guild_node(guild)
     await lvc.remove_guild_from_loops(guild)
 

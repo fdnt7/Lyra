@@ -72,7 +72,7 @@ class Contextish(ChannelAware, t.Protocol):
 
 
 @t.runtime_checkable
-class RESTAware(t.Protocol):
+class PurelyRESTAware(t.Protocol):
     @property
     def rest(self) -> hk.api.RESTClient:
         ...

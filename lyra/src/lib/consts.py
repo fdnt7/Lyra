@@ -5,7 +5,7 @@ import typing as t
 LOG_PAD: t.Final = 16
 """Left aligned padding for each lib's logger name"""
 TIMEOUT: t.Final = 60
-"""Base timeout time for buttons, drop-downs and command's wait for responses in seconds"""
+"""Base timeout duration for buttons, drop-downs and command's wait for responses in seconds"""
 Q_CHUNK: t.Final = 10
 """Amount of tracks in the queue to be displayed per page in the `/queue` command"""
 RETRIES: t.Final = 3
@@ -14,6 +14,11 @@ STOP_REFRESH: t.Final = 0.15
 """How many seconds to wait before checking the next time whether the track is confirmed to be stopped"""
 ADD_TRACKS_WRAP_LIM: t.Final = 3
 """How many tracks to be displayed in `/play`'s output before the text got summarized to "Added <i> tracks...\""""
+INACTIVITY_TIMEOUT: t.Final = 600
+"""Timeout duration for the automatic inactivity disconnection in seconds"""
+INACTIVITY_REFRESH: t.Final = 10
+"""Amount of timeout refreshes to periodically check whether the inactivity condition is still met"""
+
 
 genius_icon: t.Final = (
     'https://images.genius.com/2f65c7544798653b46b7a1f132ce8768.512x512x1.png'

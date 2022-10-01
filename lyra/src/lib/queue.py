@@ -44,8 +44,6 @@ from .lava import (
     repeat_emojis,
     access_data,
     access_queue,
-    get_data,
-    set_data,
     get_repeat_emoji,
 )
 from .playback import back, skip, while_stop, set_pause
@@ -197,48 +195,48 @@ async def remove_track(
 ) -> Fallible[lv.TrackQueue]:
     assert ctx.guild_id
 
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    np = q.current
-    if track is None:
-        if not np:
-            raise InvalidArgumentError(Argument(track, None))
-        rm = np
-        i = q.pos
-    elif track.isdigit():
-        t = int(track)
-        if not (1 <= t <= len(q)):
-            raise IllegalArgumentError(Argument(t, (1, len(q))))
-        i = t - 1
-        rm = q[i]
-    else:
-        rm = max(
-            q,
-            key=lambda t: dfflib.SequenceMatcher(
-                None, t.track.info.title, track
-            ).ratio(),
+    async with access_data(ctx.guild_id, lvc) as d:
+        q = d.queue
+        np = q.current
+        if track is None:
+            if not np:
+                raise InvalidArgumentError(Argument(track, None))
+            rm = np
+            i = q.pos
+        elif track.isdigit():
+            t = int(track)
+            if not (1 <= t <= len(q)):
+                raise IllegalArgumentError(Argument(t, (1, len(q))))
+            i = t - 1
+            rm = q[i]
+        else:
+            rm = max(
+                q,
+                key=lambda t: dfflib.SequenceMatcher(
+                    None, t.track.info.title, track
+                ).ratio(),
+            )
+            i = q.index(rm)
+
+        try:
+            await others_not_in_vc_check(ctx, lvc)
+        except OthersInVoiceError:
+            if rm.requester != ctx.author.id:
+                raise PlaybackChangeRefused
+
+        if rm == np:
+            async with while_stop(ctx, lvc, d):
+                await skip(
+                    ctx, lvc, advance=False, reset_repeat=True, change_stop=False
+                )
+
+        if i < q.pos:
+            q.pos = max(0, q.pos - 1)
+        q.sub(rm)
+
+        logger.info(
+            f"In guild {ctx.guild_id} track [{i: >3}/{len(q): >3}] removed: '{rm.track.info.title}'"
         )
-        i = q.index(rm)
-
-    try:
-        await others_not_in_vc_check(ctx, lvc)
-    except OthersInVoiceError:
-        if rm.requester != ctx.author.id:
-            raise PlaybackChangeRefused
-
-    if rm == np:
-        async with while_stop(ctx, lvc, d):
-            await skip(ctx, lvc, advance=False, reset_repeat=True, change_stop=False)
-
-    if i < q.pos:
-        q.pos = max(0, q.pos - 1)
-    q.sub(rm)
-
-    logger.info(
-        f"In guild {ctx.guild_id} track [{i: >3}/{len(q): >3}] removed: '{rm.track.info.title}'"
-    )
-
-    await set_data(ctx.guild_id, lvc, d)
     return rm
 
 
@@ -247,30 +245,28 @@ async def remove_tracks(
 ) -> Fallible[list[lv.TrackQueue]]:
     assert ctx.guild_id
 
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    if not (1 <= start <= end <= len(q)):
-        raise IllegalArgumentError(Argument((start, end), (1, len(q))))
+    async with access_data(ctx.guild_id, lvc) as d:
+        q = d.queue
+        if not (1 <= start <= end <= len(q)):
+            raise IllegalArgumentError(Argument((start, end), (1, len(q))))
 
-    i_s = start - 1
-    i_e = end - 1
-    # t_n = end - i_s
-    rm = q[i_s:end]
-    if q.current in rm:
-        q.reset_repeat()
-        async with while_stop(ctx, lvc, d):
-            if next_t := None if len(q) <= end else q[end]:
-                await set_pause(ctx, lvc, pause=False)
-                await lvc.play(ctx.guild_id, next_t.track).start()
-    if i_s < q.pos:
-        q.pos = max(0, i_s + (q.pos - i_e - 1))
-    q.sub(*rm)
+        i_s = start - 1
+        i_e = end - 1
+        # t_n = end - i_s
+        rm = q[i_s:end]
+        if q.current in rm:
+            q.reset_repeat()
+            async with while_stop(ctx, lvc, d):
+                if next_t := None if len(q) <= end else q[end]:
+                    await set_pause(ctx, lvc, pause=False)
+                    await lvc.play(ctx.guild_id, next_t.track).start()
+        if i_s < q.pos:
+            q.pos = max(0, i_s + (q.pos - i_e - 1))
+        q.sub(*rm)
 
-    logger.info(
-        f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}/{len(q): >3}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
-    )
-
-    await set_data(ctx.guild_id, lvc, d)
+        logger.info(
+            f"""In guild {ctx.guild_id} tracks [{i_s: >3}~{i_e: >3}/{len(q): >3}] removed: '{', '.join(("'%s'" %  t.track.info.title) for t in rm)}'"""
+        )
     return rm
 
 
@@ -293,42 +289,42 @@ async def insert_track(
 ) -> Fallible[lv.TrackQueue]:
     assert ctx.guild_id
 
-    d = await get_data(ctx.guild_id, lvc)
-    q = d.queue
-    np = q.current
-    p_ = q.pos
-    if track is None:
-        if not np:
-            raise InvalidArgumentError(Argument(np, track))
-        t_ = p_
-        ins = np
-    else:
-        t_ = track - 1
-        ins = q[t_]
+    async with access_data(ctx.guild_id, lvc) as d:
+        q = d.queue
+        np = q.current
+        p_ = q.pos
+        if track is None:
+            if not np:
+                raise InvalidArgumentError(Argument(np, track))
+            t_ = p_
+            ins = np
+        else:
+            t_ = track - 1
+            ins = q[t_]
 
-    i_ = insert - 1
-    if t_ in {i_, insert}:
-        raise ValueError
-    if not ((0 <= t_ < len(q)) and (0 <= i_ < len(q))):
-        raise IllegalArgumentError(Argument((track, insert), (1, len(q))))
+        i_ = insert - 1
+        if t_ in {i_, insert}:
+            raise ValueError
+        if not ((0 <= t_ < len(q)) and (0 <= i_ < len(q))):
+            raise IllegalArgumentError(Argument((track, insert), (1, len(q))))
 
-    if t_ < p_ <= i_:
-        q.decr()
-    elif i_ < p_ < t_:
-        q.adv()
+        if t_ < p_ <= i_:
+            q.decr()
+        elif i_ < p_ < t_:
+            q.adv()
 
-    elif i_ < p_ == t_:
-        await back(ctx, lvc, advance=False, reset_repeat=True)
+        elif i_ < p_ == t_:
+            await back(ctx, lvc, advance=False, reset_repeat=True)
 
-    elif p_ == t_ < i_:
-        async with while_stop(ctx, lvc, d):
-            await skip(ctx, lvc, advance=False, reset_repeat=True, change_stop=False)
+        elif p_ == t_ < i_:
+            async with while_stop(ctx, lvc, d):
+                await skip(
+                    ctx, lvc, advance=False, reset_repeat=True, change_stop=False
+                )
 
-    q[t_] = t.cast(lv.TrackQueue, NULL)
-    q.insert(insert, ins)
-    q.remove(t.cast(lv.TrackQueue, NULL))
-
-    await set_data(ctx.guild_id, lvc, d)
+        q[t_] = t.cast(lv.TrackQueue, NULL)
+        q.insert(insert, ins)
+        q.remove(t.cast(lv.TrackQueue, NULL))
     return ins
 
 
