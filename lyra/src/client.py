@@ -14,7 +14,7 @@ import src.lib.globs as globs
 from .lib import (
     EventHandler,
     LyraConfig,
-    NodeRef,
+    NodeDataRef,
     LyraDBClientType,
     LyraDBCollectionType,
     repeat_emojis,
@@ -91,10 +91,12 @@ async def prefix_getter(
 @_client.with_listener()
 async def on_started(
     _: hk.StartedEvent,
+    bot: al.Injected[hk.GatewayBot],
     client: al.Injected[tj.Client],
 ):
     emojis = await client.rest.fetch_guild_emojis(lyra_config.emoji_guild)
     emoji_cache.update({e.name: e for e in emojis})
+    repeat_emojis.extend(emoji_cache[f'repeat{n}_b'] for n in range(3))
     logger.info("Fetched emojis from Lýra's Emoji Server")
 
     mongo_client = __init_mongo_client__()
@@ -102,24 +104,7 @@ async def on_started(
     prefs_db = mongo_client.get_database('prefs')
     guilds_co = prefs_db.get_collection('guilds')
 
-    node_ref = NodeRef({})
-
-    (
-        client.set_type_dependency(LyraDBClientType, mongo_client)
-        .set_type_dependency(LyraDBCollectionType, guilds_co)
-        .set_type_dependency(EmojiCache, emoji_cache)
-        .set_type_dependency(NodeRef, node_ref)
-    )
-
-    repeat_emojis.extend(emoji_cache[f'repeat{n}_b'] for n in range(3))
-
-
-@_client.with_listener()
-async def on_shard_ready(
-    event: hk.ShardReadyEvent,
-    client: al.Injected[tj.Client],
-) -> None:
-    """Event that triggers when the hikari gateway is ready."""
+    node_data_ref = NodeDataRef({})
 
     host = (
         os.environ['LAVALINK_HOST']
@@ -127,8 +112,11 @@ async def on_shard_ready(
         else '127.0.0.1'
     )
 
+    bot_u = bot.get_me()
+    assert bot_u
+
     builder = (
-        lv.LavalinkBuilder(event.my_user.id, lyra_config.token)
+        lv.LavalinkBuilder(bot_u.id, lyra_config.token)
         .set_host(host)
         .set_password(os.environ['LAVALINK_PWD'])
         .set_port(int(os.environ['LAVALINK_PORT']))
@@ -137,7 +125,13 @@ async def on_shard_ready(
 
     lvc = await builder.build(EventHandler())
 
-    client.set_type_dependency(lv.Lavalink, lvc)
+    (
+        client.set_type_dependency(LyraDBClientType, mongo_client)
+        .set_type_dependency(LyraDBCollectionType, guilds_co)
+        .set_type_dependency(EmojiCache, emoji_cache)
+        .set_type_dependency(NodeDataRef, node_data_ref)
+        .set_type_dependency(lv.Lavalink, lvc)
+    )
 
 
 @_client.with_listener()

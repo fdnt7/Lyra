@@ -20,7 +20,7 @@ from .utils import (
     say,
 )
 from .cmd import CommandIdentifier, get_full_cmd_repr_from_identifier
-from .lava import ConnectionCommandsInvokedEvent, NodeRef, get_data, access_data
+from .lava import ConnectionCommandsInvokedEvent, NodeDataRef, access_data
 
 
 logger = logging.getLogger(lgfmt(__name__))
@@ -54,11 +54,11 @@ async def join(
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
     cfg = ctx.client.get_type_dependency(LyraDBCollectionType)
-    nodes = ctx.client.get_type_dependency(NodeRef)
+    ndt = ctx.client.get_type_dependency(NodeDataRef)
     assert (
         not isinstance(bot, al.abc.Undefined)
         and not isinstance(cfg, al.abc.Undefined)
-        and not isinstance(nodes, al.abc.Undefined)
+        and not isinstance(ndt, al.abc.Undefined)
     )
 
     if channel is None:
@@ -136,7 +136,7 @@ async def join(
     await lvc.create_session(sess_conn)
 
     async with access_data(ctx, lvc) as d:
-        nodes.setdefault(ctx.guild_id, d)
+        ndt.setdefault(ctx.guild_id, d)
         d.out_channel_id = ctx.channel_id
 
     is_stage = isinstance(ctx.cache.get_guild_channel(new_ch), hk.GuildStageChannel)
@@ -165,9 +165,9 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowfla
     assert ctx.guild_id
 
     bot = ctx.client.get_type_dependency(hk.GatewayBot)
-    nodes = ctx.client.get_type_dependency(NodeRef)
+    ndt = ctx.client.get_type_dependency(NodeDataRef)
     assert not isinstance(bot, al.abc.Undefined) and not isinstance(
-        nodes, al.abc.Undefined
+        ndt, al.abc.Undefined
     )
 
     if not (
@@ -181,7 +181,7 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowfla
 
     await others_not_in_vc_check_impl(ctx, conn)
 
-    await cleanup(ctx.guild_id, nodes, lvc, bot=bot, also_del_np_msg=False)
+    await cleanup(ctx.guild_id, ndt, lvc, bot=bot, also_del_np_msg=False)
 
     bot.dispatch(ConnectionCommandsInvokedEvent(bot))
     logger.info(f"In guild {ctx.guild_id} left    channel {curr_channel} gracefully")
@@ -191,7 +191,7 @@ async def leave(ctx: tj.abc.Context, lvc: lv.Lavalink, /) -> Fallible[hk.Snowfla
 @t.overload
 async def cleanup(
     guild: hk.Snowflakeish,
-    nodes: NodeRef,
+    ndt: NodeDataRef,
     lvc: lv.Lavalink,
     /,
     bot: hk.GatewayBot = ...,
@@ -205,7 +205,7 @@ async def cleanup(
 @t.overload
 async def cleanup(
     guild: hk.Snowflakeish,
-    nodes: NodeRef,
+    ndt: NodeDataRef,
     lvc: lv.Lavalink,
     /,
     bot: hk.GatewayBot = ...,
@@ -219,7 +219,7 @@ async def cleanup(
 @t.overload
 async def cleanup(
     guild: hk.Snowflakeish,
-    nodes: NodeRef,
+    ndt: NodeDataRef,
     lvc: lv.Lavalink,
     /,
     bot: Option[hk.GatewayBot] = None,
@@ -232,7 +232,7 @@ async def cleanup(
 
 async def cleanup(
     guild: hk.Snowflakeish,
-    nodes: NodeRef,
+    ndt: NodeDataRef,
     lvc: lv.Lavalink,
     /,
     bot: Option[hk.GatewayBot] = None,
@@ -246,11 +246,11 @@ async def cleanup(
         await bot.update_voice_state(guild, None)
     if also_del_np_msg:
         assert bot
-        d = await get_data(guild, lvc)
+        d = ndt[guild]
         if d.out_channel_id and d.nowplaying_msg:
             await bot.rest.delete_messages(d.out_channel_id, d.nowplaying_msg)
     await lvc.wait_for_connection_info_remove(guild)
-    nodes.pop(guild)
+    ndt.pop(guild)
     await lvc.remove_guild_node(guild)
     await lvc.remove_guild_from_loops(guild)
 

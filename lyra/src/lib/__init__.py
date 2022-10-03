@@ -4,7 +4,7 @@ from .utils import LyraConfig, EmojiCache, base_h, restricts_c
 from .connections import cleanup
 from .lava import (
     EventHandler,
-    NodeRef,
+    NodeDataRef,
     repeat_emojis,
     access_data,
     get_data,

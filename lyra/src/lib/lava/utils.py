@@ -309,7 +309,7 @@ class NodeData:
             await rest.edit_message(self.out_channel_id, _np_msg, components=components)
 
 
-NodeRef = t.NewType('NodeRef', dict[int, NodeData])
+NodeDataRef = t.NewType('NodeDataRef', dict[int, NodeData])
 
 
 class BaseEventHandler(abc.ABC):
