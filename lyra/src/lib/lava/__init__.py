@@ -1,7 +1,7 @@
 # pyright: reportUnusedImport=false
 from .utils import (
     NodeData,
-    NodeRef,
+    NodeDataRef,
     QueueList,
     Bands,
     RepeatMode,

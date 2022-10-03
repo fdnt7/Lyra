@@ -16,7 +16,7 @@ from ..lib.errors import (
     NotConnectedError,
 )
 from ..lib.cmd import CommandIdentifier as C, with_identifier
-from ..lib.lava import ConnectionCommandsInvokedEvent, NodeRef, get_data
+from ..lib.lava import ConnectionCommandsInvokedEvent, NodeDataRef, get_data
 from ..lib.music import __init_component__
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
 
@@ -44,7 +44,7 @@ async def on_voice_state_update(
     client: al.Injected[tj.Client],
     bot: al.Injected[hk.GatewayBot],
     lvc: al.Injected[lv.Lavalink],
-    nodes: al.Injected[NodeRef],
+    ndt: al.Injected[NodeDataRef],
 ):
     def conn():
         return t.cast(
@@ -90,7 +90,7 @@ async def on_voice_state_update(
 
     if not conn_cmd_invoked and old and old.user_id == bot_u.id:
         if not new.channel_id:
-            await cleanup(event.guild_id, nodes, lvc, bot=bot, also_disconn=False)
+            await cleanup(event.guild_id, ndt, lvc, bot=bot, also_disconn=False)
             await bot.rest.create_message(
                 out_ch,
                 f"❕📎 ~~<#{(_vc := old.channel_id)}>~~ `(Bot was forcefully disconnected)`",
@@ -131,7 +131,7 @@ async def on_voice_state_update(
         __conn = conn()
         assert __conn
 
-        await cleanup(event.guild_id, nodes, lvc, bot=bot, also_del_np_msg=False)
+        await cleanup(event.guild_id, ndt, lvc, bot=bot, also_del_np_msg=False)
 
         _vc: int = __conn['channel_id']
         logger.info(
