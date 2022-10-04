@@ -14,7 +14,7 @@ STOP_REFRESH: t.Final = 0.15
 """How many seconds to wait before checking the next time whether the track is confirmed to be stopped"""
 ADD_TRACKS_WRAP_LIM: t.Final = 3
 """How many tracks to be displayed in `/play`'s output before the text got summarized to "Added <i> tracks...\""""
-INACTIVITY_TIMEOUT: t.Final = 10
+INACTIVITY_TIMEOUT: t.Final = 600
 """Timeout duration for the automatic inactivity disconnection in seconds"""
 INACTIVITY_REFRESH: t.Final = 10
 """Amount of timeout refreshes to periodically check whether the inactivity condition is still met"""
@@ -27,4 +27,4 @@ lyricfind_icon: t.Final = 'https://scontent.furt2-1.fna.fbcdn.net/v/t39.30808-6/
 
 __developers__: t.Final = frozenset((548850193202675713, 626062879531204618))
 """Who the `debug` commands can be used"""
-__version__: t.Final = '2.4.2-hotfix.1'
+__version__: t.Final = '2.4.2-hotfix.2'
