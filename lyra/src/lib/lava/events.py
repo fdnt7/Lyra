@@ -12,7 +12,17 @@ class BaseLyraEvent(hk.Event, abc.ABC):
 
 
 @a.frozen
-class ConnectionCommandsInvokedEvent(BaseLyraEvent):
+class InternalConnectionChangeEvent(BaseLyraEvent):
+    pass
+
+
+@a.frozen
+class ConnectionCommandsInvokedEvent(InternalConnectionChangeEvent):
+    pass
+
+
+@a.frozen
+class AutomaticConnectionChangeEvent(InternalConnectionChangeEvent):
     pass
 
 

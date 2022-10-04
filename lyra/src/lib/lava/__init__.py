@@ -16,5 +16,10 @@ from .utils import (
     set_data,
     access_data,
 )
-from .events import ConnectionCommandsInvokedEvent, TrackStoppedEvent
+from .events import (
+    InternalConnectionChangeEvent,
+    ConnectionCommandsInvokedEvent,
+    AutomaticConnectionChangeEvent,
+    TrackStoppedEvent,
+)
 from .impl import EventHandler
