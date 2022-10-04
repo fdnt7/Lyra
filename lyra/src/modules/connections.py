@@ -16,7 +16,12 @@ from ..lib.errors import (
     NotConnectedError,
 )
 from ..lib.cmd import CommandIdentifier as C, with_identifier
-from ..lib.lava import ConnectionCommandsInvokedEvent, NodeDataRef, get_data
+from ..lib.lava import (
+    InternalConnectionChangeEvent,
+    AutomaticConnectionChangeEvent,
+    NodeDataRef,
+    get_data,
+)
 from ..lib.music import __init_component__
 from ..lib.connections import logger, cleanup, join_impl_precaught, leave
 
@@ -82,13 +87,13 @@ async def on_voice_state_update(
     assert out_ch
 
     try:
-        conn_cmd_invoked = await bot.wait_for(
-            ConnectionCommandsInvokedEvent, timeout=0.5
+        internal_conn_change = await bot.wait_for(
+            InternalConnectionChangeEvent, timeout=0.5
         )
     except asyncio.TimeoutError:
-        conn_cmd_invoked = None
+        internal_conn_change = None
 
-    if not conn_cmd_invoked and old and old.user_id == bot_u.id:
+    if not internal_conn_change and old and old.user_id == bot_u.id:
         if not new.channel_id:
             await cleanup(event.guild_id, ndt, lvc, bot=bot, also_disconn=False)
             await bot.rest.create_message(
@@ -132,6 +137,7 @@ async def on_voice_state_update(
         assert __conn
 
         await cleanup(event.guild_id, ndt, lvc, bot=bot, also_del_np_msg=False)
+        bot.dispatch(AutomaticConnectionChangeEvent(bot))
 
         _vc: int = __conn['channel_id']
         logger.info(
