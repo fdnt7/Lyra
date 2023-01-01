@@ -12,9 +12,14 @@ A featureful Discord music bot, made with [hikari](https://github.com/hikari-py/
 
 </div>
 
+## ⚠️ Repo Archival
+
+* **This reposity is no longer maintained. _A rewrite will be developed on [this repo](https://github.com/lyra-music/lyra)_**
+
 ## Inviting the bot to your own servers
 
-* DM me on Discord: `Teammìe#0118`. **I am likely to decline your request if your server has a very active VC (`≳6` hr/d)**
+* **⚠️ The bot is no longer hosted.**
+* You can DM me on Discord (`Fridella#0777`) or ask in [Lýra's support server](https://discord.gg/d4UerJpvTp) for more information
 
 ## Supporting the bot
 
